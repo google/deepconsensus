@@ -1,0 +1,840 @@
+---
+output:
+  html_document:
+    self_contained: true
+    toc: true
+    toc_float:
+      collapsed: false
+    toc_depth: 4
+---
+
+```{r SETUP, include=FALSE}
+# INSTRUCTIONS:
+#   Normally this is run using `run_full_postprocess.sh`
+#
+#   Args:
+#     (1) postprocess_directory
+#
+# run interactively with:
+#  blaze run -c opt \
+#    //learning/genomics/deepconsensus/postprocess:report_interactive -- \
+#  <postprocess_directory>
+#
+#  You can run httpgd::httpgd(port=8888) to open up a graphics browser.
+#  Be sure to forward 8888 locally.
+#
+library(knitr)
+library(data.table)
+library(cowplot)
+library(tidyverse)
+library(knitr)
+library(gdata)
+library(cfs)
+library(fansi)
+library(jsonlite)
+nativesupport::InitGoogle()
+
+output <- opts_knit$get("rmarkdown.pandoc.to")
+opts_chunk$set(
+  include = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  echo = FALSE,
+  results = "asis"
+)
+
+####################
+# Define Functions #
+####################
+
+f <- glue::glue # Used for format strings
+
+humanize <- scales::label_number_si()
+
+plot_theme <- theme_gray() + theme(
+  strip.background = element_blank(),
+  legend.position = "none",
+  axis.text.x = element_text(size = 11, face = "bold"),
+  axis.text.y = element_text(size = 11, face = "bold"),
+  axis.title = element_text(size = 15, face = "bold"),
+  strip.text = element_text(size = 12, face = "bold"),
+  title = element_text(size = 15, face = "bold"),
+  panel.grid.major = element_line(colour = "white", size = 0.50),
+  panel.grid.minor = element_line(colour = "white", size = 0.50)
+)
+
+cap <- function(x, limit) {
+  return(ifelse(x > limit, limit, x))
+}
+
+plot_metric <- function(df, metric, group, plot_var, no_x = TRUE) {
+  min_y <- min(min(df[[plot_var]]) - 0.05)
+  weighted_mean <- stats::weighted.mean(df$mean, df$count)
+  breaks <- sort(unique(df[["group_val"]]))
+  p <- ggplot(df) +
+    geom_pointrange(aes(
+      x = group_val,
+      y = mean,
+      ymin = -cap(-(mean - stddev), 0),
+      ymax = cap(mean + stddev, 1.0),
+    ),
+    stat = "identity",
+    ) +
+    geom_hline(aes(
+      yintercept = weighted_mean,
+      color = "#d9736d"
+    )) +
+    labs(x = group, y = metric) +
+    scale_y_continuous(
+      limits = c(min_y, 1.0),
+      breaks = seq(0, 1, 0.05),
+      sec.axis = sec_axis(trans = ~., breaks = round(weighted_mean, 3))
+    ) +
+    scale_x_continuous(breaks = breaks, minor_breaks = NULL) +
+    plot_theme
+
+  if (no_x) {
+    p <- p + theme(
+      axis.text.x = element_blank(),
+      axis.title.x = element_blank()
+    )
+  }
+  return(p)
+}
+
+#################
+# Load datasets #
+#################
+
+# Load PBCCS Dataset
+# lintr: disable
+PBCCS_BAM_CONCORDANCE <- "/bigstore/brain-genomics/deepconsensus/postprocess/091052_235052_pbccs_20210317163548/bam_concordance.csv"
+PBCCS_PER_READ_METRICS <- "/bigstore/brain-genomics/deepconsensus/postprocess/091052_235052_pbccs_20210317163548/per_read_identity_metrics.csv"
+pbccs_bam_concordance <- data.table::fread(gfile::GFile(PBCCS_BAM_CONCORDANCE))
+pbccs_per_read_identity_metrics <- data.table::fread(gfile::GFile(PBCCS_PER_READ_METRICS))
+# lintr: enable
+
+PATH <- commandArgs(TRUE)[1]
+POSTPROCESS_DIR <- basename(PATH)
+
+# Parse vars
+TIMESTAMP <- stringr::str_extract(POSTPROCESS_DIR, "[0-9]+$")
+WORK_UNIT <- stringr::str_extract(PATH, "wu_[0-9]+")
+XM_EXP <- stringr::str_match(PATH, "exp_([0-9]+)")[, 2]
+
+# Load datasets
+PARAMS_PATH <- f("{dirname(dirname(PATH))}/params.json")
+BC_PATH <- f("{PATH}/bam_concordance.csv")
+ID_PATH <- f("{PATH}/identity_metrics.csv")
+PER_READ_ID_PATH <- f("{PATH}/per_read_identity_metrics.csv")
+METRICS_PATH <- f("{PATH}/metrics.stat.csv")
+FASTQ_PATH <- f("{PATH}/full_predictions.fastq")
+
+json_params <- fromJSON(gfile::GFile(PARAMS_PATH))
+DATASET <- basename(dirname(json_params$test_path))
+bam_concordance <- data.table::fread(gfile::GFile(BC_PATH))
+identity_metrics <- data.table::fread(gfile::GFile(ID_PATH))
+per_read_identity_metrics <- data.table::fread(gfile::GFile(PER_READ_ID_PATH))
+metrics <- data.table::fread(gfile::GFile(METRICS_PATH))
+```
+
+# DC Report
+
+## Experiment
+
+* [`r POSTPROCESS_DIR`](`r PATH`)
+* [xmanager](https://xm2a.corp.google.com/experiments/`r XM_EXP`)
+* [`r basename(PARAMS_PATH)`](`r PARAMS_PATH`)
+* [`r basename(BC_PATH)`](`r BC_PATH`)
+* [`r basename(METRICS_PATH)`](`r METRICS_PATH`)
+* [`r basename(FASTQ_PATH)`](`r FASTQ_PATH`)
+
+
+```{r experiment_summary}
+# These parameters are pulled out and placed up top
+main_params <- c(
+  "model_name",
+  "model_config_name",
+  "dataset_config_name",
+  "dataset",
+  "max_passes",
+  "max_length",
+  "num_epochs",
+  "batch_size",
+  "loss_function",
+  "learning_rate",
+  "timestamp",
+  "xmanager_experiment",
+  "work_unit",
+  "postprocess_dir"
+)
+
+json_table <- as.data.frame(t(rbind(unlist(json_params))))
+json_table$variable <- rownames(json_table)
+colnames(json_table) <- c("Value", "Variable")
+rownames(json_table) <- NULL
+json_table <- data.table(json_table)
+json_table <- json_table[, c("Variable", "Value")]
+json_table[, Value := as.character(Value)]
+json_table <- as.data.table(json_table)
+json_table <- rbind(json_table, list("dataset", DATASET))
+json_table <- rbind(json_table, list("timestamp", TIMESTAMP))
+json_table <- rbind(json_table, list("xmanger_experiment", XM_EXP))
+json_table <- rbind(json_table, list("work_unit", WORK_UNIT))
+json_table <- rbind(json_table, list("postprocess_dir", POSTPROCESS_DIR))
+knitr::kable(json_table[match(main_params, Variable)][!is.na(Variable)])
+
+identity_metrics[, `phred(identity)` := -10 * log10(1 - (identity / 100))]
+```
+
+<details>
+`r knitr::kable(json_table)`
+</details>
+
+## Identity
+
+Per read identity comparison.
+
+`r knitr::kable(identity_metrics, align='ll')`
+
+```{r per_identity, fig.width=10, fig.width=10}
+
+pbccs_per_read_identity_metrics$group <- "baseline"
+per_read_identity_metrics$group <- "experiment"
+id_df <- merge(pbccs_per_read_identity_metrics,
+  per_read_identity_metrics,
+  by = "read_name"
+)
+
+ggplot(id_df) +
+  geom_point(aes(x = identity.x, y = identity.y),
+    alpha = 0.15,
+    fill = "#91CDFF",
+    color = "#91CDFF"
+  ) +
+  geom_abline(
+    intercept = 0,
+    slope = 1,
+    size = 1.2,
+    linetype = 2,
+    color = "#78787975"
+  ) +
+  labs(x = "Identity PBCCS", y = "Identity DeepConsensus") +
+  theme_bw() +
+  coord_fixed(xlim = c(95, 100), ylim = c(95, 100))
+```
+
+## Bam Concordance
+
+```{r bam_concordance}
+
+fmt_conc <- function(x) {
+  return(as.character(round(x, 8)))
+}
+
+summarize_bc <- function(bc, name) {
+  out <- bc[order(alignmentType), .(
+    `Avg Concordance (base)` = fmt_conc(sum(
+      concordance * readLengthBp
+    ) / sum(readLengthBp)),
+    `Avg Concordance (read)` = fmt_conc(mean(concordance)),
+    perfect_reads = sum(concordance == 1.0),
+    count = .N
+  ), by = alignmentType]
+  out$name <- name
+  setcolorder(out, "name")
+  return(out)
+}
+
+# Filter for primary alignments only
+dc <- bam_concordance[alignmentType == "Primary"]
+pbccs_bc <- pbccs_bam_concordance[alignmentType == "Primary"]
+
+
+# Filter bc and bpccs for the joint set of reads
+joint_reads <- intersect(dc$`#read`, pbccs_bc$`#read`)
+dc_intersect <- dc[`#read` %in% joint_reads, ]
+dc_intersect[, name := "deepconsensus intersect"]
+pbccs_intersect <- pbccs_bc[`#read` %in% joint_reads, ]
+pbccs_intersect[, name := "pbccs intersect"]
+
+all_summary <- rbind(
+  summarize_bc(dc, "deepconsensus all"),
+  summarize_bc(pbccs_bc, "pbccs all")
+)
+
+intersect_summary <- rbind(
+  summarize_bc(
+    dc_intersect,
+    "deepconsensus intersect"
+  ),
+  summarize_bc(
+    pbccs_intersect,
+    "pbccs intersect"
+  )
+)
+```
+
+__All reads__
+
+`r knitr::kable(all_summary)`
+
+__Intersection of reads__
+
+`r knitr::kable(intersect_summary)`
+
+```{r bc_plot, fig.width=10, fig.height=5}
+
+ds_intersect <- rbind(dc_intersect, pbccs_intersect)
+
+p1 <- ggplot(ds_intersect) +
+  geom_histogram(aes(x = concordanceQv, fill = name),
+    alpha = 0.5,
+    position = "identity",
+    bins = 50
+  ) +
+  plot_theme +
+  labs(x = "Concordance QV", y = "Count") +
+  scale_fill_manual(values = c("#C41200", "#0072C4"))
+
+legend <- cowplot::get_legend(p1 + theme(legend.position = "bottom"))
+
+p2 <- ggplot(ds_intersect) +
+  geom_histogram(aes(x = concordance, fill = name),
+    alpha = 0.5,
+    position = "identity",
+    bins = 200
+  ) +
+  plot_theme +
+  labs(x = "Concordance", y = "Count") +
+  scale_fill_manual(values = c("#C41200", "#0072C4"))
+
+cowplot::plot_grid(cowplot::plot_grid(p1, p2, ncol = 2),
+  legend,
+  ncol = 1, nrow = 2, rel_heights = c(9, 1)
+)
+```
+
+Concordance in Phred-scale, capped by high-confidence read length.
+
+### ConcordanceQv
+
+```{r bc_comparison, fig.width = 10, fig.height = 10}
+
+# Calculate 'all_errors'
+# lintr: disable
+pbccs_intersect[, all_errors := mismatchBp + nonHpInsertionBp + nonHpDeletionBp + hpInsertionBp + hpDeletionBp]
+dc_intersect[, all_errors := mismatchBp + nonHpInsertionBp + nonHpDeletionBp + hpInsertionBp + hpDeletionBp]
+# lintr: enable
+
+bc_merged <- merge(pbccs_intersect, dc_intersect, by = "#read")
+
+ggplot(bc_merged, aes(x = concordanceQv.x, y = concordanceQv.y)) +
+  geom_point(alpha = 0.1, color = "#91CDFF") +
+  geom_abline(
+    intercept = 0,
+    slope = 1,
+    size = 1.2,
+    linetype = 2,
+    color = "#78787975"
+  ) +
+  theme_bw() +
+  labs(x = "PBCCS", y = "DeepConsensus", title = "ConcordanceQV") +
+  coord_fixed()
+```
+
+### ConcordanceQv Binned
+
+```{r bc_binned, fig.width = 10, fig.height = 10}
+
+# lintr: disable
+is_outlier <- function(i) {
+  (i < quantile(i, 0.25) - IQR(i) * 1.5) | (i > quantile(i, 0.75) + IQR(i) * 1.5)
+}
+# lintr: enable
+
+bc_merged[, pbccs_bin := round(concordanceQv.x)]
+bc_merged[, concordanceQvDiff := concordanceQv.y - concordanceQv.x]
+bc_merged[, outlier_pt := is_outlier(concordanceQvDiff), by = pbccs_bin]
+bc_merged[, n_bin := .N, by = pbccs_bin]
+bin_counts <- bc_merged[, .(y = -5, x = pbccs_bin, n = .N), by = pbccs_bin]
+ggplot(
+  bc_merged,
+  aes(x = pbccs_bin, y = concordanceQvDiff, group = pbccs_bin)
+) +
+  geom_boxplot(outlier.shape = NA, fill = "#5BB974", color = "#1E8E3E") +
+  geom_abline(
+    intercept = 0,
+    slope = 0,
+    size = 1.2,
+    linetype = 2,
+    color = "#78787975"
+  ) +
+  geom_jitter(aes(
+    x = ifelse(outlier_pt, pbccs_bin, NA_integer_),
+    y = ifelse(outlier_pt, concordanceQvDiff, NA_integer_)
+  ),
+  alpha = 0.05, color = "#1A73E8"
+  ) +
+  geom_text(data = bin_counts, aes(x = x, y = y, label = humanize(n))) +
+  theme_bw() +
+  labs(x = "PBCCS Bin", y = expression(Delta * " Concordance QV"))
+```
+
+### Read Length
+
+```{r read_length, fig.width = 14, fig.height = 10}
+ggplot(bc_merged, aes(x = readLengthBp.x, y = readLengthBp.y)) +
+  geom_point(alpha = 0.8, color = "#91CDFF") +
+  geom_abline(
+    intercept = 0,
+    slope = 1,
+    size = 1.2,
+    linetype = 2,
+    color = "#78787975"
+  ) +
+  theme_bw() +
+  labs(x = "PBCCS", y = "DeepConsensus", title = "Read Length")
+```
+
+```{r read_length_distr, fig.width=14, fig.height=10}
+bc_merged[, rlen_diff := abs(readLengthBp.y - readLengthBp.x)]
+ggplot(bc_merged) +
+  geom_histogram(aes(x = rlen_diff)) +
+  scale_x_log10() +
+  theme_bw() +
+  labs(x = "Read Length Difference")
+```
+
+### Error Types Breakdown
+
+The following plots show the improvement in errors for individual reads.
+The following filters are applied:
+
+* Reads with no difference in errors are filterd out.
+
+```{r error_breakdowns, fig.keep='all', fig.width = 10, fig.height = 8}
+plot_diff <- function(variable) {
+  x <- paste0(variable, ".x")
+  y <- paste0(variable, ".y")
+  # Subtract y (DC) from x (PBCCS)
+  bc_merged$diff <- (bc_merged[[y]] - bc_merged[[x]])
+
+  # Calculate percentage change
+  percent_change <- round((sum(bc_merged$diff) / sum(bc_merged[[x]])) * 100, 2)
+
+  ds <- bc_merged[diff != 0, ]
+  ds <- ds[order(diff)]
+  ds[, row := .I]
+
+  y_axis_limit <- max(abs(ds$diff)) + 5
+
+  # Calculate overall improvement
+  count_diff <- sum(ds$diff)
+  p <- ggplot(ds) +
+    geom_line(aes(x = row, y = diff, color = diff <= 0), size = 1) +
+    geom_area(aes(x = row, y = diff, fill = diff <= 0)) +
+    geom_hline(aes(yintercept = 0), size = 0.25) +
+    labs(
+      title = variable,
+      x = "Read",
+      y = expression(Delta * " Errors (bp)"),
+      caption = f("Error Change: {count_diff} ({percent_change}%)")
+    ) +
+    theme_bw() +
+    scale_color_manual(values = c("#F28B82", "#81C995"), guide = FALSE) +
+    scale_fill_manual(
+      values = c("#F6AEA9", "#A8DAB5"),
+      name = "Errors",
+      labels = c("Increase in errors", "Decrease in errors")
+    ) +
+    scale_y_continuous(limits = c(-y_axis_limit, y_axis_limit))
+  return(p)
+}
+
+# Plot all error plots
+plot_diff("mismatchBp")
+plot_diff("nonHpInsertionBp")
+plot_diff("nonHpDeletionBp")
+plot_diff("hpInsertionBp")
+plot_diff("hpDeletionBp")
+plot_diff("all_errors")
+```
+
+### Error Breakdown Table
+
+```{r error_breakdown_table}
+
+data.table::setnames(bc_merged, "#read", "read")
+bc_melted <- data.table::melt(bc_merged, id.vars = c(
+  "read",
+  "readLengthBp.x",
+  "readLengthBp.y"
+))
+bc_melted <- bc_melted[grepl("*Bp.[xy]$|all_errors|concordanceQv", variable), ]
+# lintr: disable
+bc_melted[, c("var", "group") := data.table::tstrsplit(variable, "\\.")]
+# lintr: enable
+bc_subset <- bc_melted[!is.na(group), .(
+  readLengthBp.x,
+  readLengthBp.y,
+  var,
+  group,
+  value
+)]
+bc_subset[, value := as.numeric(value)]
+bc_subset <- bc_subset[!is.na(value), ]
+bc_subset[, readLengthBp := ifelse(group == "x",
+  readLengthBp.x,
+  readLengthBp.y
+)]
+bc_subset[, group := ifelse(group == "x", "pbccs", "deepconsensus")]
+bc_subset <- bc_subset[!is.na(value), ]
+bc_subset <- bc_subset[, .(
+  mean = mean(value),
+  w_mean = weighted.mean(value, readLengthBp),
+  sum = sum(value)
+), by = c("var", "group")]
+bc_subset[, mean := round(mean, 2)]
+bc_subset[, w_mean := round(w_mean, 2)]
+bc_subset <- bc_subset[var != "hcReadLengthBp", ]
+
+ds <- merge(
+  data.table::dcast(bc_subset, var ~ group, value.var = "mean"),
+  data.table::dcast(bc_subset, var ~ group, value.var = "w_mean"),
+  suffixes = c("_mean", "_weighted_mean")
+)
+# Merge in sums
+ds <- merge(
+  ds,
+  data.table::dcast(bc_subset, var ~ group, value.var = "sum"),
+)
+ds[, `mean_perc_change` := round(((deepconsensus - pbccs) / pbccs) * 100, 2)]
+ds[, deepconsensus := scales::comma(deepconsensus)]
+ds[, pbccs := scales::comma(pbccs)]
+
+# lintr: disable
+# lintr: enable
+setcolorder(ds, c(
+  "var",
+  "pbccs_mean",
+  "deepconsensus_mean",
+  "mean_perc_change",
+  "pbccs_weighted_mean",
+  "deepconsensus_weighted_mean",
+  "pbccs",
+  "deepconsensus"
+))
+setnames(ds, names(ds), c(
+  "category",
+  "pbccs",
+  "deepconsensus",
+  "%",
+  "pbccs (w)",
+  "deepconsensus (w)",
+  "pbccs (bp)",
+  "deepconsensus (bp)"
+))
+ds[category == "concordanceQv", `pbccs (bp)` := ""]
+ds[category == "concordanceQv", `deepconsensus (bp)` := ""]
+```
+
+`r knitr::kable(ds)`
+
+
+## Metrics
+
+```{r metrics_summary}
+metrics[, group_val := as.numeric(group_val)]
+
+summary_table <- metrics[group == "all", ]
+summary_cols <- c(
+  "metric",
+  "mean",
+  "variance",
+  "stddev",
+  "min",
+  "max",
+  "count"
+)
+float_cols <- c(
+  "mean",
+  "variance",
+  "stddev"
+)
+summary_table <- summary_table[, summary_cols, with = FALSE]
+summary_table[, (float_cols) := lapply(.SD, round, 3), .SDcols = float_cols]
+
+# Clarify that count -> num_examples
+setnames(summary_table, "count", "num_examples")
+
+# Define df with no 'all' rows
+df <- metrics[group != "all", ]
+```
+
+`r knitr::kable(summary_table, format.args=list(big.mark = ','))`
+
+### Per Example Accuracy
+
+```{r per_example_accuracy, fig.width=14, fig.height=6}
+
+num_passes <- df[group == "num_passes", ]
+
+breaks <- sort(unique(num_passes$group_val))
+
+n_counts <- ggplot(num_passes[metric == "accuracy", ]) +
+  geom_text(aes(x = group_val, y = 1, label = humanize(count))) +
+  scale_x_continuous(breaks = breaks) +
+  theme_void() +
+  theme(
+    axis.text.x = element_text(size = 11, face = "bold"),
+    axis.title.x = element_text(
+      size = 15,
+      face = "bold",
+      margin = margin(t = 10)
+    ),
+    axis.title.y = element_text(size = 11, face = "bold")
+  ) +
+  labs(x = "Num Passes", y = "Count")
+
+p <- plot_metric(
+  num_passes[metric == "per_example_accuracy", ],
+  "per_example_accuracy",
+  "num_passes",
+  "mean"
+) +
+  labs(x = "Per Example Accuracy", y = "Accuracy")
+
+cowplot::plot_grid(p, n_counts,
+  nrow = 2,
+  align = "v",
+  rel_heights = c(10, 2)
+)
+```
+
+### Edit Distance
+
+```{r edit_distance, fig.width=14, fig.height=6}
+
+ed <- num_passes[metric == "edit_distance", ]
+weighted_mean <- stats::weighted.mean(ed$mean, ed$count)
+y_max <- ceiling(max(ed$mean))
+breaks <- sort(unique(ed$group_val))
+p <- ggplot(num_passes[metric == "edit_distance"]) +
+  geom_pointrange(aes(
+    x = group_val,
+    y = mean,
+    ymin = -cap(-(mean - stddev), 0),
+    ymax = mean + stddev,
+    alpha = count
+  ),
+  stat = "identity"
+  ) +
+  geom_hline(aes(
+    yintercept = weighted_mean,
+    color = "#d9736d"
+  )) +
+  scale_y_continuous(
+    limits = c(0, y_max),
+    sec.axis = sec_axis(trans = ~., breaks = round(weighted_mean, 3))
+  ) +
+  scale_x_continuous(breaks = breaks, minor_breaks = NULL) +
+  plot_theme +
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x = element_blank()
+  ) +
+  labs(y = "Edit Distance")
+
+
+cowplot::plot_grid(p, n_counts,
+  nrow = 2,
+  align = "v",
+  rel_heights = c(10, 2)
+)
+```
+
+## Stratified Position Accuracy
+
+### Accuracy
+
+```{r stratified_position_accuracy, fig.width=14, fig.height=6}
+
+spa <- df[metric == "stratified_pos_accuracy", ]
+weighted_mean <- stats::weighted.mean(spa$mean, spa$count)
+breaks <- unique(spa$group_val)
+y_min <- min(spa$mean - spa$stddev) - 0.01
+
+spa_plot <- ggplot(spa) +
+  geom_hline(aes(
+    yintercept = weighted_mean,
+    color = "#d9736d"
+  )) +
+  scale_y_continuous(
+    limits = c(0, 1.0),
+    sec.axis = sec_axis(
+      trans = ~.,
+      breaks = round(weighted_mean, 3),
+    )
+  ) +
+  scale_x_continuous(
+    breaks = seq(0, max(spa$group_val) + 1, 5),
+    limits = c(0, max(spa$group_val) + 1),
+    minor_breaks = NULL
+  ) +
+  plot_theme +
+  labs(x = "Position", y = "Accuracy")
+
+spa_plot +
+  geom_pointrange(aes(
+    x = group_val,
+    y = mean,
+    ymin = -cap(-(mean - stddev), 0),
+    ymax = cap(mean + stddev, 1.0)
+  ),
+  stat = "identity"
+  )
+```
+
+### Detailed Accuracy
+
+Accuracy at positions > 99%.
+
+```{r detailed_stratified_position_accuracy, fig.width=14, fig.height=6}
+spa_plot +
+  geom_point(aes(x = group_val, y = mean, alpha = count), stat = "identity") +
+  coord_cartesian(ylim = c(0.99, 1.0))
+```
+
+## Homopolymer Content
+
+```{r homopolymer_content, fig.width=16, fig.height=8}
+hc <- df[group == "homopolymer_content", ]
+
+h_acc <- ggplot(hc[metric == "accuracy", ], aes(
+  x = group_val,
+  y = mean,
+  alpha = count
+)) +
+  geom_point() +
+  geom_smooth(aes(weight = count), method = "lm", se = FALSE) +
+  plot_theme +
+  labs(x = "Label Length", y = "Accuracy") +
+  theme(
+    axis.text.x = element_blank(),
+    axis.title.x = element_blank()
+  )
+
+h_count <- ggplot(hc[metric == "accuracy", ], aes(x = group_val, y = count)) +
+  geom_point() +
+  plot_theme +
+  labs(x = "Homopolymer Content", y = "Count")
+
+cowplot::plot_grid(h_acc, h_count,
+  nrow = 2,
+  axis = "lr", align = "v", rel_heights = c(5, 5)
+)
+```
+
+## Unsupported Positions
+
+"Zero-evidence columns"
+
+```{r zero, fig.width=14, fig.height=6}
+zec <- metrics[group == "unsup_insertion_count", ]
+zec <- zec[metric == "per_example_accuracy", ]
+y_max <- ceiling(max(zec$mean))
+breaks <- sort(unique(zec$group_val))
+
+ggplot(zec[metric == "per_example_accuracy", ]) +
+  geom_pointrange(aes(
+    x = group_val,
+    y = mean,
+    ymin = -cap(-(mean - stddev), 0),
+    ymax = mean + stddev,
+  ),
+  stat = "identity"
+  ) +
+  scale_y_continuous(
+    limits = c(0, y_max)
+  ) +
+  scale_x_continuous(breaks = breaks, minor_breaks = NULL) +
+  plot_theme +
+  labs(x = "Unsupported Label Insertion Positions", y = "Per Example Accuracy")
+```
+
+## Label Length
+
+```{r label_length, fig.width=16, fig.height=8}
+ll <- df[group == "label_length", ]
+
+w_per_example_accuracy <- df[
+  metric == "per_example_accuracy",
+  .(per_example_accuracy = weighted.mean(
+    `mean`, `count`
+  ))
+][[1]]
+
+min_y <- min(ll[metric == "per_example_accuracy", "mean"])
+
+h_acc <- ggplot(ll[metric == "per_example_accuracy", ], aes(
+  x = group_val,
+  y = mean,
+  alpha = count
+)) +
+  geom_point() +
+  geom_hline(aes(
+    yintercept = w_per_example_accuracy,
+    color = "#d9736d"
+  )) +
+  plot_theme +
+  labs(x = "Label Length", y = "Per Example Accuracy") +
+  scale_y_continuous(
+    limits = c(min_y, 1.0),
+    breaks = seq(0, 1, 0.05),
+    sec.axis = sec_axis(trans = ~., breaks = round(w_per_example_accuracy, 3))
+  ) +
+  theme(
+    axis.text.x = element_blank(),
+    axis.title.x = element_blank()
+  )
+
+h_count <- ggplot(
+  ll[metric == "per_example_accuracy", ],
+  aes(x = group_val, y = count)
+) +
+  geom_point() +
+  plot_theme +
+  labs(x = "Label Length", y = "Count")
+
+cowplot::plot_grid(h_acc, h_count,
+  nrow = 2,
+  axis = "lr", align = "v", rel_heights = c(5, 5)
+)
+```
+
+## Errors
+
+A sampling of errors
+
+<style>
+.fansi-output {
+  font-size: 10px !important;
+}
+</style>
+```{r error_sampling, results='asis', echo=FALSE}
+error_files <- gfile::GlobFiles(f("{PATH}/error_analysis/*.txt"))
+
+n_sample <- min(length(error_files), 50)
+for (fname in sample(error_files, n_sample)) {
+  error_input <- readLines(gfile::GFile(fname, "r"), n = 50)
+  to_line <- max(which(error_input == "Subreads"))
+  if (to_line > 0) {
+    error_output <- fansi::sgr_to_html(error_input[1:(to_line - 7)])
+    writeLines(c(
+      basename(fname),
+      fansi::html_code_block(error_output)
+    ))
+  }
+}
+```
