@@ -50,12 +50,10 @@ class GetReadMoleculeNameDoFn(beam.DoFn):
       raise ValueError(str(read))
 
 
-@typehints.with_input_types(Tuple[str, Tuple[List[reads_pb2.Read],
-                                             List[reads_pb2.Read]]])
-@typehints.with_output_types(Tuple[str, Tuple[List[reads_pb2.Read],
-                                              List[reads_pb2.Read]]])
+@typehints.with_input_types(Tuple[str, Iterable[reads_pb2.Read]])
+@typehints.with_output_types(Tuple[str, List[reads_pb2.Read]])
 class ExpandFieldsRemoveSoftClipsDoFn(beam.DoFn):
-  """DoFn that yields expanded subread and label reads_pb2.Read protos.
+  """DoFn that yields expanded subread or label reads_pb2.Read protos.
 
   For both subreads and label:
 
@@ -70,59 +68,49 @@ class ExpandFieldsRemoveSoftClipsDoFn(beam.DoFn):
   str cigar str should have the same length after this function.
   """
 
-  def __init__(self):
+  def __init__(self, is_label):
     self.multiple_alignments_counter = metrics.Metrics.counter(
         self.__class__, 'labels_with_multiple_correct_alignments')
-    self.no_subreads_counter = metrics.Metrics.counter(
-        self.__class__, 'example_with_no_subreads')
-    self.no_label_counter = metrics.Metrics.counter(self.__class__,
-                                                    'example_with_no_label')
+    counter_name_suffix = 'label' if is_label else 'subreads'
+    counter_name = f'example_with_no_{counter_name_suffix}'
+    self.no_reads_counter = metrics.Metrics.counter(self.__class__,
+                                                    counter_name)
+    self.is_label = is_label
 
   def process(
-      self, molecule_data: Tuple[str, Tuple[List[reads_pb2.Read],
-                                            List[reads_pb2.Read]]]
-  ) -> Iterable[Tuple[str, Tuple[List[reads_pb2.Read], List[reads_pb2.Read]]]]:
+      self,
+      name_and_reads: Tuple[str, Iterable[reads_pb2.Read]],
+  ) -> Iterable[Tuple[str, List[reads_pb2.Read]]]:
     """Yields copies of input reads with expanded sequence and clips removed."""
 
-    (molecule_name, (subreads, label)) = molecule_data
-
+    name, reads = name_and_reads[0], list(name_and_reads[1])
     # Note, examples will only be included in one of the initial counters since
     # we are returning early.
-    if not subreads:
-      self.no_subreads_counter.inc()
+    if not reads:
+      self.no_reads_counter.inc()
       return
-    if not label:
-      self.no_label_counter.inc()
-      return
-
-    # Sanity checks. These are not enough though, we also need to check other
-    # fields in the label, which is done below.
-    assert subreads
-    assert label
 
     # Do not error for labels that have multiple alignments to correct molecule.
     # One of the alignments may be a supplementary alignment.
-    if len(label) > 1:
-      logging.info('Unexpected: %d labels for %s', len(label),
-                   label[0].fragment_name)
+    if self.is_label and len(reads) > 1:
+      logging.info('Unexpected: %d labels for %s', len(reads),
+                   reads[0].fragment_name)
       self.multiple_alignments_counter.inc()
 
-    subreads_and_label = subreads + label
-    subreads_and_labels_copy = copy.deepcopy(subreads_and_label)
-
-    for read in subreads_and_labels_copy:
+    reads_copy = copy.deepcopy(reads)
+    for read in reads_copy:
       assert read.aligned_sequence
       base_index = 0
       expanded_sequence = ''
       expanded_cigar_str = ''
       new_cigar_ops = []
-      pw = struct_utils.get_int_field(read.info, 'pw')
-      ip = struct_utils.get_int_field(read.info, 'ip')
-      new_pw = []
-      new_ip = []
+      if not self.is_label:
+        pw = struct_utils.get_int_field(read.info, 'pw')
+        ip = struct_utils.get_int_field(read.info, 'ip')
+        new_pw = []
+        new_ip = []
 
       for op in read.alignment.cigar:
-
         # Skip over ops we don't want, such as soft clips.
         if op.operation not in dc_constants.OPS_TO_CONSIDER:
           base_index += op.operation_length
@@ -131,9 +119,10 @@ class ExpandFieldsRemoveSoftClipsDoFn(beam.DoFn):
           start = base_index
           end = start + op.operation_length
           expanded_sequence += read.aligned_sequence[start:end]
-          new_pw += pw[start:end]
-          new_ip += ip[start:end]
           base_index += op.operation_length
+          if not self.is_label:
+            new_pw += pw[start:end]
+            new_ip += ip[start:end]
         else:
           # Add a special token in sequence where we have deletion.
           expanded_sequence += dc_constants.GAP_OR_PAD * op.operation_length
@@ -151,26 +140,18 @@ class ExpandFieldsRemoveSoftClipsDoFn(beam.DoFn):
       read.alignment.cigar.extend(new_cigar_ops)
 
       # Save pw, ip, and expanded cigar string to be used downstream.
-      struct_utils.set_int_field(read.info, 'pw', new_pw)
-      struct_utils.set_int_field(read.info, 'ip', new_ip)
+      if not self.is_label:
+        struct_utils.set_int_field(read.info, 'pw', new_pw)
+        struct_utils.set_int_field(read.info, 'ip', new_ip)
+        # PW and IP won't be the same length as read.aligned_sequence here
+        # because we haven't yet spaced out PW and IP based on gaps/padding.
       struct_utils.set_string_field(read.info, 'expanded_cigar',
                                     expanded_cigar_str)
-
-    subreads_copy = subreads_and_labels_copy[:-1]
-    label_copy = subreads_and_labels_copy[-1:]
-
-    # <internal> identified an error where a subread was used as the label in
-    # some cases. This led to the label having PW and IP fields, which should
-    # not happen since only subreads have PW and IP.
-    assert not struct_utils.get_int_field(label_copy[0].info, 'pw')
-
-    yield molecule_name, (subreads_copy, label_copy)
+    yield name, reads_copy
 
 
-@typehints.with_input_types(Tuple[str, Tuple[List[reads_pb2.Read],
-                                             List[reads_pb2.Read]]])
-@typehints.with_output_types(Tuple[str, Tuple[List[reads_pb2.Read],
-                                              List[reads_pb2.Read]]])
+@typehints.with_input_types(Tuple[str, List[reads_pb2.Read]])
+@typehints.with_output_types(Tuple[str, List[reads_pb2.Read]])
 class IndentReadsDoFn(beam.DoFn):
   """DoFn that adds padding to beginning of reads.
 
@@ -178,27 +159,21 @@ class IndentReadsDoFn(beam.DoFn):
   """
 
   def process(
-      self, molecule_data: Tuple[str, Tuple[List[reads_pb2.Read],
-                                            List[reads_pb2.Read]]]
-  ) -> Iterable[Tuple[str, Tuple[List[reads_pb2.Read], List[reads_pb2.Read]]]]:
+      self,
+      name_and_reads: Tuple[str, List[reads_pb2.Read]],
+  ) -> Iterable[Tuple[str, List[reads_pb2.Read]]]:
     """Yields copies of reads indented based on start position."""
-
-    (molecule_name, (subreads, label)) = molecule_data
-    subreads_and_label = subreads + label
-    subreads_and_labels_copy = copy.deepcopy(subreads_and_label)
-
+    name, reads = name_and_reads[0], list(name_and_reads[1])
+    reads_copy = copy.deepcopy(reads)
     # Indent sequence strings by starting position.
-    for read in subreads_and_labels_copy:
+    for read in reads_copy:
       indent = dc_constants.GAP_OR_PAD * read.alignment.position.position
       read.aligned_sequence = indent + read.aligned_sequence
       indented_cigar_str = indent + struct_utils.get_string_field(
           read.info, 'expanded_cigar')[0]
       struct_utils.set_string_field(read.info, 'expanded_cigar',
                                     indented_cigar_str)
-
-    subreads_copy = subreads_and_labels_copy[:-1]
-    label_copy = subreads_and_labels_copy[-1:]
-    yield molecule_name, (subreads_copy, label_copy)
+    yield name, reads_copy
 
 
 def get_index_info(reads: List[Union[reads_pb2.Read,
@@ -270,25 +245,66 @@ def get_expanded_cigar(
   return expanded_cigar
 
 
-@typehints.with_input_types(Tuple[str, Tuple[List[reads_pb2.Read],
-                                             List[reads_pb2.Read]]])
-@typehints.with_output_types(Tuple[str, Tuple[List[reads_pb2.Read],
-                                              List[reads_pb2.Read]]])
-class AlignSequenceDoFn(beam.DoFn):
-  """Returns aligned version of subreads and labels.
+@typehints.with_input_types(Tuple[str, List[reads_pb2.Read]])
+@typehints.with_output_types(Tuple[str, List[reads_pb2.Read]])
+class AlignSubreadSequencesDoFn(beam.DoFn):
+  """Returns aligned version of subreads.
 
-  For each position, go through all cigar strings in `bases_cigar_tuples`. For
-  each position where at least one cigar has an insertion, insert a space into
-  the cigar strings without an insertion and their corresponding bases.
+  For each position, go through all cigar strings for input subreads. For each
+  position where at least one cigar has an insertion, insert a space into the
+  cigar strings without an insertion and their corresponding bases.
   """
 
   def process(
-      self, molecule_data: Tuple[str, Tuple[List[reads_pb2.Read],
-                                            List[reads_pb2.Read]]]
-  ) -> Iterable[Tuple[str, Tuple[List[reads_pb2.Read], List[reads_pb2.Read]]]]:
-    """Yields reads with gaps inserted so that reads and labels are aligned."""
+      self,
+      name_and_reads: Tuple[str, List[reads_pb2.Read]],
+  ) -> Iterable[Tuple[str, List[reads_pb2.Read]]]:
+    """Yields subreads with gaps inserted so that sequences are aligned."""
+    name, subreads = name_and_reads
+    subreads_copy = copy.deepcopy(subreads)
+    # Stop if we have reached end of all reads.
+    base_index = 0
+    out_of_bounds = False
+    while not out_of_bounds:
+      out_of_bounds, has_insert = get_index_info(subreads_copy, base_index)
+      # `has_insert` will only be true if we are not out of bounds, meaning
+      # at least one read has a base at `base_index`.
+      if has_insert:
+        shift(subreads_copy, cigar_pb2.CigarUnit.INSERT, base_index)
+      base_index += 1
+    yield name, subreads_copy
 
-    (molecule_name, (subreads, label)) = molecule_data
+
+@typehints.with_input_types(Tuple[str, Tuple[List[List[reads_pb2.Read]],
+                                             List[List[reads_pb2.Read]]]])
+@typehints.with_output_types(Tuple[str, Tuple[List[reads_pb2.Read],
+                                              List[reads_pb2.Read]]])
+class AlignLabelSequencesDoFn(beam.DoFn):
+  """Returns aligned version of labels.
+
+  For each position, go through all cigar strings for subreads and label. Add
+  gaps in the label to ensure that it is aligned with the subreads. This
+  function considers subread sequences but does not modify them. Some new
+  fields are added to the subreads:
+    * subread_indices, which saves the index at which to slice the label for
+      a window in the subreads.
+    * unsup_insertions_by_pos_keys and unsup_insertions_by_pos_values save the
+      indices of positions with unsupported insertions and the count of how many
+      such insertions are present at each postition.
+  """
+
+  def process(
+      self, molecule_data: Tuple[str, Tuple[List[List[reads_pb2.Read]],
+                                            List[List[reads_pb2.Read]]]]
+  ) -> Iterable[Tuple[str, Tuple[List[reads_pb2.Read], List[reads_pb2.Read]]]]:
+    """Yields subreads and label with gaps inserted for alignment."""
+    (molecule_name, (subreads_nested, label_nested)) = molecule_data
+    if not subreads_nested or not label_nested:
+      return
+    subreads = subreads_nested[0]
+    label = label_nested[0]
+    if not subreads or not label:
+      return
     assert len(label) == 1
     subreads_copy = copy.deepcopy(subreads)
     label_copy = copy.deepcopy(label)
@@ -305,7 +321,6 @@ class AlignSequenceDoFn(beam.DoFn):
       # `has_insert` will only be true if we are not out of bounds, meaning
       # at least one read has a base at `base_index`.
       if has_insert:
-        shift(subreads_copy, cigar_pb2.CigarUnit.INSERT, base_index)
         shift(label_copy, cigar_pb2.CigarUnit.INSERT, base_index + label_offset)
 
       label_out_of_bounds, label_has_insert = get_index_info(
@@ -339,12 +354,61 @@ class AlignSequenceDoFn(beam.DoFn):
     yield molecule_name, (subreads_copy, label_copy)
 
 
+def pad_reads(reads: List[reads_pb2.Read]) -> int:
+  """Adds padding to sequence and expanded cigar string of each read."""
+  # Get maximum subread length for this molecule. If we have no subreads, the
+  # default of 0 is returned and is effectively unused downstream.
+  max_length = 0
+  for read in reads:
+    max_length = max(max_length, len(read.aligned_sequence))
+  # Pad ends of all reads so length is equal to max_length.
+  for read in reads:
+    pad_length = max_length - len(read.aligned_sequence)
+    padding = dc_constants.GAP_OR_PAD * pad_length
+    read.aligned_sequence += padding
+    padded_cigar_str = struct_utils.get_string_field(
+        read.info, 'expanded_cigar')[0] + padding
+    struct_utils.set_string_field(read.info, 'expanded_cigar', padded_cigar_str)
+  return max_length
+
+
+def pad_pw_ip(subreads: List[reads_pb2.Read], max_length: int) -> None:
+  """Adds padding to the pw and ip fields."""
+  for read in subreads:
+    pw = struct_utils.get_int_field(read.info, 'pw')
+    ip = struct_utils.get_int_field(read.info, 'ip')
+    assert len(pw) == len(ip)
+    pad_length = max_length - len(pw)
+    pw_ip_padding = [dc_constants.GAP_OR_PAD_INT] * pad_length
+    struct_utils.set_int_field(read.info, 'pw', pw + pw_ip_padding)
+    struct_utils.set_int_field(read.info, 'ip', ip + pw_ip_padding)
+
+
+@typehints.with_input_types(Tuple[str, List[reads_pb2.Read]])
+@typehints.with_output_types(Tuple[str, List[reads_pb2.Read]])
+class PadSubreadsDoFn(beam.DoFn):
+  """DoFn that adds padding to ends of subreads.
+
+  Padding at end of reads is added to ensure all reads are of same length.
+  """
+
+  def process(
+      self,
+      name_and_reads: Tuple[str, List[reads_pb2.Read]],
+  ) -> Iterable[Tuple[str, List[reads_pb2.Read]]]:
+    """Yields copies of reads, all padded to the same length."""
+    name, subreads = name_and_reads
+    subreads_copy = copy.deepcopy(subreads)
+    pad_reads(subreads_copy)
+    yield name, subreads_copy
+
+
 @typehints.with_input_types(Tuple[str, Tuple[List[reads_pb2.Read],
                                              List[reads_pb2.Read]]])
 @typehints.with_output_types(Tuple[str, Tuple[List[reads_pb2.Read],
                                               List[reads_pb2.Read]]])
-class PadReadsDoFn(beam.DoFn):
-  """DoFn that adds padding to ends of reads.
+class PadSubreadsAndLabelDoFn(beam.DoFn):
+  """DoFn that adds padding to ends of labels and subreads.
 
   Padding at end of reads is added to ensure all reads are of same length.
   """
@@ -357,32 +421,18 @@ class PadReadsDoFn(beam.DoFn):
 
     (molecule_name, (subreads, label)) = molecule_data
     subreads_and_label = subreads + label
+    # Subreads, PW and IP were already padded for subreads alone, but we need to
+    # pad them again because label might be longer than previous pad length.
     subreads_and_labels_copy = copy.deepcopy(subreads_and_label)
-
-    # Get maximum subread length for this molecule.
-    max_length = -float('inf')
-    for read in subreads_and_labels_copy:
-      max_length = max(max_length, len(read.aligned_sequence))
-
-    # Pad ends of all reads so length is equal to max_length.
-    for read in subreads_and_labels_copy:
-      pad_length = max_length - len(read.aligned_sequence)
-      padding = dc_constants.GAP_OR_PAD * pad_length
-      read.aligned_sequence += padding
-      padded_cigar_str = struct_utils.get_string_field(
-          read.info, 'expanded_cigar')[0] + padding
-      struct_utils.set_string_field(read.info, 'expanded_cigar',
-                                    padded_cigar_str)
-
+    max_length = pad_reads(subreads_and_labels_copy)
     subreads_copy = subreads_and_labels_copy[:-1]
     label_copy = subreads_and_labels_copy[-1:]
+    pad_pw_ip(subreads_copy, max_length)
     yield molecule_name, (subreads_copy, label_copy)
 
 
-@typehints.with_input_types(Tuple[str, Tuple[List[reads_pb2.Read],
-                                             List[reads_pb2.Read]]])
-@typehints.with_output_types(Tuple[str, Tuple[List[reads_pb2.Read],
-                                              List[reads_pb2.Read]]])
+@typehints.with_input_types(Tuple[str, List[reads_pb2.Read]])
+@typehints.with_output_types(Tuple[str, List[reads_pb2.Read]])
 class AlignPwIpDoFn(beam.DoFn):
   """DoFn that aligns pulse width (pw) and interpulse distance (ip) per read.
 
@@ -393,14 +443,12 @@ class AlignPwIpDoFn(beam.DoFn):
   """
 
   def process(
-      self, molecule_data: Tuple[str, Tuple[List[reads_pb2.Read],
-                                            List[reads_pb2.Read]]]
-  ) -> Iterable[Tuple[str, Tuple[List[reads_pb2.Read], List[reads_pb2.Read]]]]:
+      self,
+      name_and_reads: Tuple[str, List[reads_pb2.Read]],
+  ) -> Iterable[Tuple[str, List[reads_pb2.Read]]]:
     """Yields copies of reads, with pw and ip aligned."""
 
-    (molecule_name, (subreads, label)) = molecule_data
-
-    # Do not need to consider label because it does not contain pw and ip.
+    name, subreads = name_and_reads
     subreads_copy = copy.deepcopy(subreads)
     for read in subreads_copy:
       pw = struct_utils.get_int_field(read.info, 'pw')
@@ -414,9 +462,6 @@ class AlignPwIpDoFn(beam.DoFn):
         # and ip, which are lists of ints. Instead, integer representations of
         # each must be added.
         if base == dc_constants.GAP_OR_PAD:
-          new_pw.append(dc_constants.GAP_OR_PAD_INT)
-          new_ip.append(dc_constants.GAP_OR_PAD_INT)
-        elif base == dc_constants.GAP_OR_PAD:
           new_pw.append(dc_constants.GAP_OR_PAD_INT)
           new_ip.append(dc_constants.GAP_OR_PAD_INT)
         # If base is neither padding nor gap, copy over the existing pw and ip.
@@ -433,7 +478,7 @@ class AlignPwIpDoFn(beam.DoFn):
       struct_utils.set_int_field(read.info, 'pw', new_pw)
       struct_utils.set_int_field(read.info, 'ip', new_ip)
 
-    yield molecule_name, (subreads_copy, label)
+    yield name, subreads_copy
 
 
 @typehints.with_input_types(bed_pb2.BedRecord)

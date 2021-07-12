@@ -13,7 +13,6 @@
 # limitations under the License.
 """Tests for deepconsensus.preprocess.generate_input_transforms."""
 
-import copy
 
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -27,7 +26,6 @@ from deepconsensus.utils import dc_constants
 from deepconsensus.utils import test_utils as dc_test_utils
 from nucleus.protos import bed_pb2
 from nucleus.testing import test_utils
-from nucleus.util import struct_utils
 
 
 class GetReadMoleculeNameDoFnTest(absltest.TestCase):
@@ -65,7 +63,21 @@ class ExpandFieldsRemoveSoftClipsDoFnTest(parameterized.TestCase):
 
   @parameterized.named_parameters(
       dict(
-          testcase_name='read with all M',
+          testcase_name='label with all M',
+          subread=test_utils.make_read(
+              name='read 1', bases='ATCG', start=0, cigar='4M'),
+          expected_subread=dc_test_utils.make_read_with_info(
+              name='read 1',
+              bases='ATCG',
+              start=0,
+              cigar='4M',
+              expanded_cigar='MMMM',
+              pw=None,
+              ip=None),
+          is_label=True,
+      ),
+      dict(
+          testcase_name='subread with all M and no PW/IP present',
           subread=test_utils.make_read(
               name='read 1', bases='ATCG', start=0, cigar='4M'),
           expected_subread=dc_test_utils.make_read_with_info(
@@ -76,102 +88,77 @@ class ExpandFieldsRemoveSoftClipsDoFnTest(parameterized.TestCase):
               expanded_cigar='MMMM',
               pw=[],
               ip=[]),
+          is_label=False,
       ),
       dict(
-          testcase_name='read with some I',
-          subread=test_utils.make_read(
-              name='read 2', bases='ATCG', start=0, cigar='2M2I'),
-          expected_subread=dc_test_utils.make_read_with_info(
-              name='read 2',
+          testcase_name='subread with all M and PW/IP present',
+          subread=dc_test_utils.make_read_with_info(
+              name='read 1',
               bases='ATCG',
               start=0,
-              cigar='2M2I',
-              expanded_cigar='MMII',
-              pw=[],
-              ip=[]),
-      ),
-      dict(
-          testcase_name='read with some D',
-          subread=test_utils.make_read(
-              name='read 3', bases='CG', start=0, cigar='2D2M'),
+              cigar='4M',
+              pw=[1, 2, 3, 4],
+              ip=[5, 6, 7, 8]),
           expected_subread=dc_test_utils.make_read_with_info(
-              name='read 3',
-              bases='%sCG' % (dc_constants.GAP_OR_PAD * 2),
+              name='read 1',
+              bases='ATCG',
               start=0,
-              cigar='2D2M',
-              expanded_cigar='DDMM',
-              pw=[],
-              ip=[]),
+              cigar='4M',
+              expanded_cigar='MMMM',
+              pw=[1, 2, 3, 4],
+              ip=[5, 6, 7, 8]),
+          is_label=False,
       ),
       dict(
-          testcase_name='read with some S',
+          testcase_name='label with complex cigar',
           subread=test_utils.make_read(
-              name='read 4', bases='ATCG', start=0, cigar='2M1S1M'),
-          expected_subread=dc_test_utils.make_read_with_info(
-              name='read 4',
-              bases='ATG',
-              start=0,
-              cigar='2M1M',
-              expanded_cigar='MMM',
-              pw=[],
-              ip=[]),
-      ),
-      dict(
-          testcase_name='read with complex cigar',
-          subread=test_utils.make_read(
-              name='read 5', bases='ATCGT', start=0, cigar='2S1M1D2M1D'),
+              name='read 5', bases='ATCGTT', start=0, cigar='2S1M1D2M1D1I'),
           expected_subread=dc_test_utils.make_read_with_info(
               name='read 5',
-              bases='C%sGT%s' %
+              bases='C%sGT%sT' %
               (dc_constants.GAP_OR_PAD, dc_constants.GAP_OR_PAD),
               start=0,
-              cigar='1M1D2M1D',
-              expanded_cigar='MDMMD',
-              pw=[],
-              ip=[]),
+              cigar='1M1D2M1D1I',
+              expanded_cigar='MDMMDI',
+              pw=None,
+              ip=None),
+          is_label=True,
       ),
       dict(
-          testcase_name='read with pw and ip',
+          testcase_name='read with complex cigar and PW/IP',
           subread=dc_test_utils.make_read_with_info(
-              name='read 6',
+              name='read 5',
               bases='ATCGTT',
               start=0,
-              cigar='2M2I2S',
-              pw=[2, 1, 1, 2, 3, 1],
-              ip=[1, 4, 5, 2, 1, 2]),
+              cigar='2S1M1D2M1D1I',
+              # PW/IP values only present for non softclipped bases.
+              pw=[1, 2, 3, 4, 5, 6],
+              ip=[7, 8, 9, 10, 11, 12]),
           expected_subread=dc_test_utils.make_read_with_info(
-              name='read 6',
-              bases='ATCG',
+              name='read 5',
+              bases='C%sGT%sT' %
+              (dc_constants.GAP_OR_PAD, dc_constants.GAP_OR_PAD),
               start=0,
-              cigar='2M2I',
-              pw=[2, 1, 1, 2],
-              ip=[1, 4, 5, 2],
-              expanded_cigar='MMII'),
+              cigar='1M1D2M1D1I',
+              expanded_cigar='MDMMDI',
+              pw=[3, 4, 5, 6],
+              ip=[9, 10, 11, 12]),
+          is_label=False,
       ))
-  def test_expand_fields_remove_soft_clips(self, subread, expected_subread):
+  def test_expand_fields_remove_soft_clips(self, subread, expected_subread,
+                                           is_label):
     """Tests that sequence and cigar expanded and soft clips removed."""
 
     molecule_name = 'molecule name'
-    # Logic applied to subreads and label is same, so use same read for both.
-    # Label cannot contain PW and IP fields though, so remove those.
-    label = copy.deepcopy(subread)
-    struct_utils.set_int_field(label.info, 'pw', [])
-    struct_utils.set_int_field(label.info, 'ip', [])
-
-    molecule_data = (molecule_name, ([subread], [label]))
+    molecule_data = (molecule_name, [subread])
     with test_pipeline.TestPipeline() as p:
       pipeline_output = (
           p
           | beam.Create([molecule_data])
           | beam.ParDo(
-              generate_input_transforms.ExpandFieldsRemoveSoftClipsDoFn()))
-
-      # Label cannot contain PW and IP fields though, so remove those.
-      expected_label = copy.deepcopy(expected_subread)
-      struct_utils.set_int_field(expected_label.info, 'pw', [])
-      struct_utils.set_int_field(expected_label.info, 'ip', [])
-
-      expected = [(molecule_name, ([expected_subread], [expected_label]))]
+              generate_input_transforms.ExpandFieldsRemoveSoftClipsDoFn(
+                  is_label=is_label)))
+      expected = [(molecule_name, [expected_subread])]
       beam_testing_util.assert_that(pipeline_output,
                                     beam_testing_util.equal_to(expected))
 
@@ -212,26 +199,190 @@ class IndentReadsDoFnTest(parameterized.TestCase):
     """Tests that subreads are indented correctly based on start position."""
 
     molecule_name = 'molecule name'
-
-    # Logic applied to subreads and label is same, so use same read for both.
-    molecule_data = (molecule_name, ([subread], [subread]))
-
+    molecule_data = (molecule_name, [subread])
     with test_pipeline.TestPipeline() as p:
       pipeline_output = (
           p
           | beam.Create([molecule_data])
           | beam.ParDo(generate_input_transforms.IndentReadsDoFn()))
-
-      expected = [(molecule_name, ([expected_subread], [expected_subread]))]
+      expected = [(molecule_name, [expected_subread])]
       beam_testing_util.assert_that(pipeline_output,
                                     beam_testing_util.equal_to(expected))
 
 
-class AlignSequenceDoFnTest(parameterized.TestCase):
+class AlignSubreadSequencesDoFnTest(parameterized.TestCase):
 
   @parameterized.named_parameters(
       dict(
-          testcase_name='two reads with same sequence',
+          testcase_name='two subreads with same sequence',
+          subreads=[
+              dc_test_utils.make_read_with_info(
+                  name='read 1',
+                  expanded_cigar='MMMM',
+                  bases='ACTG',
+                  start=0,
+                  cigar='4M')
+          ] * 2,
+          expected_subreads=[
+              dc_test_utils.make_read_with_info(
+                  name='read 1',
+                  expanded_cigar='MMMM',
+                  bases='ACTG',
+                  start=0,
+                  cigar='4M',
+              )
+          ] * 2),
+      dict(
+          testcase_name='two subreads with different lengths',
+          subreads=[
+              dc_test_utils.make_read_with_info(
+                  name='read 1',
+                  expanded_cigar='MMMM',
+                  bases='ACTA',
+                  start=0,
+                  cigar='4M'),
+              dc_test_utils.make_read_with_info(
+                  name='read 2',
+                  expanded_cigar='MMMMM',
+                  bases='ACTAG',
+                  start=0,
+                  cigar='5M'),
+          ],
+          expected_subreads=[
+              dc_test_utils.make_read_with_info(
+                  name='read 1',
+                  expanded_cigar='MMMM',
+                  bases='ACTA',
+                  start=0,
+                  cigar='4M',
+              ),
+              dc_test_utils.make_read_with_info(
+                  name='read 2',
+                  expanded_cigar='MMMMM',
+                  bases='ACTAG',
+                  start=0,
+                  cigar='5M',
+              ),
+          ]),
+      dict(
+          testcase_name='two subreads with one I',
+          subreads=[
+              dc_test_utils.make_read_with_info(
+                  name='read 1',
+                  expanded_cigar='MMMM',
+                  bases='ACTG',
+                  start=0,
+                  cigar='4M',
+              ),
+              dc_test_utils.make_read_with_info(
+                  name='read 2',
+                  expanded_cigar='MMMIM',
+                  bases='ACTAG',
+                  start=0,
+                  cigar='3M1I1M'),
+          ],
+          expected_subreads=[
+              dc_test_utils.make_read_with_info(
+                  name='read 1',
+                  expanded_cigar=f'MMM{dc_constants.GAP_OR_PAD}M',
+                  bases=f'ACT{dc_constants.GAP_OR_PAD}G',
+                  start=0,
+                  cigar='4M',
+              ),
+              dc_test_utils.make_read_with_info(
+                  name='read 2',
+                  expanded_cigar='MMMIM',
+                  bases='ACTAG',
+                  start=0,
+                  cigar='3M1I1M'),
+          ]),
+      dict(
+          testcase_name='two subreads with one D',
+          subreads=[
+              dc_test_utils.make_read_with_info(
+                  name='read 1',
+                  expanded_cigar='MMMMM',
+                  bases='ACTAG',
+                  start=0,
+                  cigar='5M'),
+              dc_test_utils.make_read_with_info(
+                  name='read 2',
+                  expanded_cigar='MMMDM',
+                  bases='ACT%sG' % dc_constants.GAP_OR_PAD,
+                  start=0,
+                  cigar='3M1D1M'),
+          ],
+          expected_subreads=[
+              dc_test_utils.make_read_with_info(
+                  name='read 1',
+                  expanded_cigar='MMMMM',
+                  bases='ACTAG',
+                  start=0,
+                  cigar='5M',
+              ),
+              dc_test_utils.make_read_with_info(
+                  name='read 2',
+                  expanded_cigar='MMMDM',
+                  bases='ACT%sG' % dc_constants.GAP_OR_PAD,
+                  start=0,
+                  cigar='3M1D1M')
+          ]),
+      dict(
+          testcase_name='two subreads with D and I',
+          subreads=[
+              dc_test_utils.make_read_with_info(
+                  name='read 1',
+                  expanded_cigar='DMMM',
+                  bases='%sCTG' % dc_constants.GAP_OR_PAD,
+                  start=0,
+                  cigar='1D3M',
+              ),
+              dc_test_utils.make_read_with_info(
+                  name='read 2',
+                  expanded_cigar='IMMMM',
+                  bases='GACTG',
+                  start=0,
+                  cigar='1I4M')
+          ],
+          expected_subreads=[
+              dc_test_utils.make_read_with_info(
+                  name='read 1',
+                  expanded_cigar=' DMMM',
+                  bases=f'{dc_constants.GAP_OR_PAD * 2}CTG',
+                  start=0,
+                  cigar='1D3M',
+              ),
+              dc_test_utils.make_read_with_info(
+                  name='read 2',
+                  expanded_cigar='IMMMM',
+                  bases='GACTG',
+                  start=0,
+                  cigar='1I4M'),
+          ]))
+  def test_align_subread_sequences_do_fn_test(
+      self,
+      subreads,
+      expected_subreads,
+  ):
+    """Tests that sequences are aligned correctly."""
+
+    molecule_name = 'some molecule'
+    molecule_data = (molecule_name, subreads)
+    with test_pipeline.TestPipeline() as p:
+      pipeline_output = (
+          p
+          | beam.Create([molecule_data])
+          | beam.ParDo(generate_input_transforms.AlignSubreadSequencesDoFn()))
+      expected = [(molecule_name, expected_subreads)]
+      beam_testing_util.assert_that(pipeline_output,
+                                    beam_testing_util.equal_to(expected))
+
+
+class AlignLabelSequencesDoFnTest(parameterized.TestCase):
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='subread and label with same sequence',
           subreads=[
               dc_test_utils.make_read_with_info(
                   name='read 1',
@@ -263,7 +414,7 @@ class AlignSequenceDoFnTest(parameterized.TestCase):
               start=0,
               cigar='4M')),
       dict(
-          testcase_name='two reads with different lengths',
+          testcase_name='subread and label with different lengths',
           subreads=[
               dc_test_utils.make_read_with_info(
                   name='read 1',
@@ -309,7 +460,7 @@ class AlignSequenceDoFnTest(parameterized.TestCase):
               start=0,
               cigar='4M')),
       dict(
-          testcase_name='two reads with one I',
+          testcase_name='subread and label with one I',
           subreads=[
               dc_test_utils.make_read_with_info(
                   name='read 1',
@@ -346,7 +497,7 @@ class AlignSequenceDoFnTest(parameterized.TestCase):
               start=0,
               cigar='3M1I1M')),
       dict(
-          testcase_name='two reads with one D',
+          testcase_name='subread and label with one D',
           subreads=[
               dc_test_utils.make_read_with_info(
                   name='read 1',
@@ -378,7 +529,7 @@ class AlignSequenceDoFnTest(parameterized.TestCase):
               start=0,
               cigar='3M1D1M')),
       dict(
-          testcase_name='two reads with D and I',
+          testcase_name='subread and label with D and I',
           subreads=[
               dc_test_utils.make_read_with_info(
                   name='read 1',
@@ -415,23 +566,87 @@ class AlignSequenceDoFnTest(parameterized.TestCase):
               start=0,
               cigar='1I4M')),
   )
-  def test_align_sequence_do_fn_test(self, subreads, expected_subreads, label,
-                                     expected_label):
+  def test_align_label_sequences_do_fn_test(self, subreads, expected_subreads,
+                                            label, expected_label):
     """Tests that sequences are aligned correctly."""
 
     molecule_name = 'some molecule'
-    molecule_data = (molecule_name, (subreads, [label]))
+    molecule_data = (molecule_name, ([subreads], [[label]]))
     with test_pipeline.TestPipeline() as p:
       pipeline_output = (
           p
           | beam.Create([molecule_data])
-          | beam.ParDo(generate_input_transforms.AlignSequenceDoFn()))
+          | beam.ParDo(generate_input_transforms.AlignLabelSequencesDoFn()))
       expected = [(molecule_name, (expected_subreads, [expected_label]))]
       beam_testing_util.assert_that(pipeline_output,
                                     beam_testing_util.equal_to(expected))
 
 
-class PadReadsDoFnTest(parameterized.TestCase):
+class PadSubreadsDoFnTest(parameterized.TestCase):
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='same read lengths',
+          subreads=[
+              dc_test_utils.make_read_with_info(
+                  name='read',
+                  bases='ATCG',
+                  start=0,
+                  cigar='4M',
+                  expanded_cigar='MMMM')
+          ] * 2,
+          expected_subreads=[
+              dc_test_utils.make_read_with_info(
+                  name='read',
+                  bases='ATCG',
+                  start=0,
+                  cigar='4M',
+                  expanded_cigar='MMMM')
+          ] * 2,
+      ),
+      dict(
+          testcase_name='different read lengths',
+          subreads=[
+              dc_test_utils.make_read_with_info(
+                  name='read',
+                  bases='ATCG',
+                  start=0,
+                  cigar='4M',
+                  expanded_cigar='MMMM'),
+              dc_test_utils.make_read_with_info(
+                  name='read',
+                  bases='ATCG%s' % (dc_constants.GAP_OR_PAD * 2),
+                  start=0,
+                  cigar='4M',
+                  expanded_cigar='MMMM%s' % (dc_constants.GAP_OR_PAD * 2))
+          ],
+          expected_subreads=[
+              dc_test_utils.make_read_with_info(
+                  name='read',
+                  bases='ATCG%s' % (dc_constants.GAP_OR_PAD * 2),
+                  start=0,
+                  cigar='4M',
+                  expanded_cigar='MMMM%s' % (dc_constants.GAP_OR_PAD * 2))
+          ] * 2,
+      ),
+  )
+  def test_padding(self, subreads, expected_subreads):
+    """Tests that reads correctly padded at ends to be of same length."""
+
+    molecule_name = 'molecule name'
+    molecule_data = (molecule_name, subreads)
+    with test_pipeline.TestPipeline() as p:
+      pipeline_output = (
+          p
+          | beam.Create([molecule_data])
+          | beam.ParDo(generate_input_transforms.PadSubreadsDoFn()))
+
+      expected = [(molecule_name, expected_subreads)]
+      beam_testing_util.assert_that(pipeline_output,
+                                    beam_testing_util.equal_to(expected))
+
+
+class PadSubreadsAndLabelDoFnTest(parameterized.TestCase):
 
   @parameterized.named_parameters(
       dict(
@@ -441,7 +656,9 @@ class PadReadsDoFnTest(parameterized.TestCase):
               bases='ATCG',
               start=0,
               cigar='4M',
-              expanded_cigar='MMMM'),
+              expanded_cigar='MMMM',
+              pw=[1, 2, 3, 4],
+              ip=[1, 2, 3, 4]),
           label=dc_test_utils.make_read_with_info(
               name='label 3',
               bases='ATCG',
@@ -453,7 +670,9 @@ class PadReadsDoFnTest(parameterized.TestCase):
               bases='ATCG',
               start=0,
               cigar='4M',
-              expanded_cigar='MMMM'),
+              expanded_cigar='MMMM',
+              pw=[1, 2, 3, 4],
+              ip=[1, 2, 3, 4]),
           expected_label=dc_test_utils.make_read_with_info(
               name='label 3',
               bases='ATCG',
@@ -468,7 +687,9 @@ class PadReadsDoFnTest(parameterized.TestCase):
               bases='ATCG',
               start=0,
               cigar='4M',
-              expanded_cigar='MMMM'),
+              expanded_cigar='MMMM',
+              pw=[1, 2, 3, 4],
+              ip=[1, 2, 3, 4]),
           label=dc_test_utils.make_read_with_info(
               name='label 4',
               bases='ATCGTT',
@@ -480,7 +701,9 @@ class PadReadsDoFnTest(parameterized.TestCase):
               bases='ATCG%s' % (dc_constants.GAP_OR_PAD * 2),
               start=0,
               cigar='4M',
-              expanded_cigar='MMMM%s' % (dc_constants.GAP_OR_PAD * 2)),
+              expanded_cigar='MMMM%s' % (dc_constants.GAP_OR_PAD * 2),
+              pw=[1, 2, 3, 4] + [dc_constants.GAP_OR_PAD_INT] * 2,
+              ip=[1, 2, 3, 4] + [dc_constants.GAP_OR_PAD_INT] * 2),
           expected_label=dc_test_utils.make_read_with_info(
               name='label 4',
               bases='ATCGTT',
@@ -498,7 +721,7 @@ class PadReadsDoFnTest(parameterized.TestCase):
       pipeline_output = (
           p
           | beam.Create([molecule_data])
-          | beam.ParDo(generate_input_transforms.PadReadsDoFn()))
+          | beam.ParDo(generate_input_transforms.PadSubreadsAndLabelDoFn()))
 
       expected = [(molecule_name, ([expected_subread], [expected_label]))]
       beam_testing_util.assert_that(pipeline_output,
@@ -518,12 +741,6 @@ class AlignPwIpDoFnTest(parameterized.TestCase):
               expanded_cigar='%sMMMM' % dc_constants.GAP_OR_PAD,
               pw=[1, 2, 4, 1],
               ip=[6, 5, 8, 9]),
-          label=dc_test_utils.make_read_with_info(
-              name='label',
-              bases='%sATCG' % dc_constants.GAP_OR_PAD,
-              start=1,
-              cigar='4M',
-              expanded_cigar='%sMMMM' % dc_constants.GAP_OR_PAD),
           expected_subread=dc_test_utils.make_read_with_info(
               name='read 1',
               bases='%sATCG' % dc_constants.GAP_OR_PAD,
@@ -543,12 +760,6 @@ class AlignPwIpDoFnTest(parameterized.TestCase):
               expanded_cigar='M%sMMM' % dc_constants.GAP_OR_PAD,
               pw=[1, 2, 4, 1],
               ip=[6, 5, 8, 9]),
-          label=dc_test_utils.make_read_with_info(
-              name='label',
-              bases='ATCCG',
-              start=0,
-              cigar='5M',
-              expanded_cigar='MMMMM'),
           expected_subread=dc_test_utils.make_read_with_info(
               name='read 1',
               bases='A%sTCG' % dc_constants.GAP_OR_PAD,
@@ -559,11 +770,11 @@ class AlignPwIpDoFnTest(parameterized.TestCase):
               ip=[6, dc_constants.GAP_OR_PAD_INT, 5, 8, 9]),
       ),
   )
-  def test_align_pw_and_ip(self, subread, label, expected_subread):
+  def test_align_pw_and_ip(self, subread, expected_subread):
     """Tests that pw and ip correctly aligned."""
 
     molecule_name = 'molecule name'
-    molecule_data = (molecule_name, ([subread], [label]))
+    molecule_data = (molecule_name, [subread])
     with test_pipeline.TestPipeline() as p:
       pipeline_output = (
           p
@@ -571,7 +782,7 @@ class AlignPwIpDoFnTest(parameterized.TestCase):
           | beam.ParDo(generate_input_transforms.AlignPwIpDoFn()))
 
       # Label does not have pw or ip fields, so we expect it to be unchanged.
-      expected = [(molecule_name, ([expected_subread], [label]))]
+      expected = [(molecule_name, [expected_subread])]
       beam_testing_util.assert_that(pipeline_output,
                                     beam_testing_util.equal_to(expected))
 

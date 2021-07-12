@@ -52,16 +52,18 @@ flags.DEFINE_string('output_path', None,
 flags.DEFINE_string(
     'runner', 'direct',
     'Beam runner to use. Only direct is available outside of Google.')
+flags.DEFINE_bool('inference', False,
+                  'Whether we are in training or inference mode.')
 
 
-def create_pipeline(merged_datasets_path, input_bed, input_ccs_fasta,
-                    output_path):
+def create_pipeline(merged_datasets_path: str, input_bed: str,
+                    input_ccs_fasta: str, output_path: str, inference: bool):
   """Returns a pipeline for writing out DeepConsensusInput protos."""
 
   def pipeline(root):
     """Pipeline function for writing out DeepConsensusInput protos."""
 
-    input_subreads = (
+    aligned_subreads = (
         root
         | 'read_subreads' >> beam.io.ReadFromTFRecord(
             file_pattern=os.path.join(merged_datasets_path, 'subreads/*'),
@@ -69,43 +71,63 @@ def create_pipeline(merged_datasets_path, input_bed, input_ccs_fasta,
             compression_type=CompressionTypes.GZIP)
         | 'reshuffle_subreads' >> beam.Reshuffle()  # to balance the shards
         | 'get_subread_molecule_name' >> beam.ParDo(
-            generate_input_transforms.GetReadMoleculeNameDoFn()))
-
-    input_labels = (
-        root
-        | 'read_labels' >> beam.io.ReadFromTFRecord(
-            os.path.join(merged_datasets_path, 'labels/*'),
-            coder=beam.coders.ProtoCoder(reads_pb2.Read),
-            compression_type=CompressionTypes.GZIP)
-        | 'reshuffle_labels' >> beam.Reshuffle()  # to balance the shards
-        | 'get_label_molecule_name' >> beam.ParDo(
-            generate_input_transforms.GetReadMoleculeNameDoFn()))
-
-    aligned_subreads_and_label = (
-        (input_subreads, input_labels)
-        | 'group_subreads_and_labels' >> beam.CoGroupByKey()
-        | 'expand_fields' >> beam.ParDo(
-            generate_input_transforms.ExpandFieldsRemoveSoftClipsDoFn())
-        | 'indent_read_start' >> beam.ParDo(
+            generate_input_transforms.GetReadMoleculeNameDoFn())
+        | 'group_by_subread_molecule' >> beam.GroupByKey()
+        | 'expand_subread_fields' >> beam.ParDo(
+            generate_input_transforms.ExpandFieldsRemoveSoftClipsDoFn(
+                is_label=False))
+        | 'indent_subread' >> beam.ParDo(
             generate_input_transforms.IndentReadsDoFn())
-        | 'align_sequence' >> beam.ParDo(
-            generate_input_transforms.AlignSequenceDoFn())
-        | 'pad_read_end' >> beam.ParDo(generate_input_transforms.PadReadsDoFn())
+        | 'align_subread_sequences' >> beam.ParDo(
+            generate_input_transforms.AlignSubreadSequencesDoFn())
+        | 'pad_subreads' >> beam.ParDo(
+            generate_input_transforms.PadSubreadsDoFn())
         |
         'align_pw_ip' >> beam.ParDo(generate_input_transforms.AlignPwIpDoFn()))
 
-    bed_records = (
-        root
-        | 'read_bed_records' >> beam_io.ReadBed(input_bed)
-        | 'reshuffle_bed' >> beam.Reshuffle()
-        | 'get_bed_molecule_name' >> beam.ParDo(
-            generate_input_transforms.GetBedRecordMoleculeNameDoFn()))
+    if inference:
+      dc_inputs = (
+          aligned_subreads
+          | 'create_deepconsensus_input' >> beam.ParDo(
+              generate_input_transforms.CreateInferenceDeepConsensusInputDoFn())
+      )
+    else:
+      input_labels = (
+          root
+          | 'read_labels' >> beam.io.ReadFromTFRecord(
+              os.path.join(merged_datasets_path, 'labels/*'),
+              coder=beam.coders.ProtoCoder(reads_pb2.Read),
+              compression_type=CompressionTypes.GZIP)
+          | 'reshuffle_labels' >> beam.Reshuffle()  # to balance the shards
+          | 'get_label_molecule_name' >> beam.ParDo(
+              generate_input_transforms.GetReadMoleculeNameDoFn())
+          | 'group_by_label_molecule' >> beam.GroupByKey()
+          | 'expand_label_fields' >> beam.ParDo(
+              generate_input_transforms.ExpandFieldsRemoveSoftClipsDoFn(
+                  is_label=True))
+          | 'indent_label' >> beam.ParDo(
+              generate_input_transforms.IndentReadsDoFn()))
 
-    dc_inputs = (
-        (aligned_subreads_and_label, bed_records)
-        | 'group_by_molecule' >> beam.CoGroupByKey()
-        | 'create_deepconsensus_input' >> beam.ParDo(
-            generate_input_transforms.CreateTrainDeepConsensusInputDoFn()))
+      aligned_subreads_and_label = (
+          (aligned_subreads, input_labels)
+          | 'group_subreads_and_labels' >> beam.CoGroupByKey()
+          | 'align_label_sequences' >> beam.ParDo(
+              generate_input_transforms.AlignLabelSequencesDoFn())
+          | 'pad_subreads_and_labels' >> beam.ParDo(
+              generate_input_transforms.PadSubreadsAndLabelDoFn()))
+
+      bed_records = (
+          root
+          | 'read_bed_records' >> beam_io.ReadBed(input_bed)
+          | 'reshuffle_bed' >> beam.Reshuffle()
+          | 'get_bed_molecule_name' >> beam.ParDo(
+              generate_input_transforms.GetBedRecordMoleculeNameDoFn()))
+
+      dc_inputs = (
+          (aligned_subreads_and_label, bed_records)
+          | 'group_by_molecule' >> beam.CoGroupByKey()
+          | 'create_deepconsensus_input' >> beam.ParDo(
+              generate_input_transforms.CreateTrainDeepConsensusInputDoFn()))
 
     if input_ccs_fasta:
       ccs_sequences = (
@@ -149,8 +171,8 @@ def main(argv):
     raise app.UsageError('Too many command-line arguments.')
   if not FLAGS.merged_datasets_path:
     raise app.UsageError('--merged_datasets_path must be specified.')
-  if not FLAGS.input_bed:
-    raise app.UsageError('--input_bed must be specified.')
+  if not FLAGS.inference and not FLAGS.input_bed:
+    raise app.UsageError('--input_bed must be specified for training mode.')
   if not FLAGS.output_path:
     raise app.UsageError('--output_path must be specified.')
 
@@ -158,7 +180,8 @@ def main(argv):
       pipeline_type_check=True, runtime_type_check=True)
   runner.run(
       create_pipeline(FLAGS.merged_datasets_path, FLAGS.input_bed,
-                      FLAGS.input_ccs_fasta, FLAGS.output_path), options)
+                      FLAGS.input_ccs_fasta, FLAGS.output_path,
+                      FLAGS.inference), options)
 
 
 if __name__ == '__main__':
