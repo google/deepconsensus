@@ -104,7 +104,6 @@ def create_pipeline(preprocess_paths: str, preprocess_downsample: str,
     reference_path = os.path.dirname(reference_fasta)
 
     # For diploid assemblies, read in contig to chrom.
-    # https://bit.googleplex.com/#/danielecook/6429885700505600
     chrom_map_file = os.path.join(reference_path,
                                   f'{reference_name}.chrom_mapping.txt')
     if tf.io.gfile.exists(chrom_map_file):
