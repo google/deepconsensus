@@ -50,7 +50,7 @@ config_flags.DEFINE_config_file('params', None, 'Training configuration.')
 flags.DEFINE_string('out_dir', None,
                     'Output path for logs and model checkpoints.')
 flags.DEFINE_string(
-    'master', None, 'Name of the TPU to use. This gets '
+    'tpu', None, 'Name of the TPU to use. This gets '
     'populated automatically when using XManager.')
 flags.DEFINE_string('tpu_topology', None, 'Tpu topology.')
 flags.DEFINE_bool('debug', False,
@@ -278,18 +278,18 @@ def train_model(out_dir: str, params: ml_collections.ConfigDict,
 
 def train(out_dir: str,
           params: ml_collections.ConfigDict,
-          master: Optional[str],
+          tpu: Optional[str],
           tpu_topology: Optional[str],
           debug: Optional[bool] = False):
   """Run the model training and return evaluation output."""
-  model_utils.modify_params(params, tpu=master, tpu_topology=tpu_topology)
+  model_utils.modify_params(params, tpu=tpu, tpu_topology=tpu_topology)
   random.seed(params.seed)
   tf.random.set_seed(params.seed)
   os.environ['TF_ENABLE_EAGER_CLIENT_STREAMING_ENQUEUE'] = 'False'
   while True:
     try:
-      if master is not None:
-        resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu=master)
+      if tpu is not None:
+        resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu=tpu)
         tf.config.experimental_connect_to_cluster(resolver)
         tf.tpu.experimental.initialize_tpu_system(resolver)
         strategy = tf.distribute.TPUStrategy(resolver)
@@ -304,8 +304,7 @@ def train(out_dir: str,
 
 
 def main(unused_args=None):
-  train(FLAGS.out_dir, FLAGS.params, FLAGS.master, FLAGS.tpu_topology,
-        FLAGS.debug)
+  train(FLAGS.out_dir, FLAGS.params, FLAGS.tpu, FLAGS.tpu_topology, FLAGS.debug)
 
 
 if __name__ == '__main__':

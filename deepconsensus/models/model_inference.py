@@ -44,7 +44,7 @@ flags.DEFINE_string('checkpoint_path', None,
 flags.DEFINE_string('out_dir', None,
                     'Output path for logs and model predictions.')
 flags.DEFINE_string(
-    'master', None, 'Name of the TPU to use. This gets '
+    'tpu', None, 'Name of the TPU to use. This gets '
     'populated automatically when using XManager.')
 flags.DEFINE_string('tpu_topology', None, 'Tpu topology.')
 flags.DEFINE_integer(
@@ -53,10 +53,10 @@ flags.DEFINE_integer(
 
 
 def run_inference(out_dir: str, params: ml_collections.ConfigDict,
-                  checkpoint_path: str, master: Optional[str],
+                  checkpoint_path: str, tpu: Optional[str],
                   tpu_topology: Optional[str], limit: int):
   """Runs model evaluation with an existing checkpoint."""
-  model_utils.modify_params(params, tpu=master, tpu_topology=tpu_topology)
+  model_utils.modify_params(params, tpu=tpu, tpu_topology=tpu_topology)
 
   # Set seed for reproducibility.
   random.seed(params.seed)
@@ -95,7 +95,7 @@ def main(unused_args=None):
         checkpoint_path=FLAGS.checkpoint_path)
   else:
     params = FLAGS.params
-  run_inference(FLAGS.out_dir, params, FLAGS.checkpoint_path, FLAGS.master,
+  run_inference(FLAGS.out_dir, params, FLAGS.checkpoint_path, FLAGS.tpu,
                 FLAGS.tpu_topology, FLAGS.limit)
 
 

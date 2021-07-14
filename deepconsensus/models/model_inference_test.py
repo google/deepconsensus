@@ -40,7 +40,7 @@ class ModelInferenceTest(absltest.TestCase):
         out_dir=out_dir,
         params=params,
         checkpoint_path=checkpoint_path,
-        master=None,
+        tpu=None,
         tpu_topology=None,
         limit=-1)
 

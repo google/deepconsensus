@@ -55,7 +55,7 @@ note_build_stage "Update pip"
 sudo -H apt-get -y install python3-dev python3-pip python3-wheel python3-setuptools
 sudo -H apt-get -y update
 # TensorFlow 2.0 requires pip >= 19.0
-python3 -m pip install --user -U pip
+python3 -m pip install --user -U "pip==20.1.1"
 
 # Update PATH so that newly installed pip is the one we actually use.
 export PATH="$HOME/.local/bin:$PATH"

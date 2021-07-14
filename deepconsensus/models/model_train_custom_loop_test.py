@@ -36,7 +36,7 @@ class ModelTrainTest(parameterized.TestCase):
     tpu_topology = None
     model_utils.modify_params(params, tpu=tpu, tpu_topology=tpu_topology)
     model_train_custom_loop.train(
-        out_dir=out_dir, params=params, master=tpu, tpu_topology=tpu_topology)
+        out_dir=out_dir, params=params, tpu=tpu, tpu_topology=tpu_topology)
 
     # Output directory should contain TensorBoard event files for training and
     # eval, model checkpoint files.
