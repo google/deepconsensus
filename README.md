@@ -3,11 +3,7 @@
 DeepConsensus uses deep learning for correcting errors in  Pacific Biosciences
 (PacBio) Circular Consensus Sequencing data.
 
-To build the pip package, run:
-
-```bash
-source install.sh && ./build_pip_package.sh
-```
+See: https://github.com/google/deepconsensus
 
 ## Disclaimer
 
