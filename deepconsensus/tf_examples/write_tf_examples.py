@@ -1,16 +1,32 @@
-# Copyright 2021 Google LLC
+# Copyright (c) 2021, Google Inc.
+# All rights reserved.
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions
+# are met:
 #
-#      http://www.apache.org/licenses/LICENSE-2.0
+# 1. Redistributions of source code must retain the above copyright notice,
+#    this list of conditions and the following disclaimer.
 #
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# 2. Redistributions in binary form must reproduce the above copyright
+#    notice, this list of conditions and the following disclaimer in the
+#    documentation and/or other materials provided with the distribution.
+#
+# 3. Neither the name of Google Inc. nor the names of its
+#    contributors may be used to endorse or promote products derived from this
+#    software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
 # pyformat: disable
 r"""A pipeline for writing out tf.Example protos.
 
@@ -38,7 +54,6 @@ $ cat /tmp/write_tf_examples/counts.json
 
 """
 # pyformat: enable
-
 import os
 from typing import Optional
 
@@ -88,14 +103,23 @@ flags.DEFINE_integer(
 flags.DEFINE_string(
     'runner', 'direct',
     'Beam runner to use. Only direct is available outside of Google.')
+flags.DEFINE_bool('inference', False,
+                  'Whether we are in training or inference mode.')
 
 
-def create_pipeline(preprocess_paths: str, preprocess_downsample: str,
-                    output_path: str, max_passes: int, example_width: int,
-                    species: str, reference_fasta: str, truth_vcf: str,
-                    truth_bed: str, padded_len: int,
+def create_pipeline(preprocess_paths: str,
+                    preprocess_downsample: str,
+                    output_path: str,
+                    max_passes: int,
+                    example_width: int,
+                    species: str,
+                    reference_fasta: str,
+                    truth_vcf: str,
+                    truth_bed: str,
+                    padded_len: int,
                     window_overlap_step: Optional[int],
-                    subread_permutations: Optional[int]):
+                    subread_permutations: Optional[int],
+                    inference: bool = False):
   """Returns a pipeline for creating pileup examples."""
 
   contig_chrom = {}
@@ -135,62 +159,84 @@ def create_pipeline(preprocess_paths: str, preprocess_downsample: str,
 
     merged_tf_input = (tuple(tf_inputs) | 'flatten_tfrecords' >> beam.Flatten())
 
-    num_partitions = 4
-    train_set, eval_set, test_set, _ = (
-        merged_tf_input
-        | beam.Partition(
-            tf_example_utils.train_eval_partition_fn,
-            num_partitions,
-            species=species,
-            contig_chrom=contig_chrom))
+    if inference:
+      _ = (
+          merged_tf_input
+          | 'process_and_write_inference' >>
+          tf_example_transforms.ProcessAndWriteTfExamples(
+              reference_fasta=None,
+              example_width=example_width,
+              example_height=example_height,
+              truth_vcf=None,
+              species=species,
+              split='inference',
+              output_path=output_path,
+              truth_bed=None,
+              padded_len=padded_len,
+              window_overlap_step=window_overlap_step,
+              subread_permutations=subread_permutations,
+              inference=inference))
 
-    _ = (
-        train_set
-        | 'process_and_write_train' >>
-        tf_example_transforms.ProcessAndWriteTfExamples(
-            reference_fasta=reference_fasta,
-            example_width=example_width,
-            example_height=example_height,
-            truth_vcf=truth_vcf,
-            species=species,
-            split='train',
-            output_path=output_path,
-            truth_bed=truth_bed,
-            padded_len=padded_len,
-            window_overlap_step=window_overlap_step,
-            subread_permutations=subread_permutations))
+    else:
+      num_partitions = 4
+      train_set, eval_set, test_set, _ = (
+          merged_tf_input
+          | beam.Partition(
+              tf_example_utils.train_eval_partition_fn,
+              num_partitions,
+              species=species,
+              contig_chrom=contig_chrom))
 
-    _ = (
-        eval_set
-        | 'process_and_write_eval' >>
-        tf_example_transforms.ProcessAndWriteTfExamples(
-            reference_fasta=reference_fasta,
-            example_width=example_width,
-            example_height=example_height,
-            truth_vcf=truth_vcf,
-            species=species,
-            split='eval',
-            output_path=output_path,
-            truth_bed=truth_bed,
-            padded_len=padded_len,
-            window_overlap_step=None,
-            subread_permutations=0))
+      _ = (
+          train_set
+          | 'process_and_write_train' >>
+          tf_example_transforms.ProcessAndWriteTfExamples(
+              reference_fasta=reference_fasta,
+              example_width=example_width,
+              example_height=example_height,
+              truth_vcf=truth_vcf,
+              species=species,
+              split='train',
+              output_path=output_path,
+              truth_bed=truth_bed,
+              padded_len=padded_len,
+              window_overlap_step=window_overlap_step,
+              subread_permutations=subread_permutations,
+              inference=inference))
 
-    _ = (
-        test_set
-        | 'process_and_write_test' >>
-        tf_example_transforms.ProcessAndWriteTfExamples(
-            reference_fasta=reference_fasta,
-            example_width=example_width,
-            example_height=example_height,
-            truth_vcf=None,
-            truth_bed=None,
-            species=species,
-            split='test',
-            output_path=output_path,
-            padded_len=padded_len,
-            window_overlap_step=None,
-            subread_permutations=0))
+      _ = (
+          eval_set
+          | 'process_and_write_eval' >>
+          tf_example_transforms.ProcessAndWriteTfExamples(
+              reference_fasta=reference_fasta,
+              example_width=example_width,
+              example_height=example_height,
+              truth_vcf=truth_vcf,
+              species=species,
+              split='eval',
+              output_path=output_path,
+              truth_bed=truth_bed,
+              padded_len=padded_len,
+              window_overlap_step=None,
+              subread_permutations=0,
+              inference=inference))
+
+      _ = (
+          test_set
+          | 'process_and_write_test' >>
+          tf_example_transforms.ProcessAndWriteTfExamples(
+              reference_fasta=reference_fasta,
+              example_width=example_width,
+              example_height=example_height,
+              truth_vcf=None,
+              truth_bed=None,
+              species=species,
+              split='test',
+              output_path=output_path,
+              padded_len=padded_len,
+              window_overlap_step=None,
+              subread_permutations=0,
+              inference=inference))
 
   return pipeline
 
@@ -222,7 +268,7 @@ def main(argv):
       FLAGS.preprocess_paths, FLAGS.preprocess_downsample, FLAGS.output_path,
       FLAGS.max_passes, FLAGS.example_width, FLAGS.species,
       FLAGS.reference_fasta, FLAGS.truth_vcf, FLAGS.truth_bed, FLAGS.padded_len,
-      FLAGS.window_overlap_step, FLAGS.subread_permutations)
+      FLAGS.window_overlap_step, FLAGS.subread_permutations, FLAGS.inference)
   result = runner.run(pipeline, options)
   # Write counts summary to file.
   counts_path = os.path.join(FLAGS.output_path, 'counts.json')

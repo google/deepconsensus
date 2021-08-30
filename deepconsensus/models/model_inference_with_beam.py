@@ -1,16 +1,32 @@
-# Copyright 2021 Google LLC
+# Copyright (c) 2021, Google Inc.
+# All rights reserved.
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions
+# are met:
 #
-#      http://www.apache.org/licenses/LICENSE-2.0
+# 1. Redistributions of source code must retain the above copyright notice,
+#    this list of conditions and the following disclaimer.
 #
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# 2. Redistributions in binary form must reproduce the above copyright
+#    notice, this list of conditions and the following disclaimer in the
+#    documentation and/or other materials provided with the distribution.
+#
+# 3. Neither the name of Google Inc. nor the names of its
+#    contributors may be used to endorse or promote products derived from this
+#    software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
 
 # Disable pyformat so that the command for running the binary does not get
 # incorrectly split into multiple lines.
@@ -24,6 +40,7 @@ r"""Inference binary for all neural network models.
 # pyformat: enable
 
 import os
+from typing import Optional
 
 from absl import app
 from absl import flags
@@ -46,11 +63,14 @@ config_flags.DEFINE_config_file('params', None, 'Training configuration.')
 flags.DEFINE_string('checkpoint_path', None,
                     'Path to checkpoint that will be loaded in.')
 flags.DEFINE_string(
-    'test_path', None,
+    'dataset_path', None,
     'Optional. Alternate dataset on which to run inference. If '
     'not provided, the dataset will be inferred from params.')
 flags.DEFINE_string('out_dir', None,
                     'Output path for logs and optionally, model predictions.')
+flags.DEFINE_bool('inference', False,
+                  'Whether we are in training or inference mode.')
+flags.DEFINE_integer('max_passes', 20, 'Maximum subreads in each input.')
 flags.DEFINE_string(
     'runner', 'direct',
     'Beam runner to use. Only direct is available outside of Google.')
@@ -60,48 +80,34 @@ def create_pipeline(
     out_dir: str,
     params: ml_collections.ConfigDict,
     checkpoint_path: str,
-    test_path: str,
+    dataset_path: str,
+    max_passes: Optional[int],
+    inference: bool,
     testing: bool = False,
 ):
   """Returns a pipeline for running model inference."""
 
   def pipeline(root):
     """Pipeline function for running model inference."""
-    model_utils.modify_params(params)
-    if test_path:
-      params.test_path = test_path
-
+    # For inference externally, params.max_passes does not get set in the
+    # model_utils.modify_params function, we need to set it here before we call
+    # model_utils.modify_params.
+    if max_passes:
+      with params.unlocked():
+        params.max_passes = max_passes
+    model_utils.modify_params(params=params, dataset_path=dataset_path)
     records = (
         root
         | 'read_tf_examples' >> beam.io.ReadFromTFRecord(
-            os.path.join(params.test_path, '*.tfrecords.gz'),
+            os.path.join(dataset_path, '*.tfrecords.gz'),
             compression_type=CompressionTypes.GZIP)
         | 'shuffle_tf_examples' >> beam.Reshuffle()
         | 'parse_tf_examples' >> beam.ParDo(
-            model_inference_transforms.ParseTfExamplesDoFn(params=params))
+            model_inference_transforms.ParseTfExamplesDoFn(
+                params=params, inference=inference))
         | 'run_forward_pass' >> beam.ParDo(
             model_inference_transforms.RunForwardPassDoFn(
-                checkpoint_path, params)))
-
-    # Calculate Metrics, stratified by set variables
-    metric_set = [x.name for x in model_utils.get_deepconsensus_metrics()]
-    metric_set += ['edit_distance']
-    groups = [
-        'all', 'num_passes', 'homopolymer_content', 'label_length',
-        'unsup_insertion_count'
-    ]
-    if testing:
-      # When testing, limit size of pipeline.
-      metric_set = metric_set[:1]
-      groups = groups[:2]
-    for group in groups:
-
-
-      for metric in metric_set:
-        _ = records | f'{group}_{metric}' >> model_inference_transforms.StatsToCsv(
-            out_dir, group, metric)
-
-
+                checkpoint_path, params, inference=inference)))
     _ = (
         records
         | 'get_proto' >> beam.Map(lambda x: x['dc_proto'])
@@ -110,6 +116,26 @@ def create_pipeline(
             file_name_suffix='.tfrecords.gz',
             coder=beam.coders.ProtoCoder(deepconsensus_pb2.DeepConsensusInput),
             compression_type=CompressionTypes.GZIP))
+
+    if not inference:
+      # Calculate Metrics, stratified by set variables
+      metric_set = [x.name for x in model_utils.get_deepconsensus_metrics()]
+      metric_set += ['edit_distance']
+      groups = [
+          'all', 'num_passes', 'homopolymer_content', 'label_length',
+          'unsup_insertion_count'
+      ]
+      if testing:
+        # When testing, limit size of pipeline.
+        metric_set = metric_set[:1]
+        groups = groups[:2]
+      for group in groups:
+
+
+        for metric in metric_set:
+          _ = records | f'{group}_{metric}' >> model_inference_transforms.StatsToCsv(
+              out_dir, group, metric)
+
 
   return pipeline
 
@@ -138,9 +164,15 @@ def main(unused_args=None):
   options = beam.options.pipeline_options.PipelineOptions(
       pipeline_type_check=True, runtime_type_check=True)
   runner.run(
-      create_pipeline(FLAGS.out_dir, params, FLAGS.checkpoint_path,
-                      FLAGS.test_path), options)
-  combine_metrics(FLAGS.out_dir)
+      create_pipeline(
+          out_dir=FLAGS.out_dir,
+          params=params,
+          checkpoint_path=FLAGS.checkpoint_path,
+          dataset_path=FLAGS.dataset_path,
+          max_passes=FLAGS.max_passes,
+          inference=FLAGS.inference), options)
+  if not FLAGS.inference:
+    combine_metrics(FLAGS.out_dir)
 
 
 if __name__ == '__main__':

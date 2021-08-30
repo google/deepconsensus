@@ -1,16 +1,32 @@
-# Copyright 2021 Google LLC
+# Copyright (c) 2021, Google Inc.
+# All rights reserved.
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions
+# are met:
 #
-#      http://www.apache.org/licenses/LICENSE-2.0
+# 1. Redistributions of source code must retain the above copyright notice,
+#    this list of conditions and the following disclaimer.
 #
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# 2. Redistributions in binary form must reproduce the above copyright
+#    notice, this list of conditions and the following disclaimer in the
+#    documentation and/or other materials provided with the distribution.
+#
+# 3. Neither the name of Google Inc. nor the names of its
+#    contributors may be used to endorse or promote products derived from this
+#    software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
 r"""Training binary for all neural network models using a custom training loop.
 
 To use this binary for training a specific model, the corresponding config file
@@ -55,6 +71,9 @@ flags.DEFINE_string(
 flags.DEFINE_string('tpu_topology', None, 'Tpu topology.')
 flags.DEFINE_bool('debug', False,
                   'Enables dumping debug info for Tensorboard Debugger V2.')
+flags.DEFINE_bool(
+    'write_checkpoint_metrics', False,
+    'Whether to write eval metrics for each checkpoint during training.')
 
 
 class DTypeEncoder(json.JSONEncoder):
@@ -143,29 +162,34 @@ def write_row(handle: Union[io.TextIOWrapper], row: List[Any]) -> None:
 
 def save_checkpoint(checkpoint: tf.train.Checkpoint, out_dir: str,
                     train_metrics: List[tf.keras.metrics.Metric],
-                    eval_metrics: List[tf.keras.metrics.Metric]) -> str:
+                    eval_metrics: List[tf.keras.metrics.Metric],
+                    write_checkpoint_metrics: bool) -> str:
   """Save checkpoint and return its name."""
   checkpoint_name = checkpoint.save(os.path.join(out_dir, 'checkpoint'))
   logging.info('Saved checkpoint to %s', checkpoint_name)
   logging.info('Logging checkpoint %s metrics.', checkpoint_name)
   metrics_file = os.path.join(out_dir, 'checkpoint_metrics.tsv')
-  if not tf.io.gfile.exists(metrics_file):
-    with tf.io.gfile.GFile(metrics_file, 'w') as f:
-      row = ['checkpoint_name', 'group', 'name', 'value']
-      write_row(f, row)
-
-  with tf.io.gfile.GFile(metrics_file, 'a') as f:
-    for group_name, metrics in [('train', train_metrics),
-                                ('eval', eval_metrics)]:
-      for metric in metrics:
-        row = [checkpoint_name, group_name, metric.name, float(metric.result())]
+  if write_checkpoint_metrics:
+    if not tf.io.gfile.exists(metrics_file):
+      with tf.io.gfile.GFile(metrics_file, 'w') as f:
+        row = ['checkpoint_name', 'group', 'name', 'value']
         write_row(f, row)
 
+    with tf.io.gfile.GFile(metrics_file, 'a') as f:
+      for group_name, metrics in [('train', train_metrics),
+                                  ('eval', eval_metrics)]:
+        for metric in metrics:
+          row = [
+              checkpoint_name, group_name, metric.name,
+              float(metric.result())
+          ]
+          write_row(f, row)
   return checkpoint_name
 
 
 def train_model(out_dir: str, params: ml_collections.ConfigDict,
-                strategy: tf.distribute.Strategy) -> None:
+                strategy: tf.distribute.Strategy,
+                write_checkpoint_metrics: bool) -> None:
   """Trains the model under the given strategy and params."""
   # Freeze config dict here to ensure it is hashable.
   params = ml_collections.FrozenConfigDict(params)
@@ -267,7 +291,7 @@ def train_model(out_dir: str, params: ml_collections.ConfigDict,
           eval_metrics,
           training=False)
     checkpoint_name = save_checkpoint(checkpoint, out_dir, train_metrics,
-                                      eval_metrics)
+                                      eval_metrics, write_checkpoint_metrics)
     if min_eval_loss > float(eval_loss.result()):
       min_eval_loss = float(eval_loss.result())
       with tf.io.gfile.GFile(os.path.join(out_dir, 'best_checkpoint.txt'),
@@ -280,6 +304,7 @@ def train(out_dir: str,
           params: ml_collections.ConfigDict,
           tpu: Optional[str],
           tpu_topology: Optional[str],
+          write_checkpoint_metrics: bool,
           debug: Optional[bool] = False):
   """Run the model training and return evaluation output."""
   model_utils.modify_params(params, tpu=tpu, tpu_topology=tpu_topology)
@@ -297,14 +322,15 @@ def train(out_dir: str,
         strategy = tf.distribute.OneDeviceStrategy(device='/cpu:0')
       else:
         strategy = tf.distribute.MirroredStrategy()
-      train_model(out_dir, params, strategy)
+      train_model(out_dir, params, strategy, write_checkpoint_metrics)
       break
     except tf.errors.UnavailableError:
       continue
 
 
 def main(unused_args=None):
-  train(FLAGS.out_dir, FLAGS.params, FLAGS.tpu, FLAGS.tpu_topology, FLAGS.debug)
+  train(FLAGS.out_dir, FLAGS.params, FLAGS.tpu, FLAGS.tpu_topology,
+        FLAGS.write_checkpoint_metrics, FLAGS.debug)
 
 
 if __name__ == '__main__':

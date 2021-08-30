@@ -1,16 +1,32 @@
-# Copyright 2021 Google LLC
+# Copyright (c) 2021, Google Inc.
+# All rights reserved.
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions
+# are met:
 #
-#      http://www.apache.org/licenses/LICENSE-2.0
+# 1. Redistributions of source code must retain the above copyright notice,
+#    this list of conditions and the following disclaimer.
 #
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# 2. Redistributions in binary form must reproduce the above copyright
+#    notice, this list of conditions and the following disclaimer in the
+#    documentation and/or other materials provided with the distribution.
+#
+# 3. Neither the name of Google Inc. nor the names of its
+#    contributors may be used to endorse or promote products derived from this
+#    software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
 """Utilities for running training and inference."""
 
 import json
@@ -114,7 +130,8 @@ def get_model(params: ml_collections.ConfigDict) -> tf.keras.Model:
 
 def modify_params(params: ml_collections.ConfigDict,
                   tpu: Optional[str] = None,
-                  tpu_topology: Optional[str] = None) -> None:
+                  tpu_topology: Optional[str] = None,
+                  dataset_path: Optional[str] = None) -> None:
   """Updates params as needed for the model and hardware being usued.
 
   This function should be called before working with a ConfigDict to ensure that
@@ -125,6 +142,7 @@ def modify_params(params: ml_collections.ConfigDict,
     params: Config dictionary of the parameters to use.
     tpu: Name of the TPU being used or None.
     tpu_topology: of the form NxM, where N * M is the number of chips.
+    dataset_path: Optional. Path to dataset from which to extract max_length.
 
   Returns:
     Given config dictionary with some added or modified values based on the
@@ -132,10 +150,6 @@ def modify_params(params: ml_collections.ConfigDict,
   """
   # Cannot set params that did not previously exist without unlocking.
   with params.unlocked():
-
-    # Set dataset if tf_dataset is set.
-    if 'tf_dataset' in params and params.tf_dataset:
-      set_dataset(params)
 
     # For all models, scale batch size by number of GPUs when using GPUs. If no
     # GPUs are being used, keep the original batch size.
@@ -161,9 +175,14 @@ def modify_params(params: ml_collections.ConfigDict,
       params.batch_size *= num_cores_used
       logging.info('Global batch size is %d', params.batch_size)
 
-    # Get max_length from dataset
-    params.max_length = extract_max_length(
-        os.path.join(params.train_path, 'train'))
+    # Get max_length from dataset passed in, which is done at inference time.
+    # Otherwise, we can expect params.train_path to exist.
+    if dataset_path:
+      params.max_length = extract_max_length(
+          os.path.join(dataset_path, os.path.basename(dataset_path)))
+    else:
+      params.max_length = extract_max_length(
+          os.path.join(params.train_path, 'train'))
     if params.model_name == 'transformer_learn_values':
       dim = ((params.use_bases * params.per_base_hidden_size) +
              (params.use_pw * params.pw_hidden_size) +
@@ -225,7 +244,10 @@ def run_inference_and_write_results(model: tf.keras.Model,
           batch_size=params.batch_size,
           params=params,
           limit=limit,
-          drop_remainder=False)
+          drop_remainder=False,
+          # `inference` is set to False because this function is only used with
+          # tf.Examples formatted for training mode as they contain a label.
+          inference=False)
 
       history = model.evaluate(
           x=validation_dataset, batch_size=params.batch_size, steps=None)

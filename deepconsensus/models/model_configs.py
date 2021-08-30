@@ -1,16 +1,32 @@
-# Copyright 2021 Google LLC
+# Copyright (c) 2021, Google Inc.
+# All rights reserved.
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions
+# are met:
 #
-#      http://www.apache.org/licenses/LICENSE-2.0
+# 1. Redistributions of source code must retain the above copyright notice,
+#    this list of conditions and the following disclaimer.
 #
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# 2. Redistributions in binary form must reproduce the above copyright
+#    notice, this list of conditions and the following disclaimer in the
+#    documentation and/or other materials provided with the distribution.
+#
+# 3. Neither the name of Google Inc. nor the names of its
+#    contributors may be used to endorse or promote products derived from this
+#    software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
 """Architecture and training hyperparameters for networks."""
 
 import os
@@ -92,7 +108,9 @@ def _set_base_transformer_hparams(params):
   params.model_name = 'transformer'
   params.add_pos_encoding = True
   params.use_relative_pos_enc = True
-  # Num heads should be divisible by hidden size.
+  # Num heads should be divisible by hidden size. This value should be tuned for
+  # the production setting. <internal>
+  # tuning.
   params.num_heads = 2
   params.layer_norm = False
   params.dtype = dc_constants.TF_DATA_TYPE
@@ -114,7 +132,7 @@ def _set_base_transformer_hparams(params):
 
   # Training
   params.batch_size = 256
-  params.num_epochs = 25
+  params.num_epochs = 50
   params.learning_rate = 1e-4
   params.buffer_size = 1000
 
@@ -142,7 +160,7 @@ def _set_transformer_learned_embeddings_hparams(params):
 
 def _set_human_aligned_to_ccs_data_hparams(params):
   """Updates the given config with values for human data aligned to CCS."""
-  params.tf_dataset = 'tf20210608-6df586ca'
+  params.tf_dataset = 'tf20210723-1bffff17'
 
 
 
@@ -156,6 +174,8 @@ def _set_test_data_hparams(params):
   params.eval_path = params.train_path
   params.hard_eval_path = params.train_path
   params.test_path = params.train_path
+  params.inference_path = os.path.join(
+      curr_dir, '../testdata/ecoli/inference_output/tf_examples/inference')
   params.train_data_size = 253
   params.eval_data_size = 253
   params.max_passes = 30

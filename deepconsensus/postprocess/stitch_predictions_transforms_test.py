@@ -1,16 +1,32 @@
-# Copyright 2021 Google LLC
+# Copyright (c) 2021, Google Inc.
+# All rights reserved.
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions
+# are met:
 #
-#      http://www.apache.org/licenses/LICENSE-2.0
+# 1. Redistributions of source code must retain the above copyright notice,
+#    this list of conditions and the following disclaimer.
 #
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# 2. Redistributions in binary form must reproduce the above copyright
+#    notice, this list of conditions and the following disclaimer in the
+#    documentation and/or other materials provided with the distribution.
+#
+# 3. Neither the name of Google Inc. nor the names of its
+#    contributors may be used to endorse or promote products derived from this
+#    software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
 """Tests for deepconsensus.postprocess.stitch_predictions_transforms."""
 
 import copy
@@ -186,6 +202,102 @@ class ConvertToFastqStrDoFnTest(absltest.TestCase):
           | beam.ParDo(stitch_predictions_transforms.ConvertToFastqStrDoFn()))
       beam_testing_util.assert_that(output,
                                     self._is_valid_fastq_str(molecule_name))
+
+
+class RemoveGapsAndPaddingDoFnTest(parameterized.TestCase):
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='no gaps/padding',
+          sequence='ATCG',
+          quality_string=utils.quality_scores_to_string([1, 2, 3, 4]),
+          expected_sequence='ATCG',
+          expected_quality_string=utils.quality_scores_to_string([1, 2, 3, 4]),
+      ),
+      dict(
+          testcase_name='some gaps/padding',
+          sequence='AT CG ',
+          quality_string=utils.quality_scores_to_string([1, 2, 3, 4, 5, 6]),
+          expected_sequence='ATCG',
+          expected_quality_string=utils.quality_scores_to_string([1, 2, 4, 5]),
+      ),
+      dict(
+          testcase_name='all gaps/padding',
+          sequence='    ',
+          quality_string=utils.quality_scores_to_string([1, 2, 3, 4]),
+          expected_sequence=None,
+          expected_quality_string=None,
+      ),
+  )
+  def test_remove_gaps_and_padding(self, sequence, quality_string,
+                                   expected_sequence, expected_quality_string):
+    molecule_name = 'm54238_180901_011437/7209150'
+    input_data = [(molecule_name, sequence, quality_string)]
+    if expected_sequence:
+      expected_output = [(molecule_name, expected_sequence,
+                          expected_quality_string)]
+    else:
+      expected_output = []
+    with test_pipeline.TestPipeline() as p:
+      output = (
+          p
+          | beam.Create(input_data)
+          | beam.ParDo(
+              stitch_predictions_transforms.RemoveGapsAndPaddingDoFn()))
+      beam_testing_util.assert_that(output,
+                                    beam_testing_util.equal_to(expected_output))
+
+
+class FilterByQualityDoFnTest(parameterized.TestCase):
+
+  @parameterized.parameters(
+      (10, slice(0, 2)),
+      (30, slice(1, 2)),
+      (40, slice(1, 2)),
+      (50, slice(2, 2)),
+  )
+  def test_filter_by_qual(self, min_quality, expected_slice):
+    molecule_name = 'm54238_180901_011437/7209150'
+    sequence = 'ATCG'
+    # Note, the average phred for these reads is 9.9
+    quality_string_1 = utils.quality_score_to_string(10) * len(sequence)
+    quality_string_2 = utils.quality_score_to_string(40) * len(sequence)
+    input_data = [(molecule_name, sequence, quality_string_1),
+                  (molecule_name, sequence, quality_string_2)]
+    expected_output = input_data[expected_slice]
+    with test_pipeline.TestPipeline() as p:
+      output = (
+          p
+          | beam.Create(input_data)
+          | beam.ParDo(
+              stitch_predictions_transforms.FilterByQualityDoFn(
+                  min_quality=min_quality)))
+      beam_testing_util.assert_that(output,
+                                    beam_testing_util.equal_to(expected_output))
+
+
+class FilterByReadLengthDoFnTest(parameterized.TestCase):
+
+  @parameterized.parameters(
+      (0, True),
+      (4, True),
+      (10, False),
+  )
+  def test_filter_by_read_length(self, min_length, keep_sequence):
+    molecule_name = 'm54238_180901_011437/7209150'
+    sequence = 'ATCG'
+    quality_string = utils.quality_score_to_string(10) * len(sequence)
+    input_data = [(molecule_name, sequence, quality_string)]
+    expected_output = input_data if keep_sequence else []
+    with test_pipeline.TestPipeline() as p:
+      output = (
+          p
+          | beam.Create(input_data)
+          | beam.ParDo(
+              stitch_predictions_transforms.FilterByReadLengthDoFn(
+                  min_length=min_length)))
+      beam_testing_util.assert_that(output,
+                                    beam_testing_util.equal_to(expected_output))
 
 
 if __name__ == '__main__':

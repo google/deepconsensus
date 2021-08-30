@@ -1,16 +1,32 @@
-# Copyright 2021 Google LLC
+# Copyright (c) 2021, Google Inc.
+# All rights reserved.
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions
+# are met:
 #
-#      http://www.apache.org/licenses/LICENSE-2.0
+# 1. Redistributions of source code must retain the above copyright notice,
+#    this list of conditions and the following disclaimer.
 #
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# 2. Redistributions in binary form must reproduce the above copyright
+#    notice, this list of conditions and the following disclaimer in the
+#    documentation and/or other materials provided with the distribution.
+#
+# 3. Neither the name of Google Inc. nor the names of its
+#    contributors may be used to endorse or promote products derived from this
+#    software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
 """Tests for deepconsensus.models.model_inference_transforms."""
 
 import glob
@@ -32,7 +48,7 @@ from deepconsensus.utils import dc_constants
 from deepconsensus.utils import test_utils
 
 
-class ParseTfExamplesDoFnTest(absltest.TestCase):
+class ParseTfExamplesDoFnTest(parameterized.TestCase):
 
   def _parsed_example_correct(self, expected_output):
 
@@ -45,7 +61,8 @@ class ParseTfExamplesDoFnTest(absltest.TestCase):
 
     return _check_dc_input_proto
 
-  def test_parse_tf_examples(self):
+  @parameterized.parameters([True, False])
+  def test_parse_tf_examples(self, inference):
     """Checks that tf.Examples are correctly read in and parsed."""
     params = model_configs.get_config('fc+test')
     model_utils.modify_params(params)
@@ -54,11 +71,18 @@ class ParseTfExamplesDoFnTest(absltest.TestCase):
         max_passes=params.max_passes)
     expected_dc_input = test_utils.make_deepconsensus_input()
     tf_example = tf_example_utils.deepconsensus_input_to_example(
-        deepconsensus_input=expected_dc_input, example_height=example_height)
-    params.max_length = len(expected_dc_input.label.bases)
+        deepconsensus_input=expected_dc_input,
+        example_height=example_height,
+        inference=inference)
+    # DeepConsensusInput only has 5 bases.
+    params.max_length = len(expected_dc_input.subreads[0].bases)
     expected_rows = tf_example_utils.get_encoded_subreads_from_example(
         tf_example)
-    expected_label = tf_example_utils.get_encoded_label_from_example(tf_example)
+    if not inference:
+      expected_label = tf_example_utils.get_encoded_label_from_example(
+          tf_example)
+    else:
+      expected_label = np.array([]).tostring()
     expected_num_passes = tf_example_utils.get_num_passes_from_example(
         tf_example)
     expected_output = (expected_rows, expected_label, expected_num_passes,
@@ -71,12 +95,13 @@ class ParseTfExamplesDoFnTest(absltest.TestCase):
           p
           | beam.Create([tf_example.SerializeToString()])
           | beam.ParDo(
-              model_inference_transforms.ParseTfExamplesDoFn(params=params)))
+              model_inference_transforms.ParseTfExamplesDoFn(
+                  params=params, inference=inference)))
       beam_testing_util.assert_that(
           output, self._parsed_example_correct(expected_output))
 
 
-class RunForwardPassDoFnTest(absltest.TestCase):
+class RunForwardPassDoFnTest(parameterized.TestCase):
 
   def _has_valid_prediction(self, params):
 
@@ -89,7 +114,8 @@ class RunForwardPassDoFnTest(absltest.TestCase):
 
     return _check_prediction
 
-  def test_run_forward_pass(self):
+  @parameterized.parameters([True, False])
+  def test_run_forward_pass(self, inference):
     """Checks that forward pass saves valid prediction in DeepConsensusInput."""
     checkpoint_path = test_utils.deepconsensus_testdata('model/checkpoint-1')
     config_name = 'transformer_learn_values+test'
@@ -108,7 +134,9 @@ class RunForwardPassDoFnTest(absltest.TestCase):
           | beam.Create([(rows, label, num_passes, dc_input)])
           | beam.ParDo(
               model_inference_transforms.RunForwardPassDoFn(
-                  checkpoint_path=checkpoint_path, params=params)))
+                  checkpoint_path=checkpoint_path,
+                  params=params,
+                  inference=inference)))
       dc_preds = records | beam.Map(lambda record: record['dc_proto'])
       beam_testing_util.assert_that(dc_preds,
                                     self._has_valid_prediction(params))

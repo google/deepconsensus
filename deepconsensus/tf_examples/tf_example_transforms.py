@@ -1,16 +1,32 @@
-# Copyright 2021 Google LLC
+# Copyright (c) 2021, Google Inc.
+# All rights reserved.
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions
+# are met:
 #
-#      http://www.apache.org/licenses/LICENSE-2.0
+# 1. Redistributions of source code must retain the above copyright notice,
+#    this list of conditions and the following disclaimer.
 #
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# 2. Redistributions in binary form must reproduce the above copyright
+#    notice, this list of conditions and the following disclaimer in the
+#    documentation and/or other materials provided with the distribution.
+#
+# 3. Neither the name of Google Inc. nor the names of its
+#    contributors may be used to endorse or promote products derived from this
+#    software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
 """DoFns for converting DeepConsensusInput protos into tf.Example protos."""
 
 import copy
@@ -38,7 +54,7 @@ class ProcessAndWriteTfExamples(beam.PTransform):
 
   def __init__(self, reference_fasta, example_width, example_height, truth_vcf,
                species, split, output_path, truth_bed, padded_len,
-               window_overlap_step, subread_permutations):
+               window_overlap_step, subread_permutations, inference):
     self.reference_fasta = reference_fasta
     self.example_width = example_width
     self.example_height = example_height
@@ -50,11 +66,12 @@ class ProcessAndWriteTfExamples(beam.PTransform):
     self.padded_len = padded_len or example_width
     self.window_overlap_step = window_overlap_step
     self.subread_permutations = subread_permutations
+    self.inference = inference
 
   def expand(self, dc_input: deepconsensus_pb2.DeepConsensusInput) -> None:
     """Processes the input PCollection and writes out tf.Examples."""
 
-    if self.species == 'human' and self.reference_fasta is not None:
+    if not self.inference and self.species == 'human' and self.reference_fasta:
       dc_input = (
           dc_input
           | f'add_label_bases_position_{self.split}' >> beam.ParDo(
@@ -63,15 +80,18 @@ class ProcessAndWriteTfExamples(beam.PTransform):
     dc_input = (
         dc_input
         | f'chunk_windows_{self.example_width}_{self.split}' >> beam.ParDo(
-            GetSmallerWindowDoFn(self.example_width, self.window_overlap_step)))
+            GetSmallerWindowDoFn(
+                example_width=self.example_width,
+                window_overlap_step=self.window_overlap_step,
+                inference=self.inference)))
 
-    if self.species == 'human' and self.truth_vcf:
+    if not self.inference and self.species == 'human' and self.truth_vcf:
       dc_input = (
           dc_input
           | f'filter_variants_{self.split}' >> beam.ParDo(
               FilterVariantWindowsDoFn(truth_vcf=self.truth_vcf)))
 
-    if self.species == 'human' and self.truth_bed:
+    if not self.inference and self.species == 'human' and self.truth_bed:
       dc_input = (
           dc_input
           | f'filter_nonconfident_regions_{self.split}' >> beam.ParDo(
@@ -81,16 +101,14 @@ class ProcessAndWriteTfExamples(beam.PTransform):
       dc_input = (
           dc_input
           | f'pad_examples_{self.split}' >> beam.ParDo(
-              PadExamplesDoFn(padded_len=self.padded_len)))
+              PadExamplesDoFn(
+                  padded_len=self.padded_len, inference=self.inference)))
 
+    # Do not remove empty subreads.
     dc_input = (
         dc_input
-        | f'remove_empty_subreads_{self.split}' >> beam.ParDo(
-            RemoveEmptySubreadsDoFn())
-        | f'filter_examples_with_empty_label_{self.split}' >> beam.ParDo(
-            FilterExamplesWithEmptyLabelDoFn())
         | f'remove_sequences_with_invalid_bases_{self.split}' >> beam.ParDo(
-            RemoveSequencesWithInvalidBasesDoFn()))
+            RemoveSequencesWithInvalidBasesDoFn(inference=self.inference)))
 
     if self.subread_permutations > 0:
       dc_input = (
@@ -98,11 +116,15 @@ class ProcessAndWriteTfExamples(beam.PTransform):
           | f'subread_permutations_{self.split}' >> beam.ParDo(
               SubreadPermutationsDoFn(self.subread_permutations)))
 
+    # Order of elements does not matter at inference time.
+    if not self.inference:
+      dc_input = (dc_input | f'shuffle_{self.split}' >> beam.Reshuffle())
+
     _ = (
         dc_input
         | f'convert_to_tf_ex_{self.split}' >> beam.ParDo(
-            ConvertToTfExamplesDoFn(example_height=self.example_height))
-        | f'shuffle_{self.split}' >> beam.Reshuffle()
+            ConvertToTfExamplesDoFn(
+                example_height=self.example_height, inference=self.inference))
         | f'write_{self.split}' >> tfrecordio.WriteToTFRecord(
             os.path.join(self.output_path, f'{self.split}/{self.split}'),
             file_name_suffix='.tfrecords.gz',
@@ -261,9 +283,7 @@ def get_windowed_subread(subread: deepconsensus_pb2.Subread,
       base_positions=windowed_base_positions,
       subread_strand=subread.subread_strand)
 
-  # Ignore subreads that contain only external gaps in a window.
-  if windowed_bases != dc_constants.GAP_OR_PAD * example_width:
-    return windowed_subread
+  return windowed_subread
 
 
 @typehints.with_input_types(Any)
@@ -278,6 +298,7 @@ class GetSmallerWindowDoFn(beam.DoFn):
   def __init__(
       self,
       example_width: int,
+      inference: bool,
       window_overlap_step: Optional[int] = None,
       proto_class: str = 'DeepConsensusInput',
   ):
@@ -292,6 +313,7 @@ class GetSmallerWindowDoFn(beam.DoFn):
         proto_class not in ['DeepConsensusInput', 'Example']):
       raise ValueError('Unexpected proto_class: %s.' % proto_class)
     self.proto_class = proto_class
+    self.inference = inference
 
   def process(
       self, input_proto: Any) -> Iterable[deepconsensus_pb2.DeepConsensusInput]:
@@ -313,39 +335,37 @@ class GetSmallerWindowDoFn(beam.DoFn):
     for start in range(0, len(deepconsensus_input.subreads[0].bases),
                        range_step):
 
-      # Get appropriate window from the label.
-      if not deepconsensus_input.subread_indices:
-        label_start = start
-      elif len(deepconsensus_input.subread_indices) <= start:
-        label_start = label_end
-      else:
-        # Shift back by at least one or more if the first position in the window
-        # contains unsupported insertions.
-        shift_back = 1 + deepconsensus_input.unsup_insertions_by_pos.get(
-            start, 0)
-        label_start = deepconsensus_input.subread_indices[start] - shift_back
+      if not self.inference:
+        # Get appropriate window from the label.
+        if not deepconsensus_input.subread_indices:
+          label_start = start
+        elif len(deepconsensus_input.subread_indices) <= start:
+          label_start = label_end
+        else:
+          # Shift back by at least one or more if the first position in the
+          # window contains unsupported insertions.
+          shift_back = 1 + deepconsensus_input.unsup_insertions_by_pos.get(
+              start, 0)
+          label_start = deepconsensus_input.subread_indices[start] - shift_back
 
-      # Subtract one since we will grab one element using this index, not slice.
-      label_end_index = start + self.example_width - 1
-      if not deepconsensus_input.subread_indices:
-        label_end = label_start + self.example_width
-      if len(deepconsensus_input.subread_indices) <= label_end_index:
-        label_end = label_start + self.example_width
-      else:
-        label_end = deepconsensus_input.subread_indices[label_end_index]
+        # Subtract one since we will grab one element using this index, not
+        # slice.
+        label_end_index = start + self.example_width - 1
+        if not deepconsensus_input.subread_indices:
+          label_end = label_start + self.example_width
+        if len(deepconsensus_input.subread_indices) <= label_end_index:
+          label_end = label_start + self.example_width
+        else:
+          label_end = deepconsensus_input.subread_indices[label_end_index]
 
-      windowed_label = get_windowed_subread(
-          subread=deepconsensus_input.label,
-          molecule_name=molecule_name,
-          example_width=self.example_width,
-          start=start,
-          is_label=True,
-          label_start=label_start,
-          label_end=label_end)
-
-      # If label only has external padding in this region, skip this window.
-      if windowed_label is None:
-        continue
+        windowed_label = get_windowed_subread(
+            subread=deepconsensus_input.label,
+            molecule_name=molecule_name,
+            example_width=self.example_width,
+            start=start,
+            is_label=True,
+            label_start=label_start,
+            label_end=label_end)
 
       # Get appropriate window from each subread.
       windowed_subreads = []
@@ -356,25 +376,40 @@ class GetSmallerWindowDoFn(beam.DoFn):
             example_width=self.example_width,
             start=start,
             is_label=False)
-
-        # Subreads containing only external padding in this window are skipped.
-        if windowed_subread is not None:
-          windowed_subreads.append(windowed_subread)
-
-      end = start + self.example_width
-      unsup_insertion_count = sum(
-          count
-          for pos, count in deepconsensus_input.unsup_insertions_by_pos.items()
-          if pos >= start and pos < end)
-      self.unsup_insertions_total.inc(unsup_insertion_count)
+        windowed_subreads.append(windowed_subread)
 
       # Discard windows that do not have any subread data.
-      if windowed_subreads:
-        # If CCS sequence is not present, windowed sequence will also be empty.
-        end = start + self.example_width
-        windowed_ccs_sequence = deepconsensus_input.ccs_sequence[start:end]
-        self.small_windows_counter.inc()
-        yield deepconsensus_pb2.DeepConsensusInput(
+      if not windowed_subreads:
+        return
+      # If CCS sequence is not present, windowed sequence will also be empty.
+      end = start + self.example_width
+      windowed_ccs_sequence = deepconsensus_input.ccs_sequence[start:end]
+
+      # We also pad everything downstream in PadExamplesDoFn, so this code is
+      # redundant in the full pipeline if we are adding padding to each window.
+      # However, we need this if we aren't padding each window and also for
+      # testing.
+      if windowed_ccs_sequence and len(
+          windowed_ccs_sequence) != self.example_width:
+        pad_len = self.example_width - len(windowed_ccs_sequence)
+        str_padding = dc_constants.GAP_OR_PAD * pad_len
+        windowed_ccs_sequence += str_padding
+
+      if self.inference:
+        dc_input = deepconsensus_pb2.DeepConsensusInput(
+            subreads=windowed_subreads,
+            molecule_name=molecule_name,
+            molecule_start=start,
+            sn=deepconsensus_input.sn,
+            ccs_sequence=windowed_ccs_sequence)
+      else:
+        unsup_insertion_count = sum(
+            count for pos, count in
+            deepconsensus_input.unsup_insertions_by_pos.items()
+            if pos >= start and pos < end)
+        self.unsup_insertions_total.inc(unsup_insertion_count)
+
+        dc_input = deepconsensus_pb2.DeepConsensusInput(
             label=windowed_label,
             subreads=windowed_subreads,
             molecule_name=molecule_name,
@@ -386,6 +421,8 @@ class GetSmallerWindowDoFn(beam.DoFn):
             strand=deepconsensus_input.strand,
             ccs_sequence=windowed_ccs_sequence,
             unsup_insertion_count=unsup_insertion_count)
+      self.small_windows_counter.inc()
+      yield dc_input
 
 
 @typehints.with_input_types(deepconsensus_pb2.DeepConsensusInput)
@@ -472,10 +509,11 @@ class CreateExamplesDoFn(beam.DoFn):
 class PadExamplesDoFn(beam.DoFn):
   """DoFn for padding DeepConsensusInput protos."""
 
-  def __init__(self, padded_len: int):
+  def __init__(self, padded_len: int, inference: bool):
     self.padded_len = padded_len
     self.windows_longer_than_padded_len_counter = metrics.Metrics.counter(
         self.__class__, 'windows_longer_than_padded_len')
+    self.inference = inference
 
   def process(
       self, deepconsensus_input: deepconsensus_pb2.DeepConsensusInput
@@ -484,8 +522,9 @@ class PadExamplesDoFn(beam.DoFn):
     deepconsensus_input_copy = copy.deepcopy(deepconsensus_input)
 
     # Pad the subreads and label to fixed width.
-    all_reads = list(
-        deepconsensus_input_copy.subreads) + [deepconsensus_input_copy.label]
+    all_reads = list(deepconsensus_input_copy.subreads)
+    if not self.inference:
+      all_reads += [deepconsensus_input_copy.label]
     for read in all_reads:
       if len(read.bases) > self.padded_len:
         self.windows_longer_than_padded_len_counter.inc()
@@ -503,53 +542,6 @@ class PadExamplesDoFn(beam.DoFn):
 
 @typehints.with_input_types(deepconsensus_pb2.DeepConsensusInput)
 @typehints.with_output_types(deepconsensus_pb2.DeepConsensusInput)
-class RemoveEmptySubreadsDoFn(beam.DoFn):
-  """DoFn for filtering out empty subreads from DeepConsensusInput protos."""
-
-  def __init__(self):
-    self.empty_subreads_counter = metrics.Metrics.counter(
-        self.__class__, 'empty_subreads')
-
-  def process(
-      self, dc_input: deepconsensus_pb2.DeepConsensusInput
-  ) -> Iterable[deepconsensus_pb2.DeepConsensusInput]:
-    """Yields the input proto with empty subreads removed."""
-    dc_input_copy = copy.deepcopy(dc_input)
-    gap_and_padding_tokens = {dc_constants.GAP_OR_PAD, dc_constants.GAP_OR_PAD}
-    subreads_to_keep = []
-    for subread in dc_input_copy.subreads:
-      if not set(subread.bases).issubset(gap_and_padding_tokens):
-        subreads_to_keep.append(subread)
-      else:
-        self.empty_subreads_counter.inc()
-    del dc_input_copy.subreads[:]
-    dc_input_copy.subreads.extend(subreads_to_keep)
-    yield dc_input_copy
-
-
-@typehints.with_input_types(deepconsensus_pb2.DeepConsensusInput)
-@typehints.with_output_types(deepconsensus_pb2.DeepConsensusInput)
-class FilterExamplesWithEmptyLabelDoFn(beam.DoFn):
-  """DoFn for filtering out protos with empty labels."""
-
-  def __init__(self):
-    self.label_empty_counter = metrics.Metrics.counter(self.__class__,
-                                                       'label_empty')
-
-  def process(
-      self, dc_input: deepconsensus_pb2.DeepConsensusInput
-  ) -> Iterable[deepconsensus_pb2.DeepConsensusInput]:
-    """Yields the input proto with empty subreads removed."""
-    dc_input_copy = copy.deepcopy(dc_input)
-    gap_and_padding_tokens = {dc_constants.GAP_OR_PAD, dc_constants.GAP_OR_PAD}
-    if set(dc_input_copy.label.bases).issubset(gap_and_padding_tokens):
-      self.label_empty_counter.inc()
-      return
-    yield dc_input_copy
-
-
-@typehints.with_input_types(deepconsensus_pb2.DeepConsensusInput)
-@typehints.with_output_types(deepconsensus_pb2.DeepConsensusInput)
 class RemoveSequencesWithInvalidBasesDoFn(beam.DoFn):
   """DoFn for filtering out sequences containing invalid bases.
 
@@ -558,11 +550,12 @@ class RemoveSequencesWithInvalidBasesDoFn(beam.DoFn):
   out.
   """
 
-  def __init__(self):
+  def __init__(self, inference: bool):
     self.subreads_outside_vocab_counter = metrics.Metrics.counter(
         self.__class__, 'subreads_outside_vocab')
     self.labels_outside_vocab_counter = metrics.Metrics.counter(
         self.__class__, 'examples_with_label_outside_vocab')
+    self.inference = inference
 
   def process(
       self, dc_input: deepconsensus_pb2.DeepConsensusInput
@@ -576,8 +569,9 @@ class RemoveSequencesWithInvalidBasesDoFn(beam.DoFn):
         subreads_to_keep.append(subread)
       else:
         self.subreads_outside_vocab_counter.inc()
-    # If the label contains bases outside the vocab, ignore this example.
-    if set(dc_input_copy.label.bases) - set(dc_constants.VOCAB):
+    if self.inference and set(dc_input_copy.label.bases) - set(
+        dc_constants.VOCAB):
+      # If the label contains bases outside the vocab, ignore this example.
       self.labels_outside_vocab_counter.inc()
       return
     del dc_input_copy.subreads[:]
@@ -595,7 +589,7 @@ class ConvertToTfExamplesDoFn(beam.DoFn):
   details on the structure of the tf.Example.
   """
 
-  def __init__(self, example_height):
+  def __init__(self, example_height: int, inference: bool):
     if example_height <= 0:
       raise ValueError('Example height must both be > 0.')
     self.example_height = example_height
@@ -609,6 +603,7 @@ class ConvertToTfExamplesDoFn(beam.DoFn):
         self.__class__, 'subreads_reverse_strand')
     self.total_examples_counter = metrics.Metrics.counter(
         self.__class__, 'total_examples')
+    self.inference = inference
 
   def process(self, deepconsensus_input):
     """Yields tf.Example created from the given DeepConsensusInput proto."""
@@ -621,7 +616,8 @@ class ConvertToTfExamplesDoFn(beam.DoFn):
     example = tf_example_utils.deepconsensus_input_to_example(
         deepconsensus_input=deepconsensus_input,
         example_height=self.example_height,
-        counters=counters)
+        counters=counters,
+        inference=self.inference)
     if example is not None:
       n_reverse = sum([
           x.subread_strand == deepconsensus_pb2.Subread.REVERSE

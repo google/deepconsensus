@@ -117,15 +117,17 @@ def create_all_commands(directories: List[str], input_subreads_aligned: str,
   --species=human \
   --inference=true \
   --example_width={example_width} \
-  --max_passes 20 \
-  --padded_len 120 \
-  --subread_permutations 0'
+  --max_passes=20 \
+  --padded_len=120 \
+  --subread_permutations=0'
 
   command4 = f'python3 -m deepconsensus.models.model_inference_with_beam \
   --dataset_path={directories[2]}/inference \
   --out_dir={directories[3]} \
   --checkpoint_path={checkpoint} \
-  --inference=true'
+  --inference=true \
+  --params=deepconsensus/models/model_configs.py:transformer_learn_values+ccs \
+  --max_passes=20'
 
   command5 = f'python3 -m deepconsensus.postprocess.stitch_predictions \
   --input_file={directories[3]}/predictions/*.tfrecords.gz \

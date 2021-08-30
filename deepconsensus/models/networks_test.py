@@ -1,16 +1,32 @@
-# Copyright 2021 Google LLC
+# Copyright (c) 2021, Google Inc.
+# All rights reserved.
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions
+# are met:
 #
-#      http://www.apache.org/licenses/LICENSE-2.0
+# 1. Redistributions of source code must retain the above copyright notice,
+#    this list of conditions and the following disclaimer.
 #
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# 2. Redistributions in binary form must reproduce the above copyright
+#    notice, this list of conditions and the following disclaimer in the
+#    documentation and/or other materials provided with the distribution.
+#
+# 3. Neither the name of Google Inc. nor the names of its
+#    contributors may be used to endorse or promote products derived from this
+#    software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
 """Tests for deepconsensus.models.networks."""
 
 import itertools
@@ -28,13 +44,15 @@ from deepconsensus.models import model_configs
 from deepconsensus.models import model_utils
 
 
-def get_input_example(params: ml_collections.ConfigDict) -> np.ndarray:
+def get_input_example(params: ml_collections.ConfigDict,
+                      inference: bool) -> np.ndarray:
   """Returns one example from the training dataset for given params."""
   dataset = data_providers.get_dataset(
       file_pattern=os.path.join(params.train_path, '*'),
       num_epochs=params.num_epochs,
       batch_size=params.batch_size,
-      params=params)
+      params=params,
+      inference=inference)
   input_example, _ = next(dataset.as_numpy_iterator())
   return input_example
 
@@ -63,7 +81,8 @@ class ModelsTest(parameterized.TestCase):
     params = model_configs.get_config(config_name)
     model_utils.modify_params(params)
     model = model_utils.get_model(params)
-    input_example = get_input_example(params)
+    inference = not training
+    input_example = get_input_example(params, inference=inference)
     if use_predict:
       softmax_output = model.predict(input_example)
     else:
@@ -80,18 +99,21 @@ class ModelsTest(parameterized.TestCase):
             np.ones(shape=[params.batch_size, params.max_length])))
     self.assertEqual(predictions.shape, (params.batch_size, params.max_length))
 
-  @parameterized.parameters([
-      'fc+test',
-      'conv_net-resnet50+test',
-      'transformer+test',
-      'transformer_learn_values+test',
-  ])
-  def test_predict_and_model_fn_equal(self, config_name):
+  @parameterized.parameters(
+      itertools.product(
+          [
+              'fc+test',
+              'conv_net-resnet50+test',
+              'transformer+test',
+              'transformer_learn_values+test',
+          ],
+          [True, False]))
+  def test_predict_and_model_fn_equal(self, config_name, inference):
     """Checks that model.predict and calling model as a function are equal."""
     config = model_configs.get_config(config_name)
     model_utils.modify_params(config)
     model = model_utils.get_model(config)
-    input_example = get_input_example(config)
+    input_example = get_input_example(config, inference=inference)
     softmax_output_predict = model.predict(input_example)
     softmax_output = model(input_example, training=False).numpy()
     self.assertTrue(np.array_equal(softmax_output_predict, softmax_output))

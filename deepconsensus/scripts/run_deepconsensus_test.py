@@ -53,11 +53,11 @@ python3 -m deepconsensus.preprocess.generate_input   --merged_datasets_path=outp
 
 
 ***** DRY-RUN ONLY:*****
-python3 -m deepconsensus.tf_examples.write_tf_examples   --preprocess_paths=output_directory/2_generate_input   --output_path=output_directory/3_write_tf_examples   --preprocess_downsample=1   --species=human   --inference=true   --example_width=200   --max_passes 20   --padded_len 120   --subread_permutations 0
+python3 -m deepconsensus.tf_examples.write_tf_examples   --preprocess_paths=output_directory/2_generate_input   --output_path=output_directory/3_write_tf_examples   --preprocess_downsample=1   --species=human   --inference=true   --example_width=200   --max_passes=20   --padded_len=120   --subread_permutations=0
 
 
 ***** DRY-RUN ONLY:*****
-python3 -m deepconsensus.models.model_inference_with_beam   --dataset_path=output_directory/3_write_tf_examples/inference   --out_dir=output_directory/4_model_inference_with_beam   --checkpoint_path=checkpoint   --inference=true
+python3 -m deepconsensus.models.model_inference_with_beam   --dataset_path=output_directory/3_write_tf_examples/inference   --out_dir=output_directory/4_model_inference_with_beam   --checkpoint_path=checkpoint   --inference=true   --params=deepconsensus/models/model_configs.py:transformer_learn_values+ccs   --max_passes=20
 
 
 ***** DRY-RUN ONLY:*****

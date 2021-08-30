@@ -1,16 +1,32 @@
-# Copyright 2021 Google LLC
+# Copyright (c) 2021, Google Inc.
+# All rights reserved.
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions
+# are met:
 #
-#      http://www.apache.org/licenses/LICENSE-2.0
+# 1. Redistributions of source code must retain the above copyright notice,
+#    this list of conditions and the following disclaimer.
 #
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# 2. Redistributions in binary form must reproduce the above copyright
+#    notice, this list of conditions and the following disclaimer in the
+#    documentation and/or other materials provided with the distribution.
+#
+# 3. Neither the name of Google Inc. nor the names of its
+#    contributors may be used to endorse or promote products derived from this
+#    software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
 """Utilities for error analysis that can be used in colab."""
 
 import os
@@ -123,7 +139,8 @@ def pretty_print_proto(dc_input, print_aux=False):
 def dataset_generator_fn(
     params: ml_collections.ConfigDict,
     dataset_path: str,
-    filter_fn=None
+    filter_fn=None,
+    inference: bool = False,
 ) -> Generator[Tuple[tf.Tensor, tf.Tensor, tf.Tensor,
                      deepconsensus_pb2.DeepConsensusInput], None, None]:
   """Yields fields from the tf.Examples at the input dataset_path."""
@@ -139,7 +156,8 @@ def dataset_generator_fn(
       file_pattern=os.path.join(dataset_path, '*'),
       num_epochs=params.num_epochs,
       batch_size=params.batch_size,
-      params=params)
+      params=params,
+      inference=inference)
   for rows, label, num_passes, encoded_dc_input in dataset:
     dc_input = deepconsensus_pb2.DeepConsensusInput.FromString(
         encoded_dc_input[0].numpy())
@@ -154,7 +172,8 @@ def run_models_and_view_predictions(
     dataset_path: str,
     dc_errors_only: bool = True,
     output_diff_ccs: bool = True,
-    filter_fn=None
+    filter_fn=None,
+    inference: bool = False,
 ) -> Generator[Tuple[List[str], str, str, str, str,
                      deepconsensus_pb2.DeepConsensusInput], None, None]:
   """Runs the DeepConsensus model and majority vote and prints predictions."""
@@ -170,7 +189,8 @@ def run_models_and_view_predictions(
       file_pattern=os.path.join(dataset_path, '*'),
       num_epochs=params.num_epochs,
       batch_size=params.batch_size,
-      params=params)
+      params=params,
+      inference=inference)
 
   model = model_utils.get_model(params)
   try:
