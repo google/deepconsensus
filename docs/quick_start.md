@@ -13,12 +13,17 @@ Memory: 126G
 
 ## Download data for testing
 
-This will download about 162 MB of data and the model is another 244 MB.
+This will download about 252 MB of data and the model is another 245 MB.
 
 ```bash
 # Set directory where inputs will be placed.
-INPUTS="${HOME}/deepconsensus_quick_start/inputs"
+QUICKSTART_DIRECTORY="${HOME}/deepconsensus_quick_start/"
+# This will soon have 3 subfolders: inputs, model, and outputs.
+
+INPUTS="${QUICKSTART_DIRECTORY}/inputs"
+MODEL_DIR="${QUICKSTART_DIRECTORY}/model"
 mkdir -p "${INPUTS}"
+mkdir -p "${MODEL_DIR}"
 
 # Download the input data which is PacBio subreads and CCS reads.
 gsutil cp gs://brain-genomics-public/research/deepconsensus/quickstart/v0.1/subreads.bam "${INPUTS}"/
@@ -28,7 +33,7 @@ gsutil cp gs://brain-genomics-public/research/deepconsensus/quickstart/v0.1/ccs.
 # gsutil cp gs://brain-genomics-public/research/deepconsensus/quickstart/v0.1/subreads_to_ccs.bam "${INPUTS}"/
 
 # Download DeepConsensus model.
-gsutil cp gs://brain-genomics-public/research/deepconsensus/models/v0.1/checkpoint-50* "${INPUTS}"/
+gsutil cp gs://brain-genomics-public/research/deepconsensus/models/v0.1/* "${MODEL_DIR}"/
 ```
 
 ## Prepare input files
@@ -51,34 +56,16 @@ samtools view -h "aligned.subreads.bam" | \
 
 ## Install DeepConsensus
 
-First go to a parent directory where you want to install DeepConsensus, then
-follow the steps below to install DeepConsensus.
-
 ```bash
-git clone https://github.com/google/deepconsensus.git
-cd deepconsensus
-source install.sh
-```
-
-You can ignore errors regarding google-nucleus installation, such as:
-
-```
-  ERROR: Failed building wheel for google-nucleus
-```
-
-(Optional) After `source install.sh`, if you want to run all unit tests, you can
-do:
-
-```bash
-./run_all_tests.sh
+pip install deepconsensus==0.1.0
 ```
 
 ## Run DeepConsensus
 
 ```bash
 # Set directory where outputs will be placed and set the model for DeepConsensus
-OUTPUTS="${HOME}/deepconsensus_quick_start/outputs"
-CHECKPOINT_PATH=${INPUTS}/checkpoint-50
+OUTPUTS="${QUICKSTART_DIRECTORY}/outputs"
+CHECKPOINT_PATH=${MODEL_DIR}/checkpoint-50
 
 # Run DeepConsensus
 python3 -m deepconsensus.scripts.run_deepconsensus \

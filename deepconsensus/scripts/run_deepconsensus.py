@@ -126,7 +126,6 @@ def create_all_commands(directories: List[str], input_subreads_aligned: str,
   --out_dir={directories[3]} \
   --checkpoint_path={checkpoint} \
   --inference=true \
-  --params=deepconsensus/models/model_configs.py:transformer_learn_values+ccs \
   --max_passes=20'
 
   command5 = f'python3 -m deepconsensus.postprocess.stitch_predictions \

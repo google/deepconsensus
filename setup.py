@@ -34,12 +34,15 @@ https://packaging.python.org/guides/distributing-packages-using-setuptools/
 """
 
 import pathlib
+from setuptools import find_packages
 from setuptools import setup
 
 here = pathlib.Path(__file__).parent.resolve()
 
 # Get the long description from the README file
 long_description = (here / 'README.md').read_text(encoding='utf-8')
+
+REQUIREMENTS = (here / 'requirements.txt').read_text().splitlines()
 
 setup(
     # To support installation via
@@ -50,11 +53,11 @@ setup(
     description='DeepConsensus',
     long_description=long_description,
     long_description_content_type='text/markdown',
-    url='TODO',
+    url='https://github.com/google/deepconsensus',
     author='Google LLC',
-    keywords='TODO',
-    packages=['deepconsensus'],
+    keywords='bioinformatics',
+    packages=find_packages(where='.'),
     package_dir={'deepconsensus': 'deepconsensus'},
-    python_requires='==3.6',
-    install_requires=[],
+    python_requires='>=3.6,<3.7',
+    install_requires=REQUIREMENTS,
 )

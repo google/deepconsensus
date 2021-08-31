@@ -57,7 +57,7 @@ python3 -m deepconsensus.tf_examples.write_tf_examples   --preprocess_paths=outp
 
 
 ***** DRY-RUN ONLY:*****
-python3 -m deepconsensus.models.model_inference_with_beam   --dataset_path=output_directory/3_write_tf_examples/inference   --out_dir=output_directory/4_model_inference_with_beam   --checkpoint_path=checkpoint   --inference=true   --params=deepconsensus/models/model_configs.py:transformer_learn_values+ccs   --max_passes=20
+python3 -m deepconsensus.models.model_inference_with_beam   --dataset_path=output_directory/3_write_tf_examples/inference   --out_dir=output_directory/4_model_inference_with_beam   --checkpoint_path=checkpoint   --inference=true   --max_passes=20
 
 
 ***** DRY-RUN ONLY:*****
