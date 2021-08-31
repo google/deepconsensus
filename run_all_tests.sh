@@ -29,48 +29,32 @@
 # ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 #
-# Usage:  source install.sh
-#
-# This script installs all the packages required to build DeepConsensus.
-#
-# This script will run as-is on Ubuntu 18.
-#
-# We also assume that apt-get is already installed and available.
+# Script to test DeepConsensus.
+# Tested with Python3.6.
+# Before running this, run:
+#   source install.sh
 
-# ------------------------------------------------------------------------------
-# Global setting for nucleus builds
-# ------------------------------------------------------------------------------
+set -euo pipefail
 
-NUCLEUS_PIP_VERSION=0.5.8
-
-function note_build_stage {
-  echo "========== [$(date)] Stage '${1}' starting"
-}
-
-# Update package list
-################################################################################
-note_build_stage "Update package list"
-sudo -H apt-get -qq -y update
-
-# Install pip
-################################################################################
-note_build_stage "Update pip"
-sudo -H apt-get -y install python3-dev python3-pip
-sudo -H apt-get -y update
-python3 -m pip install --upgrade pip
-
-# Update PATH so that newly installed pip is the one we actually use.
-export PATH="$HOME/.local/bin:$PATH"
-echo "$(pip --version)"
-
-# Install python packages used by DeepConsensus.
-################################################################################
-python3 -m pip install --user -r requirements.txt
-
-# Pre-compile the proto file.
-mkdir -p nucleus/protos
-curl "https://raw.githubusercontent.com/google/nucleus/${NUCLEUS_PIP_VERSION}/nucleus/protos/bed.proto" \
- > nucleus/protos/bed.proto
-
-sudo apt install -y protobuf-compiler
-protoc deepconsensus/protos/deepconsensus.proto --python_out=.
+python3 -m deepconsensus.models.data_providers_test
+python3 -m deepconsensus.models.losses_and_metrics_test
+python3 -m deepconsensus.models.majority_vote_transforms_test
+python3 -m deepconsensus.models.model_inference_test
+python3 -m deepconsensus.models.model_inference_transforms_test
+python3 -m deepconsensus.models.model_inference_with_beam_test
+python3 -m deepconsensus.models.model_train_custom_loop_test
+python3 -m deepconsensus.models.model_utils_test
+python3 -m deepconsensus.models.networks_test
+python3 -m deepconsensus.models.run_majority_vote_model_test
+python3 -m deepconsensus.postprocess.stitch_predictions_test
+python3 -m deepconsensus.postprocess.stitch_predictions_transforms_test
+python3 -m deepconsensus.preprocess.beam_io_test
+python3 -m deepconsensus.preprocess.generate_input_test
+python3 -m deepconsensus.preprocess.generate_input_transforms_test
+python3 -m deepconsensus.preprocess.merge_datasets_test
+python3 -m deepconsensus.preprocess.merge_datasets_transforms_test
+python3 -m deepconsensus.preprocess.preprocess_utils_test
+python3 -m deepconsensus.tf_examples.tf_example_transforms_test
+python3 -m deepconsensus.tf_examples.tf_example_utils_test
+python3 -m deepconsensus.tf_examples.write_tf_examples_test
+python3 -m deepconsensus.utils.utils_test

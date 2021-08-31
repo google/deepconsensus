@@ -66,6 +66,13 @@ You can ignore errors regarding google-nucleus installation, such as:
   ERROR: Failed building wheel for google-nucleus
 ```
 
+(Optional) After `source install.sh`, if you want to run all unit tests, you can
+do:
+
+```bash
+./run_all_tests.sh
+```
+
 ## Run DeepConsensus
 
 ```bash
