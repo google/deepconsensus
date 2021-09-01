@@ -48,6 +48,12 @@ speed, and only runs on CPUs. We anticipate this version to be too slow for many
 uses. We are now prioritizing speed improvements, which we anticipate can
 achieve acceptable runtimes.
 
+## How to cite
+
+If you are using DeepConsensus in your work, please cite:
+
+[DeepConsensus: Gap-Aware Sequence Transformers for Sequence Correction](https://www.biorxiv.org/content/10.1101/2021.08.31.458403v1)
+
 ## Disclaimer
 
 This is not an official Google product.
