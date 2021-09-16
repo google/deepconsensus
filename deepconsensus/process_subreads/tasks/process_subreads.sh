@@ -1,3 +1,4 @@
+#!/bin/bash
 # Copyright (c) 2021, Google Inc.
 # All rights reserved.
 # 
@@ -25,43 +26,30 @@
 # ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-"""Tests for deepconsensus.models.model_inference."""
+set -euox
 
-import glob
-import os
+# Generate CCS Sequence
+ccs --all \
+    -j "$(nproc)" \
+    --chunk="${n}"/"${n_total}" \
+    "${subreads_bam}" \
+    "${ccs_shard_bam}"
+pbindex "${ccs_shard_bam}"
 
-from absl.testing import absltest
+# Generate CCS Fasta
+samtools fasta --threads "$(nproc)" "${ccs_shard_bam}" > "${ccs_shard_fasta}"
 
-from deepconsensus.models import model_configs
-from deepconsensus.models import model_inference
-from deepconsensus.models import model_utils
-from deepconsensus.utils import test_utils
+# TEMPORARY: Subreads sharding should not be required later.
+pbindex "${ccs_shard_bam}"
+pbindexdump "${ccs_shard_bam}.pbi" | jq '.reads[].holeNumber' > zmws.txt
+zmwfilter --include zmws.txt "${subreads_bam}" "${subreads_shard_bam}"
 
+# Extract HIFI
+extracthifi "${ccs_shard_bam}" "${hifi_shard_bam}"
 
-class ModelInferenceTest(absltest.TestCase):
+# Generate HIFI Fasta
+samtools fasta --threads "$(nproc)" "${hifi_shard_bam}" > "${hifi_shard_fasta}"
 
-  def test_inference_e2e(self):
-    """Tests that inference finishes running and an output file is created."""
-
-    config_name = 'transformer_learn_values+test'
-    out_dir = self.create_tempdir().full_path
-    checkpoint_path = test_utils.deepconsensus_testdata('model/checkpoint-1')
-    params = model_configs.get_config(config_name)
-    tpu = None
-    tpu_topology = None
-    model_utils.modify_params(params, tpu=tpu, tpu_topology=tpu_topology)
-    model_inference.run_inference(
-        out_dir=out_dir,
-        params=params,
-        checkpoint_path=checkpoint_path,
-        tpu=None,
-        tpu_topology=None,
-        limit=-1)
-
-    # Output directory should contain the CSV logger output.
-    csv_output = glob.glob(os.path.join(out_dir, 'inference.csv'))
-    self.assertLen(csv_output, 1)
-
-
-if __name__ == '__main__':
-  absltest.main()
+# Generate subreads to bam alignment
+actc -j "$(nproc)" \
+     "${subreads_bam}" "${ccs_shard_bam}" "${subreads_to_ccs_shard_bam}"
