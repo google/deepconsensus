@@ -32,11 +32,11 @@ corresponding config does not need to be specified and will be inferred. Example
 usage:
 
 OUT_DIR=/tmp
-CHECKPOINT_PATH=<internal>
+CHECKPOINT=<internal>
 time blaze run -c opt \
 //learning/genomics/deepconsensus/models:model_inference -- \
   --out_dir ${OUT_DIR} \
-  --checkpoint_path ${CHECKPOINT_PATH} \
+  --checkpoint ${CHECKPOINT} \
   --alsologtostderr
 """
 
@@ -53,7 +53,7 @@ from deepconsensus.models import model_utils
 
 FLAGS = flags.FLAGS
 config_flags.DEFINE_config_file('params', None, 'Training configuration.')
-flags.DEFINE_string('checkpoint_path', None,
+flags.DEFINE_string('checkpoint', None,
                     'Path to checkpoint that will be loaded in.')
 flags.DEFINE_string('out_dir', None,
                     'Output path for logs and model predictions.')
@@ -82,13 +82,8 @@ def run_inference(out_dir: str, params: ml_collections.ConfigDict,
 
   with strategy.scope():
     model = model_utils.get_model(params)
-    try:
-      model.load_weights(checkpoint_path)
-    except AssertionError:
-      # Use this approach for models saved in tf.train.Checkpoint format through
-      # the custom training loop code.
-      checkpoint = tf.train.Checkpoint(model=model)
-      checkpoint.restore(checkpoint_path)
+    checkpoint = tf.train.Checkpoint(model=model)
+    checkpoint.restore(checkpoint_path)
 
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=params.learning_rate),
@@ -116,6 +111,6 @@ def main(unused_args=None):
 if __name__ == '__main__':
   flags.mark_flags_as_required([
       'out_dir',
-      'checkpoint_path',
+      'checkpoint',
   ])
   app.run(main)

@@ -68,7 +68,7 @@ flags.DEFINE_string(
     'populated automatically when using XManager.')
 flags.DEFINE_string('tpu_topology', None, 'Tpu topology.')
 flags.DEFINE_bool('debug', False,
-                  'Enables dumping debug info for Tensorboard Debugger V2.')
+                  'Enables dumping debug info for TensorBoard Debugger V2.')
 flags.DEFINE_bool(
     'write_checkpoint_metrics', False,
     'Whether to write eval metrics for each checkpoint during training.')
@@ -109,8 +109,8 @@ def get_datasets(
 def get_step_counts(params: ml_collections.ConfigDict) -> Tuple[int, int]:
   """Returns the steps for training and evaluation."""
   if params.limit <= 0:
-    steps_per_epoch = params.train_data_size // params.batch_size
-    steps_per_eval = params.eval_data_size // params.batch_size
+    steps_per_epoch = params.n_train_examples // params.batch_size
+    steps_per_eval = params.n_eval_examples // params.batch_size
   else:
     # When `params.limit` is set, use it to determine epoch size.
     steps_per_epoch = max(1, params.limit // params.batch_size)
@@ -216,7 +216,7 @@ def train_model(out_dir: str, params: ml_collections.ConfigDict,
 
     # model, optimizer, and checkpoint must be created under `strategy.scope`.
     checkpoint, initial_epoch = get_checkpoint_and_initial_epoch(
-        model, optimizer, out_dir, steps_per_epoch)
+        model, optimizer, out_dir, steps_per_epoch)  # pytype: disable=wrong-arg-types  # typed-keras
 
   # Create summary writers
   train_writer = tf.summary.create_file_writer(os.path.join(out_dir, 'train'))

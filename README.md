@@ -13,9 +13,6 @@ Biosciences (PacBio) Circular Consensus Sequencing (CCS) data.
 pip install deepconsensus==0.1.0
 ```
 
-You can ignore errors regarding google-nucleus installation, such as `ERROR:
-Failed building wheel for google-nucleus`.
-
 ### From source
 
 ```bash
@@ -23,6 +20,11 @@ git clone https://github.com/google/deepconsensus.git
 cd deepconsensus
 source install.sh
 ```
+
+If you have GPU, run `source install-gpu.sh` instead, which will use
+`requirements-gpu.txt` instead of `requirements.txt`. Currently the only
+difference is that the GPU version installs `tensorflow-gpu` instead of
+`intel-tensorflow`.
 
 (Optional) After `source install.sh`, if you want to run all unit tests, you can
 do:
@@ -33,7 +35,7 @@ do:
 
 ## Usage
 
-See the [quick start](docs/quick_start.md).
+See the [quick start](https://github.com/google/deepconsensus/blob/main/docs/quick_start.md).
 
 ## Where does DeepConsensus fit into my pipeline?
 
@@ -41,7 +43,8 @@ After a PacBio sequencing run, DeepConsensus is meant to be run on the CCS reads
 and subreads to create new corrected reads in FASTQ format that can take the
 place of the CCS reads for downstream analyses.
 
-See the [quick start](docs/quick_start.md) for an example of inputs and outputs.
+See the [quick start](https://github.com/google/deepconsensus/blob/main/docs/quick_start.md)
+for an example of inputs and outputs.
 
 NOTE: This initial release of DeepConsensus (v0.1) is not yet optimized for
 speed, and only runs on CPUs. We anticipate this version to be too slow for many

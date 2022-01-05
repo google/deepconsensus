@@ -27,46 +27,57 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """Functions for yielding input arrays for models."""
 
-import os
-from typing import Optional, Tuple, Union
+import itertools
+from typing import Dict, Iterable, List, Optional, Tuple, Union
 
 import ml_collections
+from ml_collections.config_dict import config_dict
 import numpy as np
 import tensorflow.compat.v2 as tf
 
-from deepconsensus.tf_examples import tf_example_utils
 from deepconsensus.utils import dc_constants
 
 
-# Define field names, types, and sizes for TFRecords.
-_PROTO_FEATURES_TRAIN = {
-    'subreads/encoded':
-        tf.io.FixedLenFeature(shape=[], dtype=tf.string),
+# Define base fields for TFRecords.
+PROTO_FEATURES_INFERENCE = {
+    'name': tf.io.FixedLenFeature(shape=[1], dtype=tf.string),
+    'window_pos': tf.io.FixedLenFeature(shape=[1], dtype=tf.int64),
+    'subreads/encoded': tf.io.FixedLenFeature(shape=[], dtype=tf.string),
     # Shapes are written to the int64_list of the example.
-    'subreads/shape':
-        tf.io.FixedLenFeature(shape=[3], dtype=tf.int64),
-    'subreads/num_passes':
-        tf.io.FixedLenFeature(shape=[1], dtype=tf.int64),
-    'label/encoded':
-        tf.io.FixedLenFeature(shape=[], dtype=tf.string),
-    'label/shape':
-        tf.io.FixedLenFeature(shape=[1], dtype=tf.int64),
-    'deepconsensus_input/encoded':
-        tf.io.FixedLenFeature(shape=[], dtype=tf.string),
+    'subreads/shape': tf.io.FixedLenFeature(shape=[3], dtype=tf.int64),
+    'subreads/num_passes': tf.io.FixedLenFeature(shape=[1], dtype=tf.int64),
 }
+# Add on label fields to train proto.
+PROTO_FEATURES_TRAIN = dict(
+    {
+        'label/encoded': tf.io.FixedLenFeature(shape=[], dtype=tf.string),
+        'label/shape': tf.io.FixedLenFeature(shape=[1], dtype=tf.int64)
+    }, **PROTO_FEATURES_INFERENCE)
 
-# Define field names, types, and sizes for TFRecords.
-_PROTO_FEATURES_INFERENCE = {
-    'subreads/encoded':
-        tf.io.FixedLenFeature(shape=[], dtype=tf.string),
-    # Shapes are written to the int64_list of the example.
-    'subreads/shape':
-        tf.io.FixedLenFeature(shape=[3], dtype=tf.int64),
-    'subreads/num_passes':
-        tf.io.FixedLenFeature(shape=[1], dtype=tf.int64),
-    'deepconsensus_input/encoded':
-        tf.io.FixedLenFeature(shape=[], dtype=tf.string),
-}
+
+def get_total_rows(max_passes: int) -> int:
+  """Returns total rows in input tf.Examples. Update if other signals added."""
+  # For each of `max_subreads`, we have three pieces of information: bases, PW,
+  # and IP. We also have four rows for SN, and one for strand.
+  # The information is structured as follows:
+  # Bases: (0, params.max_passes - 1) represent bases.
+  # PW: rows params.max_passes to (params.max_passes * 2 - 1)
+  # IP: rows (params.max_passes * 2) to (params.max_passes * 3 - 1)
+  # Strand: rows (params.max_passes * 3) to (params.max_passes * 4)
+  # CCS+SN: rows (params.max_passes * 4 + 1) to (params.max_passes * 4 + 5)
+  # The last five rows are CCS sequence (1), and SN (4).
+  return (max_passes * 4) + 5
+
+
+def get_indices(max_passes: int) -> Iterable[Tuple[int, int]]:
+  """Return row indices for bases/PW/IP/SN in tf.Example subreads array."""
+  base_indices = (0, max_passes)
+  pw_indices = (max_passes, max_passes * 2)
+  ip_indices = (max_passes * 2, max_passes * 3)
+  strand_indices = (max_passes * 3, max_passes * 4)
+  ccs_indices = (max_passes * 4, max_passes * 4 + 1)
+  sn_indices = (max_passes * 4 + 1, max_passes * 4 + 5)
+  return base_indices, pw_indices, ip_indices, strand_indices, ccs_indices, sn_indices
 
 
 @tf.function
@@ -80,55 +91,15 @@ def remove_internal_gaps_and_shift(label: tf.Tensor) -> tf.Tensor:
   return tf.squeeze(padded)
 
 
-def process_input(
-    proto_string: Union[tf.Tensor, bytes],
+def format_rows(
+    subreads: tf.Tensor,
     params: ml_collections.FrozenConfigDict,
-    inference: bool,
     cap_pw: bool = True,
     cap_ip: bool = True,
     cap_sn: bool = True,
-) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
-  """Parses a serialized tf.Example to return an input, label, and metadata.
-
-  Args:
-    proto_string: A tensor containing the serialized tf.Example string.
-    params: A config dictionary containing desired hyperparameters.
-    inference: Whether to parse tf.Examples for inference or training.
-    cap_pw: If True, pulse width values are capped.
-    cap_ip: If True, interpulse distance values are capped.
-    cap_sn: If True, signal to noise ratio values are capped.
-
-  Returns:
-    rows: Input matrix that will be fed into neural networks for training.
-    label: Label vector that will be used for training.
-    num_passes: The number of subreads present in this example.
-    encoded_deepconsensus_input: A tensor containing the serialized
-      DeepConsensusInput proto for this example.
-  """
-  if inference:
-    proto_features = _PROTO_FEATURES_INFERENCE
-  else:
-    proto_features = _PROTO_FEATURES_TRAIN
-  parsed_features = tf.io.parse_single_example(
-      serialized=proto_string, features=proto_features)
-  flat_subreads = tf.io.decode_raw(parsed_features['subreads/encoded'],
-                                   dc_constants.TF_DATA_TYPE)
-  subreads = tf.reshape(flat_subreads, parsed_features['subreads/shape'])
-  num_passes = tf.cast(parsed_features['subreads/num_passes'],
-                       dc_constants.TF_DATA_TYPE)
-  if not inference:
-    flat_label = tf.io.decode_raw(parsed_features['label/encoded'],
-                                  dc_constants.TF_DATA_TYPE)
-    label = tf.reshape(flat_label, parsed_features['label/shape'])
-
-    if params.remove_label_gaps:
-      label = remove_internal_gaps_and_shift(label)
-    label.set_shape((params.max_length))
-  else:
-    label = tf.convert_to_tensor(np.array([]))
-
-  encoded_deepconsensus_input = parsed_features['deepconsensus_input/encoded']
-  base_indices, pw_indices, ip_indices, strand_indices, ccs_indices, sn_indices = tf_example_utils.get_indices(
+) -> tf.Tensor:
+  """Returns model input matrix formatted based on input args."""
+  base_indices, pw_indices, ip_indices, strand_indices, ccs_indices, sn_indices = get_indices(
       params.max_passes)
   base_rows = subreads[slice(*base_indices)]
   pw_rows = subreads[slice(*pw_indices)]
@@ -158,44 +129,108 @@ def process_input(
   else:
     rows = tf.concat(
         [base_rows, pw_rows, ip_rows, strand_rows, ccs_rows, sn_rows], axis=0)
-    num_rows = tf_example_utils.get_total_rows(params.max_passes)
+    num_rows = get_total_rows(params.max_passes)
 
   rows.set_shape((num_rows, params.max_length, params.num_channels))
-  return rows, label, num_passes, encoded_deepconsensus_input
+  return rows
 
 
-def get_dataset_with_metadata(file_pattern: str,
-                              num_epochs: Optional[int],
-                              batch_size: int,
-                              params: ml_collections.FrozenConfigDict,
-                              inference: bool,
-                              cap_pw: bool = True,
-                              cap_ip: bool = True,
-                              limit: int = -1,
-                              drop_remainder: bool = True) -> tf.data.Dataset:
-  """Parses TFRecords and return a dataset with metadata."""
+def process_feature_dict(
+    features: Dict[str, tf.Tensor],
+    params: Union[config_dict.ConfigDict, config_dict.FrozenConfigDict],
+    cap_pw: bool = True,
+    cap_ip: bool = True,
+    cap_sn: bool = True,
+) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
+  """Parses a serialized tf.Example to return an input, label, and metadata.
 
-  # Output type annotations added for clarity, but Pytype only expects
-  # Tuple[Any, Any] here and does not check for tf.Tensors.
-  def _process_input_helper(
-      proto_string: tf.Tensor
-  ) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
-    return process_input(
-        proto_string=proto_string,
-        params=params,
-        cap_pw=cap_pw,
-        cap_ip=cap_ip,
-        inference=inference)
+  Args:
+    features: Dictionary of features to process for the model.
+    params: A config dictionary containing desired hyperparameters.
+    cap_pw: If True, pulse width values are capped.
+    cap_ip: If True, interpulse distance values are capped.
+    cap_sn: If True, signal to noise ratio values are capped.
 
-  filenames = tf.io.gfile.glob(file_pattern)
-  ds = tf.data.TFRecordDataset(filenames=filenames, compression_type='GZIP')
-  ds = ds.map(map_func=_process_input_helper)
-  ds = ds.shuffle(buffer_size=params.buffer_size, reshuffle_each_iteration=True)
-  ds = ds.repeat(num_epochs)
-  ds = ds.batch(batch_size=batch_size, drop_remainder=drop_remainder)
-  ds = ds.prefetch(tf.data.experimental.AUTOTUNE)
-  ds = ds.take(limit)
-  return ds
+  Returns:
+    rows: Input matrix that will be fed into neural networks for training.
+    label: Label vector that will be used for training.
+    num_passes: The number of subreads present in this example.
+  """
+  label = tf.convert_to_tensor(np.array([]))
+  subreads = features['subreads']
+  num_passes = features['subreads/num_passes']
+  rows = format_rows(
+      subreads=subreads,
+      params=params,
+      cap_pw=cap_pw,
+      cap_ip=cap_ip,
+      cap_sn=cap_sn)
+  return rows, label, num_passes, features['window_pos'], features['name']
+
+
+def parse_example(proto_string, inference=False):
+  if inference:
+    proto_features = PROTO_FEATURES_INFERENCE
+  else:
+    proto_features = PROTO_FEATURES_TRAIN
+  parsed_features = tf.io.parse_single_example(
+      serialized=proto_string, features=proto_features)
+  return parsed_features
+
+
+def process_input(
+    proto_string: Union[tf.Tensor, bytes],
+    params: ml_collections.FrozenConfigDict,
+    inference: bool,
+    cap_pw: bool = True,
+    cap_ip: bool = True,
+    cap_sn: bool = True,
+) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
+  """Parses a serialized tf.Example to return an input, label, and metadata.
+
+  Args:
+    proto_string: A tensor containing the serialized tf.Example string.
+    params: A config dictionary containing desired hyperparameters.
+    inference: Whether to parse tf.Examples for inference or training.
+    cap_pw: If True, pulse width values are capped.
+    cap_ip: If True, interpulse distance values are capped.
+    cap_sn: If True, signal to noise ratio values are capped.
+
+  Returns:
+    rows: Input matrix that will be fed into neural networks for training.
+    label: Label vector that will be used for training.
+    num_passes: The number of subreads present in this example.
+  """
+  parsed_features = parse_example(proto_string, inference)
+  flat_subreads = tf.io.decode_raw(parsed_features['subreads/encoded'],
+                                   dc_constants.TF_DATA_TYPE)
+  subreads = tf.reshape(flat_subreads, parsed_features['subreads/shape'])
+  num_passes = tf.cast(parsed_features['subreads/num_passes'],
+                       dc_constants.TF_DATA_TYPE)
+  if not inference:
+    flat_label = tf.io.decode_raw(parsed_features['label/encoded'],
+                                  dc_constants.TF_DATA_TYPE)
+    label = tf.reshape(flat_label, parsed_features['label/shape'])
+
+    if params.remove_label_gaps:
+      label = remove_internal_gaps_and_shift(label)
+    label.set_shape((params.max_length))
+  else:
+    label = tf.convert_to_tensor(np.array([]))
+  rows = format_rows(
+      subreads=subreads,
+      params=params,
+      cap_pw=cap_pw,
+      cap_ip=cap_ip,
+      cap_sn=cap_sn)
+  return rows, label, num_passes
+
+
+def drop_metadata(*args):
+  """Return only subreads and label."""
+  subreads = args[0]
+  label = args[1]
+  return (subreads, label)
 
 
 def get_dataset(file_pattern: str,
@@ -207,37 +242,53 @@ def get_dataset(file_pattern: str,
                 cap_pw: bool = True,
                 cap_ip: bool = True,
                 limit: int = -1,
-                drop_remainder: bool = True) -> tf.data.Dataset:
+                drop_remainder: bool = True,
+                keep_metadata: bool = False) -> tf.data.Dataset:
   """Parses TFRecords and return a dataset."""
 
-  ds = get_dataset_with_metadata(
-      file_pattern=file_pattern,
-      num_epochs=num_epochs,
-      batch_size=batch_size,
-      params=params,
-      inference=inference,
-      cap_pw=cap_pw,
-      cap_ip=cap_ip,
-      limit=limit,
-      drop_remainder=drop_remainder)
+  # Output type annotations added for clarity, but Pytype only expects
+  # Tuple[Any, Any] here and does not check for tf.Tensors.
+  def _process_input_helper(
+      proto_string: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
+    return process_input(
+        proto_string=proto_string,
+        params=params,
+        cap_pw=cap_pw,
+        cap_ip=cap_ip,
+        inference=inference)
 
-  def _remove_metadata(subreads, label, num_passes, deepconsensus_input):
-    """Returns only subread and label, without keeping metadata."""
-    del num_passes, deepconsensus_input
-    return subreads, label
+  file_patterns = create_glob_list(file_pattern)
+  ds = tf.data.TFRecordDataset(file_patterns, compression_type='GZIP')
+  ds = ds.map(map_func=_process_input_helper)
+  ds = ds.shuffle(buffer_size=params.buffer_size, reshuffle_each_iteration=True)
+  if num_epochs:
+    ds = ds.repeat(num_epochs)
 
-  ds = ds.map(_remove_metadata)
+  # When training, we can drop num_passes, window_pos, and name.
+  if not keep_metadata:
+    ds = ds.map(
+        drop_metadata, num_parallel_calls=tf.data.AUTOTUNE, deterministic=False)
+  ds = ds.batch(batch_size=batch_size, drop_remainder=drop_remainder)
+  ds = ds.prefetch(tf.data.experimental.AUTOTUNE)
+  ds = ds.take(limit)
   return ds
 
 
-# <internal>
-# approach for training.
+def create_glob_list(paths: Union[str, List[str]]) -> List[str]:
+  """Creates a globbed file list."""
+  file_patterns = []
+  if isinstance(paths, str):
+    paths = [paths]
+  for path in paths:
+    file_patterns.append(tf.io.gfile.glob(path))
+  return list(itertools.chain(*file_patterns))
+
+
 def create_input_fn(params, mode, limit: int = -1, drop_remainder: bool = True):
   """Returns an input function that will return a tfrecord based dataset."""
 
   def _process_input_helper(
-      proto_string: tf.Tensor
-  ) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
+      proto_string: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
     # Set inference to False here because we only use this function with
     # tf.Examples that have labels present.
     return process_input(
@@ -251,34 +302,30 @@ def create_input_fn(params, mode, limit: int = -1, drop_remainder: bool = True):
     """Prepares a dataset for training or evaluation."""
     is_training = (mode == 'train')
     batch_size = params.batch_size
-    if mode == 'train':
-      file_pattern = os.path.join(params['train_path'], '*')
-    else:
-      file_pattern = os.path.join(params['eval_path'], '*')
-    dataset = tf.data.Dataset.list_files(file_pattern, shuffle=is_training)
-    dataset = dataset.repeat()
-    dataset = dataset.interleave(
+    assert mode in ['train', 'eval']
+    file_patterns = create_glob_list(params[f'{mode}_path'])
+    ds = tf.data.Dataset.list_files(file_patterns, shuffle=is_training)
+    ds = ds.repeat()
+    ds = ds.interleave(
         lambda x: tf.data.TFRecordDataset(x, compression_type='GZIP'),
         num_parallel_calls=tf.data.AUTOTUNE,
         deterministic=False)
     if is_training:
-      dataset = dataset.shuffle(
+      ds = ds.shuffle(
           buffer_size=params['buffer_size'], reshuffle_each_iteration=True)
 
     # Best practices suggest batching first, but this map errors out when we
     # batch first, so do this before mapping.
-    dataset = dataset.map(
+    ds = ds.map(
         _process_input_helper,
         num_parallel_calls=tf.data.experimental.AUTOTUNE,
         deterministic=False)
     # Best practices suggest batching before mapping.
-    dataset = dataset.batch(batch_size, drop_remainder=drop_remainder)
-    dataset = dataset.map(
-        lambda subreads, label, num_passes, dc_input: (subreads, label),
-        num_parallel_calls=tf.data.AUTOTUNE,
-        deterministic=False)
-    dataset = dataset.prefetch(tf.data.experimental.AUTOTUNE)
-    dataset = dataset.take(limit)
-    return dataset
+    ds = ds.batch(batch_size, drop_remainder=drop_remainder)
+    ds = ds.map(
+        drop_metadata, num_parallel_calls=tf.data.AUTOTUNE, deterministic=False)
+    ds = ds.prefetch(tf.data.experimental.AUTOTUNE)
+    ds = ds.take(limit)
+    return ds
 
   return input_fn

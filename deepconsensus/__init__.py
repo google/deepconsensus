@@ -26,8 +26,3 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """__init__.py."""
-__version__ = '0.1.0'
-# Loading Nucleus before anything else. Without this first, we observed that
-# we would encounter a "Could not load PyProto API" error if we import
-# Apache Beam first.
-from nucleus.io import bed

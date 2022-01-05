@@ -41,13 +41,26 @@ here = pathlib.Path(__file__).parent.resolve()
 long_description = (here / 'README.md').read_text(encoding='utf-8')
 
 REQUIREMENTS = (here / 'requirements.txt').read_text().splitlines()
+EXTRA_REQUIREMENTS = {
+    'cpu': ['intel-tensorflow>=2.4.0,<=2.7.0'],
+    'gpu': ['tensorflow-gpu>=2.4.0,<=2.7.0']
+}
+
+
+def get_version():
+  """Fetch version from utils/dc_constants.py."""
+  with open(here / 'deepconsensus/utils/dc_constants.py', 'r') as constants:
+    for line in constants:
+      if line.startswith('__version__'):
+        return line.split('=')[1].strip(' \'\n')
+
 
 setup(
     # To support installation via
     #
     # $ pip install deepconsensus
     name='deepconsensus',
-    version='0.1.0',  # Keep in sync with __init__.__version__.
+    version=get_version(),  # Retrieved from dc_constants.__version__.
     description='DeepConsensus',
     long_description=long_description,
     long_description_content_type='text/markdown',
@@ -56,6 +69,11 @@ setup(
     keywords='bioinformatics',
     packages=find_packages(where='.'),
     package_dir={'deepconsensus': 'deepconsensus'},
-    python_requires='>=3.6,<3.7',
+    python_requires='>=3.6',
     install_requires=REQUIREMENTS,
+    extras_require=EXTRA_REQUIREMENTS,
+    entry_points="""
+    [console_scripts]
+    deepconsensus = deepconsensus.cli:run
+    """,
 )

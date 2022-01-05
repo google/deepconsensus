@@ -33,13 +33,23 @@ from typing import Callable, Optional, Tuple
 import ml_collections
 import tensorflow as tf
 
-from deepconsensus.tf_examples import tf_example_utils
-from official.nlp import modeling
-from official.nlp.bert import bert_models
-from official.nlp.bert import configs
+from deepconsensus.models import data_providers
 from official.nlp.transformer import embedding_layer
 from official.nlp.transformer import model_utils
 from official.nlp.transformer import transformer
+from official.nlp import modeling
+from official.nlp.bert import bert_models
+from official.nlp.bert import configs
+
+
+class EmbeddingSharedWeights(embedding_layer.EmbeddingSharedWeights):
+
+  def call(self, inputs):
+    # make sure 0 ids match to zero emebeddings.
+    embeddings = super().call(inputs)
+    mask = tf.cast(tf.not_equal(inputs, 0), embeddings.dtype)
+    embeddings *= tf.expand_dims(mask, -1)
+    return embeddings
 
 
 # pylint: disable=invalid-name
@@ -135,8 +145,8 @@ class EncoderOnlyTransformer(transformer.Transformer):
   """Modified encoder-only transformer model for DeepConsensus.
 
   This implementation extends the one in
-  https://github.com/tensorflow/models/blob/master/official/nlp/transformer/transformer.py. The
-  main changes are:
+  https://github.com/tensorflow/models/blob/master/official/legacy/transformer/transformer.py.
+  The main changes are:
 
   * Removing logic relating to converting tokens to embeddings, since the
   DeepConsensus is already in the form of vectors for each position.
@@ -216,7 +226,7 @@ class EncoderOnlyTransformer(transformer.Transformer):
       # hidden_size. If hidden_size is odd, add an empty row to make it even.
       if self.params.add_pos_encoding and encoder_inputs.shape[2] % 2 != 0:
         empty_row = tf.zeros(
-            shape=(self.params.batch_size, self.params.max_length, 1))
+            shape=(encoder_inputs.shape[0], encoder_inputs.shape[1], 1))
         encoder_inputs = tf.concat([encoder_inputs, empty_row], axis=-1)
         assert self.params.hidden_size == encoder_inputs.shape[2]
 
@@ -282,26 +292,26 @@ class EncoderOnlyLearnedValuesTransformer(EncoderOnlyTransformer):
                name: Optional[str] = None):
     super(EncoderOnlyLearnedValuesTransformer, self).__init__(params, name=name)
     if params.use_bases:
-      self.bases_embedding_layer = embedding_layer.EmbeddingSharedWeights(
+      self.bases_embedding_layer = EmbeddingSharedWeights(
           params['vocab_size'], params['per_base_hidden_size'])
     if params.use_pw:
       pw_vocab_size = params.PW_MAX + 1
-      self.pw_embedding_layer = embedding_layer.EmbeddingSharedWeights(
-          pw_vocab_size, params['pw_hidden_size'])
+      self.pw_embedding_layer = EmbeddingSharedWeights(pw_vocab_size,
+                                                       params['pw_hidden_size'])
     if params.use_ip:
       ip_vocab_size = params.IP_MAX + 1
-      self.ip_embedding_layer = embedding_layer.EmbeddingSharedWeights(
-          ip_vocab_size, params['ip_hidden_size'])
+      self.ip_embedding_layer = EmbeddingSharedWeights(ip_vocab_size,
+                                                       params['ip_hidden_size'])
 
 
     if params.use_sn:
       sn_vocab_size = params.SN_MAX + 1
-      self.sn_embedding_layer = embedding_layer.EmbeddingSharedWeights(
-          sn_vocab_size, params['sn_hidden_size'])
+      self.sn_embedding_layer = EmbeddingSharedWeights(sn_vocab_size,
+                                                       params['sn_hidden_size'])
 
     if params.use_strand:
       strand_vocab_size = params.STRAND_MAX + 1
-      self.strand_embedding_layer = embedding_layer.EmbeddingSharedWeights(
+      self.strand_embedding_layer = EmbeddingSharedWeights(
           strand_vocab_size, params['strand_hidden_size'])
 
   def encode(self, inputs: tf.Tensor, attention_bias: tf.Tensor,
@@ -312,7 +322,7 @@ class EncoderOnlyLearnedValuesTransformer(EncoderOnlyTransformer):
     # [batch_size, length, embedding_size]. Embed each row of the input
     # separately and then concatenate.
     embedded_inputs = []
-    base_indices, pw_indices, ip_indices, strand_indices, ccs_indices, sn_indices = tf_example_utils.get_indices(
+    base_indices, pw_indices, ip_indices, strand_indices, ccs_indices, sn_indices = data_providers.get_indices(
         self.params['max_passes'])
     if self.params.use_bases:
       for i in range(*base_indices):

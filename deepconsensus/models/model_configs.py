@@ -26,7 +26,7 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """Architecture and training hyperparameters for networks."""
-
+# pylint: disable=line-too-long
 import os
 
 import ml_collections
@@ -151,32 +151,24 @@ def _set_transformer_learned_embeddings_hparams(params):
 
 
 
+
 ############### Base params for different datasets ###############
-
-
-
-
-def _set_human_aligned_to_ccs_data_hparams(params):
-  """Updates the given config with values for human data aligned to CCS."""
-  params.tf_dataset = 'tf20210723-1bffff17'
-
-
 
 
 def _set_test_data_hparams(params):
   """Updates the given config with values for a test dataset."""
   curr_dir = os.path.dirname(__file__)
-  params.train_path = os.path.join(
-      curr_dir, '../testdata/ecoli/output/tf_examples/train')
+  params.train_path = [
+      os.path.join(curr_dir, '../testdata/human_1m/tf_examples/train/*')
+  ]
   # Use same data for train/eval/hard eval because the eval test data is empty.
   params.eval_path = params.train_path
-  params.hard_eval_path = params.train_path
   params.test_path = params.train_path
   params.inference_path = os.path.join(
-      curr_dir, '../testdata/ecoli/inference_output/tf_examples/inference')
-  params.train_data_size = 253
-  params.eval_data_size = 253
-  params.max_passes = 30
+      curr_dir, '../testdata/human_1m/tf_examples/inference/*')
+  params.n_train_examples = 253
+  params.n_eval_examples = 253
+  params.max_passes = 20
 
   # The test dataset uniquely sets these model-level parameters because the test
   # dataset is small and we want to keep model files small.

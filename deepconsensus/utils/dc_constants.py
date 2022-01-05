@@ -26,39 +26,57 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """Common constants shared across the DeepConsensus codebase."""
+import enum
 
 import numpy as np
+import pysam
 import tensorflow as tf
 
-from nucleus.protos import cigar_pb2
-from nucleus.util import cigar as cigar_utils
+# DeepConsensus Version
+__version__ = '0.2.0'
 
-# Do not include soft clips.
-OPS_TO_CONSIDER = frozenset([
-    cigar_pb2.CigarUnit.ALIGNMENT_MATCH, cigar_pb2.CigarUnit.SEQUENCE_MATCH,
-    cigar_pb2.CigarUnit.INSERT, cigar_pb2.CigarUnit.DELETE,
-    cigar_pb2.CigarUnit.SEQUENCE_MISMATCH
-])
-
-READ_ADVANCING_OPS = frozenset([
-    cigar_pb2.CigarUnit.ALIGNMENT_MATCH, cigar_pb2.CigarUnit.SEQUENCE_MATCH,
-    cigar_pb2.CigarUnit.INSERT, cigar_pb2.CigarUnit.SEQUENCE_MISMATCH
-])
-
-OP_CHARS_TO_CONSIDER = frozenset(
-    [cigar_utils.CIGAR_OPS_TO_CHAR[op] for op in OPS_TO_CONSIDER])
-
+# Vocab
 GAP_OR_PAD = ' '
 ALLOWED_BASES = 'ATCG'
 VOCAB = GAP_OR_PAD + ALLOWED_BASES
 
-GAP_OR_PAD = ' '
-
-GAP_OR_PAD_INT = VOCAB.index(GAP_OR_PAD)
-
 # Value used to fill in empty rows in the tf.Examples.
 GAP_OR_PAD_INT = VOCAB.index(GAP_OR_PAD)
 
+PYSAM_READ_ADVANCING_OPS = list(
+    map(int, [pysam.CMATCH, pysam.CINS, pysam.CEQUAL, pysam.CDIFF]))
+
+
+class Issue(int, enum.Enum):
+  TRUTH_ALIGNMENT_NOT_FOUND = 1
+  SUPP_TRUTH_ALIGNMENT = 2
+
+
+class Strand(int, enum.Enum):
+  UNKNOWN = 0
+  FORWARD = 1  # read.is_reverse == False
+  REVERSE = 2  # read.is_reverse == True
+
+
+CIGAR_OPS = {
+    'M': pysam.CMATCH,
+    'I': pysam.CINS,
+    'D': pysam.CDEL,
+    'N': pysam.CREF_SKIP,
+    'S': pysam.CSOFT_CLIP,
+    'H': pysam.CHARD_CLIP,
+    'P': pysam.CPAD,
+    '=': pysam.CEQUAL,
+    'X': pysam.CDIFF,
+    'B': pysam.CBACK
+}
+
+# Defining this as ints makes comparison operations faster.
+PYSAM_CINS = int(pysam.CINS)
+PYSAM_CSOFT_CLIP = int(pysam.CSOFT_CLIP)
+PYSAM_CHARD_CLIP = int(pysam.CHARD_CLIP)
+
+# Dtypes
 TF_DATA_TYPE = tf.float32
 NP_DATA_TYPE = np.float32
 

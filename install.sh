@@ -30,15 +30,9 @@
 #
 # This script installs all the packages required to build DeepConsensus.
 #
-# This script will run as-is on Ubuntu 18.
+# This script will run as-is on Ubuntu 20.04.
 #
 # We also assume that apt-get is already installed and available.
-
-# ------------------------------------------------------------------------------
-# Global setting for nucleus builds
-# ------------------------------------------------------------------------------
-
-NUCLEUS_PIP_VERSION=0.5.8
 
 function note_build_stage {
   echo "========== [$(date)] Stage '${1}' starting"
@@ -63,11 +57,3 @@ echo "$(pip --version)"
 # Install python packages used by DeepConsensus.
 ################################################################################
 python3 -m pip install --user -r requirements.txt
-
-# Pre-compile the proto file.
-mkdir -p nucleus/protos
-curl "https://raw.githubusercontent.com/google/nucleus/${NUCLEUS_PIP_VERSION}/nucleus/protos/bed.proto" \
- > nucleus/protos/bed.proto
-
-sudo apt install -y protobuf-compiler
-protoc deepconsensus/protos/deepconsensus.proto --python_out=.

@@ -35,23 +35,15 @@ set -euo pipefail
 
 python3 -m deepconsensus.models.data_providers_test
 python3 -m deepconsensus.models.losses_and_metrics_test
-python3 -m deepconsensus.models.majority_vote_transforms_test
 python3 -m deepconsensus.models.model_inference_test
 python3 -m deepconsensus.models.model_inference_transforms_test
-python3 -m deepconsensus.models.model_inference_with_beam_test
 python3 -m deepconsensus.models.model_train_custom_loop_test
 python3 -m deepconsensus.models.model_utils_test
 python3 -m deepconsensus.models.networks_test
-python3 -m deepconsensus.models.run_majority_vote_model_test
-python3 -m deepconsensus.postprocess.stitch_predictions_test
-python3 -m deepconsensus.postprocess.stitch_predictions_transforms_test
-python3 -m deepconsensus.preprocess.beam_io_test
+python3 -m deepconsensus.postprocess.stitch_utils_test
 python3 -m deepconsensus.preprocess.generate_input_test
 python3 -m deepconsensus.preprocess.generate_input_transforms_test
 python3 -m deepconsensus.preprocess.merge_datasets_test
 python3 -m deepconsensus.preprocess.merge_datasets_transforms_test
 python3 -m deepconsensus.preprocess.preprocess_utils_test
-python3 -m deepconsensus.tf_examples.tf_example_transforms_test
-python3 -m deepconsensus.tf_examples.tf_example_utils_test
-python3 -m deepconsensus.tf_examples.write_tf_examples_test
 python3 -m deepconsensus.utils.utils_test

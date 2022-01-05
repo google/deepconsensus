@@ -39,9 +39,7 @@ import tensorflow as tf
 from deepconsensus.models import data_providers
 from deepconsensus.models import losses_and_metrics
 from deepconsensus.models import networks
-from deepconsensus.tf_examples import tf_example_utils
 from deepconsensus.utils import dc_constants
-from nucleus.io import tfrecord
 from official.nlp.transformer import misc
 
 
@@ -79,24 +77,27 @@ def get_deepconsensus_metrics(name_prefix='') -> List[tf.keras.metrics.Metric]:
   ] + per_class_accuracy_metrics
 
 
-def get_record_shape(dataset_path_and_name: str) -> List[int]:
+def get_record_shape(dataset_path: str) -> List[int]:
   """Returns an array that represents the shape of records in the given path.
 
-  Input `dataset_path_and_name` should look something like
+  Input `dataset_path` should look something like
   /path/to/data/train/train, where the actual TFRecords are named something
   like /path/to/data/train/train-00228-of-00724.tfrecords.gz
 
   Args:
-    dataset_path_and_name: string representing the sharded path for TFRecords.
-      These records should be zipped tf.Examples protos with a subreads/shape
-      field. This field has three values representing [hidden_size, max_length,
+    dataset_path: string representing the sharded path for TFRecords. These
+      records should be zipped tf.Examples protos with a subreads/shape field.
+      This field has three values representing [hidden_size, max_length,
       channels].
+
+  Raises:
+    Exception: If no tfrecord files are found.
   """
-  tfrecord_files = tf.io.gfile.glob(dataset_path_and_name + '*')
-  file_pattern = dataset_path_and_name + f'@{len(tfrecord_files)}.tfrecords.gz'
-  records = tfrecord.read_tfrecords(file_pattern)
-  features_dict = next(records)
-  return features_dict.features.feature['subreads/shape'].int64_list.value[:]
+  tfrecord_files = data_providers.create_glob_list(dataset_path)
+  records = tf.data.TFRecordDataset(
+      tfrecord_files, compression_type='GZIP').as_numpy_iterator()
+  features = data_providers.parse_example(next(records))
+  return list(map(int, features['subreads/shape'].numpy()))
 
 
 def extract_max_length(dataset_sharded_path: str) -> int:
@@ -126,10 +127,18 @@ def get_model(params: ml_collections.ConfigDict) -> tf.keras.Model:
 
 
 
+def del_param(params, name):
+  if name in params:
+    del params[name]
+
+
 def modify_params(params: ml_collections.ConfigDict,
                   tpu: Optional[str] = None,
                   tpu_topology: Optional[str] = None,
-                  dataset_path: Optional[str] = None) -> None:
+                  dataset_path: Optional[str] = None,
+                  speedy: bool = False,
+                  max_length: Optional[int] = None,
+                  is_training: bool = True) -> None:
   """Updates params as needed for the model and hardware being usued.
 
   This function should be called before working with a ConfigDict to ensure that
@@ -141,6 +150,11 @@ def modify_params(params: ml_collections.ConfigDict,
     tpu: Name of the TPU being used or None.
     tpu_topology: of the form NxM, where N * M is the number of chips.
     dataset_path: Optional. Path to dataset from which to extract max_length.
+    speedy: Bool. Skip time-consuming steps that only add nice-to-have
+        information.
+    max_length: Equivalent to padded_len in preprocess. If given, use this to
+        set params.max_length instead of inspecting the examples.
+    is_training: When not in training mode, do not run set_dataset
 
   Returns:
     Given config dictionary with some added or modified values based on the
@@ -148,7 +162,13 @@ def modify_params(params: ml_collections.ConfigDict,
   """
   # Cannot set params that did not previously exist without unlocking.
   with params.unlocked():
-
+    if not is_training:
+      # Only allow dataset specification in params when in training mode.
+      del_param(params, 'tf_dataset')
+      del_param(params, 'train_path')
+      del_param(params, 'eval_path')
+      del_param(params, 'test_path')
+      del_param(params, 'inference_path')
     # For all models, scale batch size by number of GPUs when using GPUs. If no
     # GPUs are being used, keep the original batch size.
     num_gpus = len(tf.config.experimental.list_physical_devices('GPU'))
@@ -175,12 +195,14 @@ def modify_params(params: ml_collections.ConfigDict,
 
     # Get max_length from dataset passed in, which is done at inference time.
     # Otherwise, we can expect params.train_path to exist.
-    if dataset_path:
+    if max_length is not None:
+      params.max_length = max_length
+    elif dataset_path:
       params.max_length = extract_max_length(
           os.path.join(dataset_path, os.path.basename(dataset_path)))
     else:
-      params.max_length = extract_max_length(
-          os.path.join(params.train_path, 'train'))
+      params.max_length = extract_max_length(params.train_path)
+
     if params.model_name == 'transformer_learn_values':
       dim = ((params.use_bases * params.per_base_hidden_size) +
              (params.use_pw * params.pw_hidden_size) +
@@ -190,7 +212,7 @@ def modify_params(params: ml_collections.ConfigDict,
                             (params.use_sn * params.sn_hidden_size * 4) +
                             (params.use_ccs * params.per_base_hidden_size))
     else:
-      params.hidden_size = tf_example_utils.get_total_rows(params.max_passes)
+      params.hidden_size = data_providers.get_total_rows(params.max_passes)
 
     if 'transformer' in params.model_name and params.hidden_size % 2 != 0:
       params.hidden_size += 1
@@ -225,8 +247,6 @@ def run_inference_and_write_results(model: tf.keras.Model,
   """Runs inference with given model and dataset and writes out results."""
 
   eval_paths = [params.eval_path]
-  if params.hard_eval_path:
-    eval_paths.append(params.hard_eval_path)
 
   if not tf.io.gfile.isdir(out_dir):
     tf.io.gfile.makedirs(out_dir)
@@ -236,7 +256,7 @@ def run_inference_and_write_results(model: tf.keras.Model,
     lines_to_write = []
     for path in eval_paths:
       validation_dataset = data_providers.get_dataset(
-          file_pattern=os.path.join(path, '*'),
+          file_pattern=path,
           # We only want to run one pass over the dataset.
           num_epochs=1,
           batch_size=params.batch_size,

@@ -1,0 +1,19 @@
+{
+  "n_zmws": 10,
+  "n_total": 8,
+  "n_examples": 0,
+  "n_train_examples": 80,
+  "n_eval_examples": 100,
+  "processed_zmws": 0,
+  "max_passes": "20",
+  "example_width": "100",
+  "padding": "20",
+  "tensor_height": "85",
+  "tensor_width": "120",
+  "subreads_to_ccs": "/mnt/data/input/gs/deepconsensus/pacbio/datasets/human_8m/subreads/v3/m64014_181210_152538/subreads_to_ccs/m64014_181210_152538-00499-of-00500.subreads_to_ccs.bam",
+  "ccs_fasta": "/mnt/data/input/deepconsensus/pacbio/datasets/human_1m/subreads/test_data/m54238_180901_011437/ccs_fasta/m54238_180901_011437-00000-of-00300.ccs.fasta",
+  "truth_to_ccs": null,
+  "truth_bed": null,
+  "split": null,
+  "version": "0.2.0"
+}

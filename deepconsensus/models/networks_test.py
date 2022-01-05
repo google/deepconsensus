@@ -28,7 +28,6 @@
 """Tests for deepconsensus.models.networks."""
 
 import itertools
-import os
 
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -46,7 +45,7 @@ def get_input_example(params: ml_collections.ConfigDict,
                       inference: bool) -> np.ndarray:
   """Returns one example from the training dataset for given params."""
   dataset = data_providers.get_dataset(
-      file_pattern=os.path.join(params.train_path, '*'),
+      file_pattern=params.train_path,
       num_epochs=params.num_epochs,
       batch_size=params.batch_size,
       params=params,

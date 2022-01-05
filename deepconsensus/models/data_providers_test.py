@@ -27,6 +27,9 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """Tests for deepconsensus.models.data_providers."""
 
+import json
+from typing import Any, Dict, Tuple
+
 from absl.testing import absltest
 from absl.testing import parameterized
 import numpy as np
@@ -35,10 +38,24 @@ import tensorflow as tf
 from deepconsensus.models import data_providers
 from deepconsensus.models import model_configs
 from deepconsensus.models import model_utils
-from deepconsensus.protos import deepconsensus_pb2
-from deepconsensus.tf_examples import tf_example_utils
 from deepconsensus.utils import dc_constants
 from deepconsensus.utils import test_utils
+
+
+def get_test_dataset(inference: bool) -> Tuple[str, Dict[str, Any]]:
+  """Loads inference or training dataset and json summary."""
+  if inference:
+    dataset_path = 'human_1m/tf_examples/inference/*.tfrecord.gz'
+    summary_json = 'human_1m/tf_examples/summary/summary.inference.json'
+    size_key = 'n_inference_examples'
+  else:
+    dataset_path = 'human_1m/tf_examples/train/*.tfrecord.gz'
+    summary_json = 'human_1m/tf_examples/summary/summary.training.json'
+    size_key = 'n_train_examples'
+  file_pattern = test_utils.deepconsensus_testdata(dataset_path)
+  summary_json_path = test_utils.deepconsensus_testdata(summary_json)
+  summary = json.load(tf.io.gfile.GFile(summary_json_path))
+  return file_pattern, summary[size_key]
 
 
 class DataProvidersTest(parameterized.TestCase):
@@ -87,13 +104,7 @@ class DataProvidersTest(parameterized.TestCase):
     # Dataset sizes computed using gqui. Currently, eval set is empty because
     # the testdata only contains one molecule, which is added to training set
     # based on end position.
-    # <internal>
-    if inference:
-      dataset_path = 'ecoli/inference_output/tf_examples/inference/*.tfrecords.gz'
-    else:
-      dataset_path = 'ecoli/output/tf_examples/train/*.tfrecords.gz'
-    file_pattern = test_utils.deepconsensus_testdata(dataset_path)
-    dataset_size = 253
+    file_pattern, dataset_size = get_test_dataset(inference)
     params = model_configs.get_config('transformer+test')
     model_utils.modify_params(params)
     dataset = data_providers.get_dataset(
@@ -155,25 +166,19 @@ class DataProvidersTest(parameterized.TestCase):
     # Dataset sizes computed using gqui. Currently, eval set is empty because
     # the testdata only contains one molecule, which is added to training set
     # based on end position.
-    # <internal>
-    if inference:
-      dataset_path = 'ecoli/inference_output/tf_examples/inference/*.tfrecords.gz'
-    else:
-      dataset_path = 'ecoli/output/tf_examples/train/*.tfrecords.gz'
-    file_pattern = test_utils.deepconsensus_testdata(dataset_path)
-    dataset_size = 253
+    file_pattern, dataset_size = get_test_dataset(inference)
     params = model_configs.get_config('transformer+test')
     model_utils.modify_params(params)
-    dataset = data_providers.get_dataset_with_metadata(
+    dataset = data_providers.get_dataset(
         file_pattern=file_pattern,
         num_epochs=num_epochs,
         batch_size=batch_size,
         params=params,
         drop_remainder=False,
-        inference=inference)
+        inference=inference,
+        keep_metadata=True)
     total = 0
-    for subreads, label, num_passes, encoded_deepconsensus_input in dataset.as_numpy_iterator(
-    ):
+    for subreads, label, num_passes in dataset.as_numpy_iterator():
       # Last batch may contain fewer examples.
       if not inference:
         self.assertLen(subreads, len(label))
@@ -182,15 +187,6 @@ class DataProvidersTest(parameterized.TestCase):
       self.assertTrue(tf.reduce_all(num_passes <= 20))
       self.assertTrue(tf.reduce_all(num_passes > 0))
       total += len(subreads)
-
-      # Sanity check that DeepConsensusInput protos can be parsed correctly.
-      for i in range(len(encoded_deepconsensus_input)):
-        curr_deepconsensus_input = deepconsensus_pb2.DeepConsensusInput.FromString(
-            encoded_deepconsensus_input[i])
-        curr_num_passes = num_passes[i]
-        self.assertLessEqual(curr_num_passes,
-                             len(curr_deepconsensus_input.subreads))
-        self.assertNotEmpty(curr_deepconsensus_input.subreads)
     self.assertEqual(total, num_epochs * dataset_size)
 
   @parameterized.named_parameters(
@@ -209,11 +205,7 @@ class DataProvidersTest(parameterized.TestCase):
   )
   def test_get_dataset_with_pw_ip(self, num_epochs, batch_size, inference):
     """Checks that batches are of expected size and all examples yielded."""
-    if inference:
-      dataset_path = 'ecoli/inference_output/tf_examples/inference/*.tfrecords.gz'
-    else:
-      dataset_path = 'ecoli/output/tf_examples/train/*.tfrecords.gz'
-    file_pattern = test_utils.deepconsensus_testdata(dataset_path)
+    file_pattern, _ = get_test_dataset(inference)
     params = model_configs.get_config('transformer_learn_values+test')
     model_utils.modify_params(params)
     dataset = data_providers.get_dataset(
@@ -225,7 +217,7 @@ class DataProvidersTest(parameterized.TestCase):
     check_not_empty = False
     for subreads, _ in dataset.as_numpy_iterator():
       check_not_empty = True
-      base_indices, pw_indices, ip_indices, strand_indices, ccs_indices, sn_indices = tf_example_utils.get_indices(
+      base_indices, pw_indices, ip_indices, strand_indices, ccs_indices, sn_indices = data_providers.get_indices(
           params.max_passes)
       base_rows = subreads[:, slice(*base_indices), :, :]
       pw_rows = subreads[:, slice(*pw_indices), :, :]
@@ -268,11 +260,7 @@ class DataProvidersTest(parameterized.TestCase):
   )
   def test_dataset_with_limit_option(self, limit, inference):
     """Checks that batches are of expected size and all examples yielded."""
-    if inference:
-      dataset_path = 'ecoli/inference_output/tf_examples/inference/*.tfrecords.gz'
-    else:
-      dataset_path = 'ecoli/output/tf_examples/train/*.tfrecords.gz'
-    file_pattern = test_utils.deepconsensus_testdata(dataset_path)
+    file_pattern, _ = get_test_dataset(inference)
     params = model_configs.get_config('transformer_learn_values+test')
     model_utils.modify_params(params)
     # Fetch the complete dataset.
