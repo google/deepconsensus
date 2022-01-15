@@ -27,23 +27,23 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 # Script to test DeepConsensus.
-# Tested with Python3.6.
+# Tested with Python3.8.
 # Before running this, run:
 #   source install.sh
 
 set -euo pipefail
 
+python3 -m deepconsensus.inference.quick_inference_test
 python3 -m deepconsensus.models.data_providers_test
 python3 -m deepconsensus.models.losses_and_metrics_test
-python3 -m deepconsensus.models.model_inference_test
 python3 -m deepconsensus.models.model_inference_transforms_test
-python3 -m deepconsensus.models.model_train_custom_loop_test
-python3 -m deepconsensus.models.model_utils_test
 python3 -m deepconsensus.models.networks_test
 python3 -m deepconsensus.postprocess.stitch_utils_test
-python3 -m deepconsensus.preprocess.generate_input_test
-python3 -m deepconsensus.preprocess.generate_input_transforms_test
-python3 -m deepconsensus.preprocess.merge_datasets_test
-python3 -m deepconsensus.preprocess.merge_datasets_transforms_test
-python3 -m deepconsensus.preprocess.preprocess_utils_test
+python3 -m deepconsensus.preprocess.preprocess_test
+python3 -m deepconsensus.preprocess.utils_test
 python3 -m deepconsensus.utils.utils_test
+
+# These tests take longer to run.
+python3 -m deepconsensus.models.model_inference_test
+python3 -m deepconsensus.models.model_train_custom_loop_test
+python3 -m deepconsensus.models.model_utils_test

@@ -47,8 +47,7 @@ cd deepconsensus
 source install.sh
 ```
 
-If you have GPU, run `source install-gpu.sh` instead, which will use
-`requirements-gpu.txt` instead of `requirements.txt`. Currently the only
+If you have GPU, run `source install-gpu.sh` instead. Currently the only
 difference is that the GPU version installs `tensorflow-gpu` instead of
 `intel-tensorflow`.
 
