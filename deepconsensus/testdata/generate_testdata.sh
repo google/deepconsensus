@@ -43,7 +43,7 @@ mkdir -p ${TEST_DIR}
 mkdir -p ${TEST_DIR}/tf_examples
 SUBREADS_TO_CCS=${TEST_DIR}/subreads_to_ccs.bam
 CCS_FASTA=${TEST_DIR}/ccs.fasta
-DATASET_SUMMARY=${TEST_DIR}/dataset_summary.json
+DATASET_SUMMARY=${TEST_DIR}/summary.training.json
 
 TRUTH_TO_CCS=${TEST_DIR}/truth_to_ccs.bam
 TRUTH_BED=${TEST_DIR}/truth.bed
@@ -117,10 +117,13 @@ grep -f /tmp/truth_contigs.txt > ${TRUTH_SPLIT}
 # generate tf examples #
 #======================#
 
+# Use cpus=0 to ensure deterministic output.
+
 # Inference examples
 blaze run -c opt //learning/genomics/deepconsensus/preprocess:preprocess -- \
   --subreads_to_ccs=${SUBREADS_TO_CCS} \
   --ccs_fasta=${CCS_FASTA} \
+  --cpus=0 \
   --output="${TEST_DIR}/tf_examples/@split/@split.tfrecord.gz"
 
 
@@ -131,4 +134,5 @@ blaze run -c opt //learning/genomics/deepconsensus/preprocess:preprocess -- \
   --truth_to_ccs=${TRUTH_TO_CCS} \
   --truth_bed=${TRUTH_BED} \
   --truth_split=${TRUTH_SPLIT} \
+  --cpus=0 \
   --output="${TEST_DIR}/tf_examples/@split/@split.tfrecord.gz"

@@ -81,25 +81,25 @@ class GetStepCountsTest(parameterized.TestCase):
   @parameterized.named_parameters(
       dict(
           testcase_name='simple',
-          n_train_examples=1000,
-          n_eval_examples=100,
+          n_examples_train=1000,
+          n_examples_eval=100,
           batch_size=10,
           limit=-1,
           expected_step_counts=(100, 10)),
       dict(
           testcase_name='with_limit',
-          n_train_examples=1000,
-          n_eval_examples=100,
+          n_examples_train=1000,
+          n_examples_eval=100,
           batch_size=10,
           limit=100,
           expected_step_counts=(10, 10)),
   )
-  def test_get_step_counts(self, n_train_examples, n_eval_examples, batch_size,
+  def test_get_step_counts(self, n_examples_train, n_examples_eval, batch_size,
                            limit, expected_step_counts):
     params = model_configs.get_config('fc+test')
     with params.unlocked():
-      params.n_train_examples = n_train_examples
-      params.n_eval_examples = n_eval_examples
+      params.n_examples_train = n_examples_train
+      params.n_examples_eval = n_examples_eval
       params.limit = limit
       params.batch_size = batch_size
 

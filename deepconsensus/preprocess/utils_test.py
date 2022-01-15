@@ -75,8 +75,8 @@ def create_segment(bases: str,
   segment = pysam.AlignedSegment(header=TEST_HEADER)
   segment.qname = name
   segment.seq = bases
-  segment.set_tag('ip', ip or [0] * len(bases))
-  segment.set_tag('pw', pw or [0] * len(bases))
+  segment.set_tag('ip', ip or [1] * len(bases))
+  segment.set_tag('pw', pw or [2] * len(bases))
   segment.set_tag('sn', sn or [0.5] * 4)
   segment.cigarstring = cigar
   segment.is_reverse = is_reverse
@@ -325,7 +325,65 @@ class TestExpandClipIndent(parameterized.TestCase):
           },
           expected_bases='AAAA',
           expected_cigar=[pysam.CMATCH] * 4,
-          expected_strand=Strand.REVERSE))
+          expected_strand=Strand.REVERSE),
+      dict(
+          testcase_name='strand reverse ip/pw values',
+          segment_args={
+              'bases': 'AAAA',
+              'cigar': '4M',
+              'ip': [1, 2, 3, 4],
+              'pw': [1, 2, 3, 4],
+              'is_reverse': True,
+          },
+          expected_bases='AAAA',
+          expected_ip=[1, 2, 3, 4][::-1],
+          expected_pw=[1, 2, 3, 4][::-1],
+          expected_cigar=[pysam.CMATCH] * 4,
+          expected_strand=Strand.REVERSE),
+      dict(
+          testcase_name='strand forward ip/pw values',
+          segment_args={
+              'bases': 'AAAA',
+              'cigar': '4M',
+              'ip': [1, 2, 3, 4],
+              'pw': [1, 2, 3, 4],
+              'is_reverse': False,
+          },
+          expected_bases='AAAA',
+          expected_ip=[1, 2, 3, 4],
+          expected_pw=[1, 2, 3, 4],
+          expected_cigar=[pysam.CMATCH] * 4,
+          expected_strand=Strand.FORWARD),
+      dict(
+          testcase_name='strand reverse with indent',
+          segment_args={
+              'bases': 'AAAA',
+              'cigar': '4M',
+              'ip': [1, 2, 3, 4],
+              'pw': [1, 2, 3, 4],
+              'is_reverse': True,
+              'reference_start': 2,
+          },
+          expected_bases='  AAAA',
+          expected_ip=[0, 0, 4, 3, 2, 1],
+          expected_pw=[0, 0, 4, 3, 2, 1],
+          expected_cigar=[pysam.CREF_SKIP] * 2 + [pysam.CMATCH] * 4,
+          expected_strand=Strand.REVERSE),
+      dict(
+          testcase_name='strand forward with indent',
+          segment_args={
+              'bases': 'AAAA',
+              'cigar': '4M',
+              'ip': [1, 2, 3, 4],
+              'pw': [1, 2, 3, 4],
+              'is_reverse': False,
+              'reference_start': 2,
+          },
+          expected_bases='  AAAA',
+          expected_ip=[0, 0, 1, 2, 3, 4],
+          expected_pw=[0, 0, 1, 2, 3, 4],
+          expected_cigar=[pysam.CREF_SKIP] * 2 + [pysam.CMATCH] * 4,
+          expected_strand=Strand.FORWARD))
   def test_expand_clip_indent(self,
                               segment_args,
                               expected_bases,
@@ -777,18 +835,19 @@ class TestDcExampleFunctionality(absltest.TestCase):
 
     # dc_example repr
     self.assertEqual(
-        repr(dc_example).splitlines()[2].split(), ['0', '>AAAAAAAAAA'])
+        repr(dc_example).splitlines()[2].split(), ['0', '1', '>AAAAAAAAAA'])
 
     # dc_example slicing:
     self.assertEqual(
-        repr(dc_example[:5]).splitlines()[2].split(), ['0', '>AAAAA'])
+        repr(dc_example[:5]).splitlines()[2].split(), ['0', '1', '>AAAAA'])
 
     self.assertTrue(dc_example.is_training)
 
     # dc_example iterate windows
     examples = dc_example.iter_examples()
     example = next(examples)
-    self.assertEqual(repr(example).splitlines()[2].split(), ['0', '>AAAAAAAAA'])
+    self.assertEqual(
+        repr(example).splitlines()[2].split(), ['0', '1', '>AAAAAAAAA'])
 
     # dc_example test padding
     padded_ex = np.concatenate(

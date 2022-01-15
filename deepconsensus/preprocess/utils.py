@@ -488,7 +488,6 @@ class DcExample:
       if start_pos > self.ccs_width:
         break
       if window.is_empty:
-        logging.warning('window at %d has no ccs alignment.', start_pos)
         self.counter['n_examples_no_ccs_idx'] += 1
         continue
       # If the label extends beyond width + padding,
@@ -595,15 +594,15 @@ class DcExample:
     end = preview.ccs.ccs_bounds.stop
     output = ''
     output += (f'{self.name} CCS({start}-{end}) {self.label_coords}'.strip() +
-               f'\n{"-"*(preview.width+21)}\n')
+               f'\n{"-"*(preview.width+24)}\n')
     for subread in self.subreads:
       subread_range = subread.name.split('/')[2]
-      output += f'{subread_range:<20} >{str(subread)}\n'
-    output += f'{"CCS":<20} >{str(preview.ccs)}\n'
+      output += f'{subread_range:<20} {subread.strand} >{str(subread)}\n'
+    output += f'{"CCS":<22} >{str(preview.ccs)}\n'
 
     if self.is_training:
       label = str(self.label)
-      output += f'{"Label":<20} >{label}\n'
+      output += f'{"Label":<22} >{label}\n'
     return output
 
 
@@ -775,6 +774,7 @@ def expand_clip_indent(read: pysam.AlignedSegment,
   * Expand sequence by placing gaps where deletions are present in alignment.
   * Remove bases that are part of soft-clips.
   * Indent alignment if start position is > 0.
+  * Reverse ip/pw values when the strand is reverse.
 
   Args:
       read: a pysam aligned segment representing a subread, ccs, or label aln.
@@ -798,11 +798,22 @@ def expand_clip_indent(read: pysam.AlignedSegment,
   # Fill read objects based on aligned read idx positions.
   new_seq[read_idx >= 0] = list(read.seq)
 
+  if read.is_reverse:
+    strand = dc_constants.Strand.REVERSE
+  else:
+    strand = dc_constants.Strand.FORWARD
+
   # pw/ip values are never set for labels.
   # truth_range is used to test if we are working with a label Read.
   if not truth_range:
-    new_pw[read_idx >= 0] = read.get_tag('pw')
-    new_ip[read_idx >= 0] = read.get_tag('ip')
+    # Reverse ip/pw values if the strand is reversed.
+    pw_vals = read.get_tag('pw')
+    ip_vals = read.get_tag('ip')
+    if strand == dc_constants.Strand.REVERSE:
+      pw_vals = pw_vals[::-1]
+      ip_vals = ip_vals[::-1]
+    new_pw[read_idx >= 0] = pw_vals
+    new_ip[read_idx >= 0] = ip_vals
     sn = np.array(read.get_tag('sn'))
   else:
     sn = np.empty(0)
@@ -812,16 +823,12 @@ def expand_clip_indent(read: pysam.AlignedSegment,
   new_cigar = np.fromiter(cigar_seq, dtype=np.uint8)
   # Filter hard_clip from cigar.
   new_cigar = new_cigar[new_cigar != dc_constants.PYSAM_CHARD_CLIP]
-  if read.is_reverse:
-    strand = dc_constants.Strand.REVERSE
-  else:
-    strand = dc_constants.Strand.FORWARD
 
   # Trim sequence if it is soft-padded.
   if np.sum(new_cigar == dc_constants.PYSAM_CSOFT_CLIP) > 0:
     new_seq[new_cigar ==
             dc_constants.PYSAM_CSOFT_CLIP] = dc_constants.GAP_OR_PAD
-    # <internal>
+    # TODO: binary search ignoring -1 vals here.
     qstart = np.where(read_idx == read.query_alignment_start)[0][0]
     qend = np.where(read_idx == read.query_alignment_end - 1)[0][0] + 1
     # Trim soft-padded segments from truth regions.

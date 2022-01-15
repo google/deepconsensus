@@ -6,7 +6,7 @@ generate a FASTQ of consensus reads.
 
 This covers the following stages:
 1. Running [pbccs] with the `--all` option to output all reads (it is possible
-   to use DeepConsensus from existing pbccs reasd, but yield will be higher when
+   to use DeepConsensus from existing pbccs reads, but yield will be higher when
    including all reads)
 2. Aligning subreads to the pbccs consensus with [actc]
 3. Running DeepConsensus using one of two options (with pip or using Docker)
@@ -18,12 +18,13 @@ We tested the DeepConsensus quickstart with the following configuration:
 ```bash
 OS: Ubuntu 20.04.3 LTS (x86_64)
 Python version: Python 3.8.10
-CPUs: 64vCPUs (x86_64, GenuineIntel, Cascade Lake)
-Memory: 256G
+CPUs: 16vCPUs (x86_64, GenuineIntel, SkyLake)
+Memory: 60G
+GPU: 1 nvidia-tesla-p100
 ```
 
 DeepConsensus can be run on any compatible Unix systems. In this case, we used a
-[n2-standard-64 machine on GCP](https://cloud.google.com/compute/docs/general-purpose-machines#n2_machines).
+[n1-standard-16 machine on GCP](https://cloud.google.com/compute/docs/general-purpose-machines#n1_machines), with a NVIDIA P100 GPU.
 
 ## Download data for testing
 
@@ -40,13 +41,21 @@ mkdir -p "${DATA}"
 mkdir -p "${MODEL_DIR}"
 
 # Download the input data which is PacBio subreads.
-# <internal>
-gsutil cp gs://brain-genomics/pichuan/b208710498/v0.2/subreads.bam* "${DATA}"/
+gsutil cp gs://brain-genomics-public/research/deepconsensus/quickstart/v0.2/subreads.bam* "${DATA}"/
 
 # Download DeepConsensus model.
-# <internal>
-gsutil cp gs://brain-genomics-public/research/deepconsensus/models/v0.1/* "${MODEL_DIR}"/
+gsutil cp gs://brain-genomics-public/research/deepconsensus/models/v0.2/* "${MODEL_DIR}"/
 ```
+
+## If running with GPU, set up your GPU machine correctly.
+
+In our example run, because we're using GPU, we used:
+```bash
+curl https://raw.githubusercontent.com/google/deepvariant/r1.3/scripts/install_nvidia_docker.sh -o install_nvidia_docker.sh
+bash install_nvidia_docker.sh
+```
+
+to make sure our GPU is set up correctly.
 
 ## Process the data with [pbccs] and [actc]
 
@@ -54,12 +63,12 @@ You can install `ccs` and `actc` on your own. For convenience, we put them in
 a Docker image:
 
 ```
-<internal>
-DOCKER_IMAGE=gcr.io/google.com/brain-genomics/deepconsensus:211222
+DOCKER_IMAGE=google/deepconsensus:0.2.0rc-gpu
 sudo docker pull ${DOCKER_IMAGE}
 ```
 
-<internal>
+DeepConsensus operates on subreads aligned to a draft consensus. We use [pbccs]
+to generate this.
 
 ```bash
 sudo docker run -v "${DATA}":"/data" ${DOCKER_IMAGE} \
@@ -97,50 +106,24 @@ sudo docker run -v "${DATA}":"/data" ${DOCKER_IMAGE} \
 
 ## Run DeepConsensus
 
-### (Option 1) Run DeepConsensus using Docker
+### Install and run DeepConsensus via pip install
 
-You can directly run DeepConsensus with Docker:
+You can install DeepConsensus using `pip`:
 
 ```bash
-sudo docker run -v "${DATA}":"/data" -v "${MODEL_DIR}":"/model" ${DOCKER_IMAGE} \
-  deepconsensus run \
-  --subreads_to_ccs=/data/subreads_to_ccs.bam  \
-  --ccs_fasta=/data/ccs.fasta \
-  --checkpoint=/model/checkpoint-50 \
-  --output=/data/output.fastq \
-  --batch_zmws=100
+pip install deepconsensus[gpu]==0.2.0rc0
 ```
 
-This took ~12.5 minutes on the 64-vCPU instance on GCP we tested on.
-At the end of your run, you should see:
-
-```
-Processed 1000 ZMWs in 715.4207527637482 seconds
-Outcome counts: OutcomeCounter(empty_sequence=0, only_gaps_and_padding=50, failed_quality_filter=435, failed_length_filter=0, success=515)
-```
-
-### (Option 2) Install and run DeepConsensus via pip install
-
-Empirically, sometimes we see running in Docker might cause a slight overhead.
-Another option is to install DeepConsensus via `pip install`:
-
-<internal>
-```bash
-pip install \
-  --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple \
-  deepconsensus[cpu]==0.2.0b208710498
-```
-
-If you're using a GPU machine, install with `deepconsensus[gpu]` instead.
-
-<internal>
-I do.
+NOTE: If you're using a CPU machine, install with `deepconsensus[cpu]` instead.
 
 To make sure the `deepconsensus` CLI works, set the PATH:
 
 ```bash
 export PATH="/home/${USER}/.local/bin:${PATH}"
 ```
+
+The step above is important. Otherwise you might see an error like:
+`deepconsensus: command not found`.
 
 ```bash
 CHECKPOINT=${MODEL_DIR}/checkpoint-50
@@ -153,17 +136,10 @@ time deepconsensus run \
   --batch_zmws=100
 ```
 
-<internal>
-`W1223 05:23:07.523110 140307704698688 utils.py:474] window at 10900 has no ccs alignment.`
-, which is not great for users. Rerun this whole thing and remove
-this <internal>
-
-This took ~12 minutes on the 64-vCPU instance on GCP we tested on.
-
 At the end of your run, you should see:
 ```
-Processed 1000 ZMWs in 721.7911970615387 seconds
-Outcome counts: OutcomeCounter(empty_sequence=0, only_gaps_and_padding=50, failed_quality_filter=435, failed_length_filter=0, success=515)
+Processed 1000 ZMWs in 346.73112511634827 seconds
+Outcome counts: OutcomeCounter(empty_sequence=0, only_gaps_and_padding=50, failed_quality_filter=424, failed_length_filter=0, success=526)
 ```
 the outputs can be found at the following paths:
 
@@ -172,5 +148,42 @@ the outputs can be found at the following paths:
 ls "${DATA}"/output.fastq
 ```
 
+### (Optional) Run DeepConsensus using Docker
+
+If `pip install` didn't work well for you, we encourage you to file
+[a GitHub issue] to let us know.
+
+You can also try running DeepConsensus with Docker:
+
+```bash
+time sudo docker run --gpus all \
+  -v "${DATA}":"/data" -v "${MODEL_DIR}":"/model" ${DOCKER_IMAGE} \
+  deepconsensus run \
+  --subreads_to_ccs=/data/subreads_to_ccs.bam  \
+  --ccs_fasta=/data/ccs.fasta \
+  --checkpoint=/model/checkpoint-50 \
+  --output=/data/output.fastq \
+  --batch_zmws=100
+```
+
+At the end of your run, you should see:
+
+```
+Processed 1000 ZMWs in 433.63712906837463 seconds
+Outcome counts: OutcomeCounter(empty_sequence=0, only_gaps_and_padding=50, failed_quality_filter=424, failed_length_filter=0, success=526)
+```
+
+Currently we notice that the Docker GPU version is slower. We're still trying
+to improve this. If you have any suggestions, please let us know through
+[a GitHub issue].
+
+
+## Tweaking for speed
+
+You might be able to tweak parameters like `--batch_zmws` depending on your
+hardware limit. You can also see [runtime_metrics.md](runtime_metrics.md) for
+runtime on different CPU or GPU machines.
+
 [pbccs]: https://github.com/PacificBiosciences/ccs
 [actc]: https://github.com/PacificBiosciences/align-clr-to-ccs
+[a GitHub issue]: https://github.com/google/deepconsensus/issues

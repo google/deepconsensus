@@ -76,7 +76,7 @@ def run_inference(out_dir: str, params: ml_collections.ConfigDict,
   random.seed(params.seed)
   tf.random.set_seed(params.seed)
 
-  # <internal>
+  # TODO: multiple GPUs don't provide a speedup for inference. We
   # may need to explicitly distribute data to the workers to see speedup.
   strategy = tf.distribute.MirroredStrategy()
 
@@ -100,11 +100,10 @@ def run_inference(out_dir: str, params: ml_collections.ConfigDict,
 
 def main(unused_args=None):
   if not FLAGS.params:
-    params = model_utils.read_params_from_json(
-        checkpoint_path=FLAGS.checkpoint_path)
+    params = model_utils.read_params_from_json(checkpoint_path=FLAGS.checkpoint)
   else:
     params = FLAGS.params
-  run_inference(FLAGS.out_dir, params, FLAGS.checkpoint_path, FLAGS.tpu,
+  run_inference(FLAGS.out_dir, params, FLAGS.checkpoint, FLAGS.tpu,
                 FLAGS.tpu_topology, FLAGS.limit)
 
 

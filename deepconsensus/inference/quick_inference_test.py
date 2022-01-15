@@ -74,7 +74,7 @@ class QuickInferenceTest(parameterized.TestCase):
         output_lengths.append(len(record.sequence))
         count += 1
     self.assertEqual(count, 2)
-    # <internal>
+    # TODO: Figure out why lengths are not deterministic.
     # Not deterministic, might be due to the test model used since other runs
     # with the release model have been deterministic so far.
     # self.assertEqual(expected_lengths, output_lengths)

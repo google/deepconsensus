@@ -113,8 +113,8 @@ class ModelsTest(parameterized.TestCase):
     input_example = get_input_example(config, inference=inference)
     softmax_output_predict = model.predict(input_example)
     softmax_output = model(input_example, training=False).numpy()
-    self.assertTrue(np.array_equal(softmax_output_predict, softmax_output))
-
+    self.assertTrue(
+        np.allclose(softmax_output_predict, softmax_output, rtol=1e-05))
 
 if __name__ == '__main__':
   absltest.main()

@@ -107,7 +107,7 @@ def _set_base_transformer_hparams(params):
   params.add_pos_encoding = True
   params.use_relative_pos_enc = True
   # Num heads should be divisible by hidden size. This value should be tuned for
-  # the production setting. <internal>
+  # the production setting. TODO: update this parameter after
   # tuning.
   params.num_heads = 2
   params.layer_norm = False
@@ -166,8 +166,8 @@ def _set_test_data_hparams(params):
   params.test_path = params.train_path
   params.inference_path = os.path.join(
       curr_dir, '../testdata/human_1m/tf_examples/inference/*')
-  params.n_train_examples = 253
-  params.n_eval_examples = 253
+  params.n_examples_train = 253
+  params.n_examples_eval = 253
   params.max_passes = 20
 
   # The test dataset uniquely sets these model-level parameters because the test

@@ -74,7 +74,7 @@ flags.DEFINE_string(
      'The output filename must end in .tfrecord.gz'))
 flags.DEFINE_string('truth_to_ccs', None, 'Input truth bam aligned to ccs.')
 flags.DEFINE_string('truth_bed', None, 'Input truth bedfile.')
-# <internal>
+# TODO TODO
 flags.DEFINE_string('truth_split', None,
                     'Input file defining train/eval/test splits.')
 flags.DEFINE_integer(

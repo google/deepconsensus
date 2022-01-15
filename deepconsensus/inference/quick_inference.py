@@ -221,13 +221,13 @@ def run_model_on_examples(
               tf.TensorSpec(
                   shape=(options.example_height, model_params.max_length,
                          model_params.num_channels),
-                  dtype=tf.int64),
+                  dtype=dc_constants.TF_DATA_TYPE),
           'subreads/num_passes':
-              tf.TensorSpec(shape=(), dtype=tf.int64),
+              tf.TensorSpec(shape=(), dtype=tf.int32),
           'name':
               tf.TensorSpec(shape=(), dtype=tf.string),
           'window_pos':
-              tf.TensorSpec(shape=(), dtype=tf.int64),
+              tf.TensorSpec(shape=(), dtype=tf.int32),
       })
   dataset = dataset.map(map_func=_process_input_helper)
   dataset = dataset.batch(batch_size=options.batch_size, drop_remainder=False)

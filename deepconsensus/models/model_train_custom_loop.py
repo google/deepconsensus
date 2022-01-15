@@ -109,8 +109,8 @@ def get_datasets(
 def get_step_counts(params: ml_collections.ConfigDict) -> Tuple[int, int]:
   """Returns the steps for training and evaluation."""
   if params.limit <= 0:
-    steps_per_epoch = params.n_train_examples // params.batch_size
-    steps_per_eval = params.n_eval_examples // params.batch_size
+    steps_per_epoch = params.n_examples_train // params.batch_size
+    steps_per_eval = params.n_examples_eval // params.batch_size
   else:
     # When `params.limit` is set, use it to determine epoch size.
     steps_per_epoch = max(1, params.limit // params.batch_size)

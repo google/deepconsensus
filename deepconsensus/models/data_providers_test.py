@@ -47,11 +47,11 @@ def get_test_dataset(inference: bool) -> Tuple[str, Dict[str, Any]]:
   if inference:
     dataset_path = 'human_1m/tf_examples/inference/*.tfrecord.gz'
     summary_json = 'human_1m/tf_examples/summary/summary.inference.json'
-    size_key = 'n_inference_examples'
+    size_key = 'n_examples_inference'
   else:
     dataset_path = 'human_1m/tf_examples/train/*.tfrecord.gz'
     summary_json = 'human_1m/tf_examples/summary/summary.training.json'
-    size_key = 'n_train_examples'
+    size_key = 'n_examples_train'
   file_pattern = test_utils.deepconsensus_testdata(dataset_path)
   summary_json_path = test_utils.deepconsensus_testdata(summary_json)
   summary = json.load(tf.io.gfile.GFile(summary_json_path))

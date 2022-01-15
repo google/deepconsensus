@@ -1,9 +1,11 @@
 # Build with:
 #   sudo docker build -t deepconsensus .
+# For GPU:
+#   sudo docker build --build-arg build_gpu=true --build-arg FROM_IMAGE=nvidia/cuda:11.3.0-cudnn8-runtime -t deepconsensus_gpu .
 
 
-# <internal>
-# https://blog.realkinetic.com/building-minimal-docker-containers-for-python-applications-37d0272c52f3
+
+ARG FROM_IMAGE=continuumio/miniconda3
 
 FROM continuumio/miniconda3 as conda_setup
 RUN conda config --add channels defaults && \
@@ -29,9 +31,13 @@ RUN conda create -n bio \
                     bioconda::samtools=1.10 \
                     bioconda::pyfastx=0.8.4 \
     && conda clean -a
-RUN wget https://github.com/PacificBiosciences/align-clr-to-ccs/releases/download/0.0.3/actc && \
+RUN wget https://github.com/PacificBiosciences/align-clr-to-ccs/releases/download/0.1.0/actc && \
     chmod +x actc && \
     mv actc /opt/conda/bin/
+
+FROM ${FROM_IMAGE} as builder
+COPY --from=conda_setup /opt/conda /opt/conda
+
 ENV PATH=/opt/conda/envs/bio/bin:/opt/conda/bin:"${PATH}"
 ENV LD_LIBRARY_PATH=/opt/conda/envs/bio/lib:/opt/mytools/lib/x86_64-linux-gnu:"${LD_LIBRARY_PATH}"
 

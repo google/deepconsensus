@@ -9,8 +9,34 @@ Biosciences (PacBio) Circular Consensus Sequencing (CCS) data.
 
 ### From pip package
 
+If you're on a GPU machine:
+
 ```bash
-pip install deepconsensus==0.1.0
+pip install deepconsensus[gpu]==0.2.0
+# To make sure the `deepconsensus` CLI works, set the PATH:
+export PATH="/home/${USER}/.local/bin:${PATH}"
+```
+
+If you're on a CPU machine:
+
+```bash
+pip install deepconsensus[cpu]==0.2.0
+# To make sure the `deepconsensus` CLI works, set the PATH:
+export PATH="/home/${USER}/.local/bin:${PATH}"
+```
+
+### From Docker image
+
+For GPU:
+
+```bash
+sudo docker pull google/deepconsensus:0.2.0-gpu
+```
+
+For CPU:
+
+```bash
+sudo docker pull google/deepconsensus:0.2.0
 ```
 
 ### From source
@@ -45,11 +71,6 @@ place of the CCS reads for downstream analyses.
 
 See the [quick start](https://github.com/google/deepconsensus/blob/main/docs/quick_start.md)
 for an example of inputs and outputs.
-
-NOTE: This initial release of DeepConsensus (v0.1) is not yet optimized for
-speed, and only runs on CPUs. We anticipate this version to be too slow for many
-uses. We are now prioritizing speed improvements, which we anticipate can
-achieve acceptable runtimes.
 
 ## How to cite
 
