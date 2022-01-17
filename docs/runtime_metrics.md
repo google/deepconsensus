@@ -17,8 +17,8 @@ gcloud compute instances create "${USER}-n2-64" \
   --zone "us-west1-b"
 ```
 
-* With pip: 735.94 seconds / 1000 ZMWs
-* With Docker: 760.54 seconds / 1000 ZMWs
+* With pip: 725.50 seconds / 1000 ZMWs
+* With Docker: 707.41 seconds / 1000 ZMWs
 
 ## 16vCPUs (Cascade Lake) (n2-standard-16 on GCP)
 
@@ -54,5 +54,5 @@ gcloud compute instances create "${USER}-gpu" \
   --min-cpu-platform "Intel Skylake"
 ```
 
-* With pip: 346.73 seconds / 1000 ZMWs
-* With Docker: 433.64 seconds / 1000 ZMWs
+* With pip: 341.33 seconds / 1000 ZMWs
+* With Docker: 428.85 seconds / 1000 ZMWs

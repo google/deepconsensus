@@ -5,10 +5,10 @@ dataset. This will cover the steps of running from a subreads BAM file and
 generate a FASTQ of consensus reads.
 
 This covers the following stages:
-1. Running [pbccs] with the `--all` option to output all reads (it is possible
-   to use DeepConsensus from existing pbccs reads, but yield will be higher when
+1. Running *[ccs]* with the `--all` option to output all reads (it is possible
+   to use DeepConsensus from existing *ccs* reads, but yield will be higher when
    including all reads)
-2. Aligning subreads to the pbccs consensus with [actc]
+2. Aligning subreads to the *ccs* consensus with *[actc]*
 3. Running DeepConsensus using one of two options (with pip or using Docker)
 
 ## System configuration
@@ -57,17 +57,17 @@ bash install_nvidia_docker.sh
 
 to make sure our GPU is set up correctly.
 
-## Process the data with [pbccs] and [actc]
+## Process the data with *ccs* and *actc*
 
-You can install `ccs` and `actc` on your own. For convenience, we put them in
+You can install *[ccs]* and *[actc]* on your own. For convenience, we put them in
 a Docker image:
 
 ```
-DOCKER_IMAGE=google/deepconsensus:0.2.0rc-gpu
+DOCKER_IMAGE=google/deepconsensus:0.2.0rc1-gpu
 sudo docker pull ${DOCKER_IMAGE}
 ```
 
-DeepConsensus operates on subreads aligned to a draft consensus. We use [pbccs]
+DeepConsensus operates on subreads aligned to a draft consensus. We use *ccs*
 to generate this.
 
 ```bash
@@ -82,9 +82,9 @@ Note that the `--all` flag is a required setting for DeepConsensus to work
 optimally. This allows DeepConsensus to rescue reads previously below the
 quality threshold.
 If you want to split up the task for parallelization, we recommend using the
-`--chunk` option in `ccs`.
+`--chunk` option in *ccs*.
 
-Then, we create `subreads_to_ccs.bam` was created by running [actc]:
+Then, we create `subreads_to_ccs.bam` was created by running *actc*:
 
 ```bash
 sudo docker run -v "${DATA}":"/data" ${DOCKER_IMAGE} \
@@ -94,11 +94,13 @@ sudo docker run -v "${DATA}":"/data" ${DOCKER_IMAGE} \
     /data/subreads_to_ccs.bam
 ```
 
-DeepConsensus will take FASTA format of ccs, so we use samtools to generate.
+DeepConsensus will take FASTA format of *ccs*.
+
+*actc* already converted the BAM into FASTA. Rename and index it.
 
 ```bash
 sudo docker run -v "${DATA}":"/data" ${DOCKER_IMAGE} \
-  samtools fasta --threads "$(nproc)" /data/ccs.bam > ${DATA}/ccs.fasta
+  mv /data/subreads_to_ccs.fasta /data/ccs.fasta
 
 sudo docker run -v "${DATA}":"/data" ${DOCKER_IMAGE} \
   samtools faidx /data/ccs.fasta
@@ -111,7 +113,7 @@ sudo docker run -v "${DATA}":"/data" ${DOCKER_IMAGE} \
 You can install DeepConsensus using `pip`:
 
 ```bash
-pip install deepconsensus[gpu]==0.2.0rc0
+pip install deepconsensus[gpu]==0.2.0rc1
 ```
 
 NOTE: If you're using a CPU machine, install with `deepconsensus[cpu]` instead.
@@ -138,7 +140,7 @@ time deepconsensus run \
 
 At the end of your run, you should see:
 ```
-Processed 1000 ZMWs in 346.73112511634827 seconds
+Processed 1000 ZMWs in 341.3297851085663 seconds
 Outcome counts: OutcomeCounter(empty_sequence=0, only_gaps_and_padding=50, failed_quality_filter=424, failed_length_filter=0, success=526)
 ```
 the outputs can be found at the following paths:
@@ -169,7 +171,7 @@ time sudo docker run --gpus all \
 At the end of your run, you should see:
 
 ```
-Processed 1000 ZMWs in 433.63712906837463 seconds
+Processed 1000 ZMWs in 428.84565114974976 seconds
 Outcome counts: OutcomeCounter(empty_sequence=0, only_gaps_and_padding=50, failed_quality_filter=424, failed_length_filter=0, success=526)
 ```
 
@@ -184,6 +186,6 @@ You might be able to tweak parameters like `--batch_zmws` depending on your
 hardware limit. You can also see [runtime_metrics.md](runtime_metrics.md) for
 runtime on different CPU or GPU machines.
 
-[pbccs]: https://github.com/PacificBiosciences/ccs
+[ccs]: https://ccs.how
 [actc]: https://github.com/PacificBiosciences/align-clr-to-ccs
 [a GitHub issue]: https://github.com/google/deepconsensus/issues
