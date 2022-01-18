@@ -9,7 +9,7 @@ This covers the following stages:
    to use DeepConsensus from existing *ccs* reads, but yield will be higher when
    including all reads)
 2. Aligning subreads to the *ccs* consensus with *[actc]*
-3. Running DeepConsensus using one of two options (with pip or using Docker)
+3. Running DeepConsensus using either pip or Docker
 
 ## System configuration
 
@@ -24,9 +24,9 @@ GPU: 1 nvidia-tesla-p100
 ```
 
 DeepConsensus can be run on any compatible Unix systems. In this case, we used a
-[n1-standard-16 machine on GCP](https://cloud.google.com/compute/docs/general-purpose-machines#n1_machines), with a NVIDIA P100 GPU.
+[n1-standard-16 machine on GCP](https://cloud.google.com/compute/docs/general-purpose-machines#n1_machines), with an NVIDIA P100 GPU.
 
-## Download data for testing
+## Download example data
 
 This will download about 142 MB of data and the model is another 245 MB.
 
@@ -40,16 +40,17 @@ MODEL_DIR="${QUICKSTART_DIRECTORY}/model"
 mkdir -p "${DATA}"
 mkdir -p "${MODEL_DIR}"
 
-# Download the input data which is PacBio subreads.
+# Download the input data, which is PacBio subreads.
 gsutil cp gs://brain-genomics-public/research/deepconsensus/quickstart/v0.2/subreads.bam* "${DATA}"/
 
-# Download DeepConsensus model.
+# Download the DeepConsensus model.
 gsutil cp gs://brain-genomics-public/research/deepconsensus/models/v0.2/* "${MODEL_DIR}"/
 ```
 
 ## If running with GPU, set up your GPU machine correctly.
 
 In our example run, because we're using GPU, we used:
+
 ```bash
 curl https://raw.githubusercontent.com/google/deepvariant/r1.3/scripts/install_nvidia_docker.sh -o install_nvidia_docker.sh
 bash install_nvidia_docker.sh
@@ -62,8 +63,8 @@ to make sure our GPU is set up correctly.
 You can install *[ccs]* and *[actc]* on your own. For convenience, we put them in
 a Docker image:
 
-```
-DOCKER_IMAGE=google/deepconsensus:0.2.0rc1-gpu
+```bash
+DOCKER_IMAGE=google/deepconsensus:0.2.0-gpu
 sudo docker pull ${DOCKER_IMAGE}
 ```
 
@@ -84,7 +85,7 @@ quality threshold.
 If you want to split up the task for parallelization, we recommend using the
 `--chunk` option in *ccs*.
 
-Then, we create `subreads_to_ccs.bam` was created by running *actc*:
+Then, we create `subreads_to_ccs.bam` by running *actc*:
 
 ```bash
 sudo docker run -v "${DATA}":"/data" ${DOCKER_IMAGE} \
@@ -94,7 +95,7 @@ sudo docker run -v "${DATA}":"/data" ${DOCKER_IMAGE} \
     /data/subreads_to_ccs.bam
 ```
 
-DeepConsensus will take FASTA format of *ccs*.
+DeepConsensus will take the consensus sequences output by *ccs* in FASTA format.
 
 *actc* already converted the BAM into FASTA. Rename and index it.
 
@@ -113,7 +114,7 @@ sudo docker run -v "${DATA}":"/data" ${DOCKER_IMAGE} \
 You can install DeepConsensus using `pip`:
 
 ```bash
-pip install deepconsensus[gpu]==0.2.0rc1
+pip install deepconsensus[gpu]==0.2.0
 ```
 
 NOTE: If you're using a CPU machine, install with `deepconsensus[cpu]` instead.
@@ -139,14 +140,15 @@ time deepconsensus run \
 ```
 
 At the end of your run, you should see:
+
 ```
 Processed 1000 ZMWs in 341.3297851085663 seconds
 Outcome counts: OutcomeCounter(empty_sequence=0, only_gaps_and_padding=50, failed_quality_filter=424, failed_length_filter=0, success=526)
 ```
-the outputs can be found at the following paths:
+
+The final output FASTQ can be found at the following path:
 
 ```bash
-# Final output fastq file which has DeepConsensus reads.
 ls "${DATA}"/output.fastq
 ```
 

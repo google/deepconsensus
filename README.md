@@ -64,9 +64,9 @@ See the [quick start](https://github.com/google/deepconsensus/blob/main/docs/qui
 
 ## Where does DeepConsensus fit into my pipeline?
 
-After a PacBio sequencing run, DeepConsensus is meant to be run on the CCS reads
-and subreads to create new corrected reads in FASTQ format that can take the
-place of the CCS reads for downstream analyses.
+After a PacBio sequencing run, DeepConsensus is meant to be run on the subreads
+to create new corrected reads in FASTQ format that can take the place of the CCS
+reads for downstream analyses.
 
 See the [quick start](https://github.com/google/deepconsensus/blob/main/docs/quick_start.md)
 for an example of inputs and outputs.
