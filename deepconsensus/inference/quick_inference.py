@@ -379,9 +379,9 @@ def initialize_model(
     checkpoint = tf.train.Checkpoint(model=model)
     # Note that the `print_model_summary` is necessary because we need to run a
     # forward pass with the model in order for assert_existing_objects_matched
-    # to work as expected. If you don't do this, then
-    # assert_existing_objects_matched will not raise an error even if the wrong
-    # checkpoint is used.
+    # to work as expected.
+    # If you don't do this, then  assert_existing_objects_matched will not
+    # raise an error even if the wrong checkpoint is used.
     # Some context here: b/148023980.
     input_shape = (1, params.hidden_size, params.max_length,
                    params.num_channels)
