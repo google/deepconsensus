@@ -28,8 +28,8 @@
 r"""Inference binary for all neural network models.
 
 To use this binary for running inference with a specific model, the
-corresponding config does not need to be specified and will be inferred. Example
-usage:
+corresponding config does not need to be specified and will be inferred.
+Example usage:
 
 OUT_DIR=/tmp
 CHECKPOINT=<internal>
