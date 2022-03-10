@@ -828,7 +828,7 @@ def expand_clip_indent(read: pysam.AlignedSegment,
   if np.sum(new_cigar == dc_constants.PYSAM_CSOFT_CLIP) > 0:
     new_seq[new_cigar ==
             dc_constants.PYSAM_CSOFT_CLIP] = dc_constants.GAP_OR_PAD
-    # redacted
+    # TODO: binary search ignoring -1 vals here.
     qstart = np.where(read_idx == read.query_alignment_start)[0][0]
     qend = np.where(read_idx == read.query_alignment_end - 1)[0][0] + 1
     # Trim soft-padded segments from truth regions.

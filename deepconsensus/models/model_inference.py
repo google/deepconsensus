@@ -76,7 +76,7 @@ def run_inference(out_dir: str, params: ml_collections.ConfigDict,
   random.seed(params.seed)
   tf.random.set_seed(params.seed)
 
-  # redacted
+  # TODO: multiple GPUs don't provide a speedup for inference. We
   # may need to explicitly distribute data to the workers to see speedup.
   strategy = tf.distribute.MirroredStrategy()
 

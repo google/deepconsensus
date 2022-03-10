@@ -106,7 +106,7 @@ def _set_base_transformer_v2_hparams(params):
   params.model_name = 'transformer_v2'
   params.add_pos_encoding = True
   # Num heads should be divisible by hidden size. This value should be tuned for
-  # the production setting. redacted
+  # the production setting. TODO: update this parameter after
   # tuning.
   params.num_heads = 2
   params.layer_norm = False
@@ -141,7 +141,7 @@ def _set_base_transformer_hparams(params):
   params.add_pos_encoding = True
   params.use_relative_pos_enc = True
   # Num heads should be divisible by hidden size. This value should be tuned for
-  # the production setting. redacted
+  # the production setting. TODO: update this parameter after
   # tuning.
   params.num_heads = 2
   params.layer_norm = False
@@ -186,7 +186,7 @@ def _set_transformer_learned_embeddings_hparams(params):
 
 def _set_transformer_learned_embeddings_v2_hparams(params):
   """Updates given config with values for the learned embeddings transformer."""
-  # redacted
+  # TODO: As we migrate off the legacy code, we might need to
   # adjust the params below. For now just making a copy of the previous params.
   _set_base_transformer_v2_hparams(params)
   params.model_name = 'transformer_learn_values_v2'
@@ -243,8 +243,8 @@ def get_config(config_name: str) -> ml_collections.ConfigDict:
   Valid model names include:
     * fc
     * conv_net
-    * transformer (redacted
-    * transformer_learn_values (redacted
+    * transformer (TODO: legacy codebase)
+    * transformer_learn_values (TODO: legacy codebase)
     * transformer_v2
     * transformer_learn_values_v2
 

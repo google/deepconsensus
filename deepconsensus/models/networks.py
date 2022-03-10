@@ -38,7 +38,7 @@ from official.nlp.modeling import layers
 from official.nlp.modeling import models
 
 
-# redacted
+# TODO: Looking into removing this eventually.
 class ModifiedOnDeviceEmbedding(layers.OnDeviceEmbedding):
   """Subclass of OnDeviceEmbedding, init similar to EmbeddingSharedWeights."""
 
@@ -368,7 +368,7 @@ class EncoderOnlyLearnedValuesTransformer(EncoderOnlyTransformer):
             tf.cast(inputs[:, :, i], tf.int32))
         embedded_inputs.append(embedded)
 
-    # redacted
+    # TODO: experiment with computing a weighted average using snr as
     # weights to aggregate subread-level embeddings (instead of concatenating).
     if self.params.use_sn:
       # The last four elements in the last dimension in the inputs tensor

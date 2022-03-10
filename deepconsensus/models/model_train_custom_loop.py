@@ -30,7 +30,7 @@ r"""Training binary for all neural network models using a custom training loop.
 To use this binary for training a specific model, the corresponding config file
 should be specified as input. Example usage:
 
-# redacted
+# TODO Migrate to transformer_learn_values_v2 when ready.
 CONFIG="//learning/genomics/deepconsensus/models/model_configs.py:transformer_learn_values+ccs"
 OUT_DIR=/tmp
 

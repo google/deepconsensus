@@ -47,7 +47,7 @@ def get_full_sequence(deepconsensus_outputs: Iterable[DCModelOutput],
                       example_width: int,
                       fill_n: bool = False):
   """Stitch together windows of predictions into a full sequence."""
-  # redacted
+  # TODO: Check if sorting is still necessary.
   sorted_deepconsensus_outputs = sorted(
       deepconsensus_outputs, key=lambda dc: dc.window_pos)
   # Build up the full sequence from the sorted windows.

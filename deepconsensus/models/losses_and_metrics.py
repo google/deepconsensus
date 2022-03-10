@@ -160,8 +160,8 @@ def xentropy_ins_cost_fn(y_pred: tf.Tensor, eps=1e-7) -> tf.Tensor:
 class AlignmentLoss(tf.keras.losses.Loss):
   r"""Implements a differentiable alignment loss for DeepConsensus.
 
-  #redacted
-  #redacted
+  #TODO: support for from_logits argument.
+  #TODO: support for annealing schedules (depending on DC API?).
 
   Attributes:
     subs_cost_fn: A (batched) function $\Delta^{B \times L_1} \times \Delta^{B
@@ -447,7 +447,7 @@ class AlignmentLoss(tf.keras.losses.Loss):
     input_band = self.weave_band(values, inf)
     subs_band = self.weave_band(subs_costs, inf)
     ins_costs_pad = tf.pad(ins_costs, [[0, 0], [1, 0]], constant_values=0.)
-    # redacted
+    # TODO: uphere
     insert_expand = tf.tile(
         ins_costs_pad[:, tf.newaxis, :], multiples=[1, len_1 + 1, 1])
     insert_band = self.weave_band(insert_expand, inf)
@@ -492,7 +492,7 @@ class AlignmentLoss(tf.keras.losses.Loss):
     dtype = y_pred.dtype
     # Defines an appropriate large positive float to represent "infinity".
     # inf = tf.dtypes.float16.max if dtype == tf.dtypes.float16 else 1e9
-    inf = tf.convert_to_tensor(1e9, dtype)  # redacted
+    inf = tf.convert_to_tensor(1e9, dtype)  # TODO: float16 support?
 
     # Removes internal gaps, computes length excl. pad and converts to one-hot.
     y_true, seq_lens = self.preprocess_y_true(y_true)
