@@ -34,8 +34,8 @@ import ml_collections
 import tensorflow as tf
 
 from deepconsensus.models import data_providers
+from official.nlp.transformer import transformer
 from official.nlp.modeling import layers
-from official.nlp.modeling import models
 
 
 # TODO: Looking into removing this eventually.
@@ -180,15 +180,7 @@ class EncoderOnlyTransformer(tf.keras.Model):
     if self.params.add_pos_encoding:
       self.position_embedding = layers.RelativePositionEmbedding(
           hidden_size=self.params['hidden_size'])
-    # 'hidden_size' will be inferred by TransformerEncoder, so there is no need
-    # to pass it in.
-    self.encoder_layer = models.seq2seq_transformer.TransformerEncoder(
-        attention_dropout_rate=params['attention_dropout'],
-        intermediate_dropout=params['relu_dropout'],
-        intermediate_size=params['filter_size'],
-        num_attention_heads=params['num_heads'],
-        num_layers=params['num_hidden_layers'],
-        dropout_rate=params['layer_postprocess_dropout'])
+    self.encoder_stack = transformer.EncoderStack(params)
     self.fc1 = tf.keras.layers.Dense(
         units=(params['vocab_size']),
         activation=None,
@@ -225,12 +217,19 @@ class EncoderOnlyTransformer(tf.keras.Model):
       # (batch_size, input_length, hidden_size).
       inputs = tf.transpose(inputs, [0, 2, 1])
 
+      # Attention_bias for our model should be all 0s with shape
+      # (batch_size, 1, 1, input_length). See model_utils.get_padding_bias
+      # to see how this is calculated in the base model.
+      all_zeros = tf.reduce_sum(tf.zeros_like(inputs), -1)
+      attention_bias = tf.expand_dims(tf.expand_dims(all_zeros, 1), 1)
+
       # Run the inputs through the encoder. Encoder returns the softmax output.
-      encoder_outputs = self.encode(inputs, training)
+      encoder_outputs = self.encode(inputs, attention_bias, training)
       logits = encoder_outputs
       return logits
 
-  def encode(self, inputs: tf.Tensor, training: bool) -> tf.Tensor:
+  def encode(self, inputs: tf.Tensor, attention_bias: tf.Tensor,
+             training: bool) -> tf.Tensor:
     """Runs the input through Encoder stack and problem-specific layers."""
 
     with tf.name_scope('encode'):
@@ -250,6 +249,14 @@ class EncoderOnlyTransformer(tf.keras.Model):
         encoder_inputs = tf.concat([encoder_inputs, empty_row], axis=-1)
         assert self.params.hidden_size == encoder_inputs.shape[2]
 
+      # All values in `input_padding` should be 0 and shape should be
+      # (batch_size, input_length). See model_utils.get_padding to see how this
+      # is computed for the base model.
+      inputs_padding = tf.reduce_sum(tf.zeros_like(encoder_inputs), -1)
+
+      # Cast input `attention_bias` to correct type, as done in the base model.
+      attention_bias = tf.cast(attention_bias, self.params['dtype'])
+
       # Add positional encoding to the input. The scale of the positional
       # encoding relative to the input values will matter since we are not
       # learning the input embedding.
@@ -264,9 +271,12 @@ class EncoderOnlyTransformer(tf.keras.Model):
         encoder_inputs = tf.nn.dropout(
             encoder_inputs, rate=self.params['layer_postprocess_dropout'])
 
-      # Encoder output has shape (batch_size, input_length, hidden_size).
-      # We allow attending to all positions so passing attention_mask as None.
-      encoder_outputs = self.encoder_layer(encoder_inputs, attention_mask=None)
+      # Pass inputs through the encoder. As mentioned above, `inputs_padding` is
+      # not actually used by EncoderStack.call. Encoder stack output has shape
+      # (batch_size, input_length, hidden_size).
+      encoder_outputs = self.encoder_stack(
+          encoder_inputs, attention_bias, inputs_padding, training=training)
+
       # Pass through dense layer, and output a distribution.
       encoder_outputs = self.fc1(encoder_outputs)
       encoder_outputs = self.softmax(encoder_outputs)
@@ -328,7 +338,8 @@ class EncoderOnlyLearnedValuesTransformer(EncoderOnlyTransformer):
           embedding_width=params['strand_hidden_size'],
           name='strand_embedding')
 
-  def encode(self, inputs: tf.Tensor, training: bool) -> tf.Tensor:
+  def encode(self, inputs: tf.Tensor, attention_bias: tf.Tensor,
+             training: bool) -> tf.Tensor:
     """Runs the input through Encoder stack and problem-specific layers."""
 
     # Input to embedding layer is [batch_size, length] and output will be
@@ -390,4 +401,4 @@ class EncoderOnlyLearnedValuesTransformer(EncoderOnlyTransformer):
       transformer_input = embedded_inputs
 
     return super(EncoderOnlyLearnedValuesTransformer,
-                 self).encode(transformer_input, training)
+                 self).encode(transformer_input, attention_bias, training)
