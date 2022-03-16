@@ -34,7 +34,7 @@ import ml_collections
 import tensorflow as tf
 
 from deepconsensus.models import data_providers
-from official.nlp.transformer import transformer
+from deepconsensus.models import encoder_stack
 from official.nlp.modeling import layers
 
 
@@ -180,7 +180,7 @@ class EncoderOnlyTransformer(tf.keras.Model):
     if self.params.add_pos_encoding:
       self.position_embedding = layers.RelativePositionEmbedding(
           hidden_size=self.params['hidden_size'])
-    self.encoder_stack = transformer.EncoderStack(params)
+    self.encoder_stack = encoder_stack.EncoderStack(params)
     self.fc1 = tf.keras.layers.Dense(
         units=(params['vocab_size']),
         activation=None,
