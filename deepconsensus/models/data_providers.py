@@ -155,6 +155,9 @@ def process_feature_dict(
     rows: Input matrix that will be fed into neural networks for training.
     label: Label vector that will be used for training.
     num_passes: The number of subreads present in this example.
+    window_position: The position at which this example starts within the ccs
+        read.
+    name: Name of the ZMW, e.g. "m64011_181218_235052/315/ccs".
   """
   label = tf.convert_to_tensor(np.array([]))
   subreads = features['subreads']
@@ -185,7 +188,7 @@ def process_input(
     cap_pw: bool = True,
     cap_ip: bool = True,
     cap_sn: bool = True,
-) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
+) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
   """Parses a serialized tf.Example to return an input, label, and metadata.
 
   Args:
@@ -200,17 +203,20 @@ def process_input(
     rows: Input matrix that will be fed into neural networks for training.
     label: Label vector that will be used for training.
     num_passes: The number of subreads present in this example.
+    window_position: The position at which this example starts within the ccs
+        read.
+    name: Name of the ZMW, e.g. "m64011_181218_235052/315/ccs".
   """
-  parsed_features = parse_example(proto_string, inference)
-  flat_subreads = tf.io.decode_raw(parsed_features['subreads/encoded'],
+  features = parse_example(proto_string, inference)
+  flat_subreads = tf.io.decode_raw(features['subreads/encoded'],
                                    dc_constants.TF_DATA_TYPE)
-  subreads = tf.reshape(flat_subreads, parsed_features['subreads/shape'])
-  num_passes = tf.cast(parsed_features['subreads/num_passes'],
+  subreads = tf.reshape(flat_subreads, features['subreads/shape'])
+  num_passes = tf.cast(features['subreads/num_passes'],
                        dc_constants.TF_DATA_TYPE)
   if not inference:
-    flat_label = tf.io.decode_raw(parsed_features['label/encoded'],
+    flat_label = tf.io.decode_raw(features['label/encoded'],
                                   dc_constants.TF_DATA_TYPE)
-    label = tf.reshape(flat_label, parsed_features['label/shape'])
+    label = tf.reshape(flat_label, features['label/shape'])
 
     if params.remove_label_gaps:
       label = remove_internal_gaps_and_shift(label)
@@ -223,7 +229,7 @@ def process_input(
       cap_pw=cap_pw,
       cap_ip=cap_ip,
       cap_sn=cap_sn)
-  return rows, label, num_passes
+  return rows, label, num_passes, features['window_pos'], features['name']
 
 
 def drop_metadata(*args):
@@ -244,12 +250,34 @@ def get_dataset(file_pattern: str,
                 limit: int = -1,
                 drop_remainder: bool = True,
                 keep_metadata: bool = False) -> tf.data.Dataset:
-  """Parses TFRecords and return a dataset."""
+  """Parses TFRecords and return a dataset.
 
-  # Output type annotations added for clarity, but Pytype only expects
-  # Tuple[Any, Any] here and does not check for tf.Tensors.
+  Args:
+    file_pattern: File path(s) to be parsed by create_glob_list.
+    num_epochs: How many epochs for which to repeat.
+    batch_size: How many examples should be in each batch.
+    params: Hyperparameters used to format the subreads into rows.
+    inference: Whether to parse tf.Examples for inference or training.
+    cap_pw: If True, pulse width values are capped.
+    cap_ip: If True, interpulse distance values are capped.
+    limit: Max number of examples to get. Set to -1 for no limit.
+    drop_remainder: Passed to TFRecordDataset.batch
+    keep_metadata: If True, output dataset batches have all 5 elements listed
+      under "Returns", if False, they only have the first 2.
+
+  Returns:
+    A dataset for which each batch has the following elements:
+    rows: Input matrix that will be fed into neural networks for training.
+    label: Label vector that will be used for training.
+    num_passes: The number of subreads present in this example.
+    window_position: The position at which this example starts within the ccs
+        read.
+    name: Name of the ZMW, e.g. "m64011_181218_235052/315/ccs".
+  """
+
   def _process_input_helper(
-      proto_string: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
+      proto_string: tf.Tensor
+  ) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
     return process_input(
         proto_string=proto_string,
         params=params,
@@ -264,7 +292,7 @@ def get_dataset(file_pattern: str,
   if num_epochs:
     ds = ds.repeat(num_epochs)
 
-  # When training, we can drop num_passes, window_pos, and name.
+  # When training, we can drop num_passes, window_position, and name.
   if not keep_metadata:
     ds = ds.map(
         drop_metadata, num_parallel_calls=tf.data.AUTOTUNE, deterministic=False)
@@ -288,7 +316,8 @@ def create_input_fn(params, mode, limit: int = -1, drop_remainder: bool = True):
   """Returns an input function that will return a tfrecord based dataset."""
 
   def _process_input_helper(
-      proto_string: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
+      proto_string: tf.Tensor
+  ) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
     # Set inference to False here because we only use this function with
     # tf.Examples that have labels present.
     return process_input(

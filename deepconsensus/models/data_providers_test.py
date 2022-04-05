@@ -113,7 +113,8 @@ class DataProvidersTest(parameterized.TestCase):
         batch_size=batch_size,
         params=params,
         drop_remainder=False,
-        inference=inference)
+        inference=inference,
+        keep_metadata=False)
     total = 0
     for subreads, label in dataset.as_numpy_iterator():
       # Last batch may contain fewer examples.
@@ -178,15 +179,19 @@ class DataProvidersTest(parameterized.TestCase):
         inference=inference,
         keep_metadata=True)
     total = 0
-    for subreads, label, num_passes in dataset.as_numpy_iterator():
+    for subreads, label, num_passes, window_pos, name in dataset.as_numpy_iterator(
+    ):
       # Last batch may contain fewer examples.
+      actual_batch_size = len(subreads)
       if not inference:
-        self.assertLen(subreads, len(label))
-      self.assertLessEqual(len(subreads), batch_size)
+        self.assertLen(label, actual_batch_size)
+      self.assertLen(window_pos, actual_batch_size)
+      self.assertLen(name, actual_batch_size)
+      self.assertLessEqual(actual_batch_size, batch_size)
       # Sanity check the values in the num_passes array.
       self.assertTrue(tf.reduce_all(num_passes <= 20))
       self.assertTrue(tf.reduce_all(num_passes > 0))
-      total += len(subreads)
+      total += actual_batch_size
     self.assertEqual(total, num_epochs * dataset_size)
 
   @parameterized.named_parameters(
