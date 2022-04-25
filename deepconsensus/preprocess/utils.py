@@ -111,9 +111,11 @@ class Read(collections.Sequence):
   ip: np.ndarray
   sn: np.ndarray
   strand: dc_constants.Strand
-  ccs_idx: np.ndarray = np.empty(0)
+  # base_quality_scores are only used for the ccs read.
+  base_quality_scores: np.ndarray = np.empty(0, dtype=np.uint8)
+  ccs_idx: np.ndarray = np.empty(0, dtype=np.int)
   # truth_idx and truth_range only used with label reads.
-  truth_idx: np.ndarray = np.empty(0)
+  truth_idx: np.ndarray = np.empty(0, np.int)
   # truth range is a dict containing contig, begin, end.
   # It is not modified when slicing is performed.
   # The truth_range['contig'] and truth_idx are used calculate
@@ -122,8 +124,8 @@ class Read(collections.Sequence):
   truth_range: Union[Dict[str, Any], None] = None
 
   # Alignment Variables
-  seq_indices: np.ndarray = np.empty(0)
-  is_insertion: np.ndarray = np.empty(0)
+  seq_indices: np.ndarray = np.empty(0, dtype=np.int)
+  is_insertion: np.ndarray = np.empty(0, dtype=bool)
   seq_len: int = 0
   idx_seq: int = 0
   idx_spaced: int = 0
@@ -193,6 +195,12 @@ class Read(collections.Sequence):
     self.ip = spaced_ip
     self.ccs_idx = spaced_ccs_idx
 
+    # Handle base quality scores. Only present with ccs reads.
+    if self.base_quality_scores.any():
+      spaced_base_quality_scores = np.repeat(-1, seq_len)
+      spaced_base_quality_scores[self.seq_indices] = self.base_quality_scores
+      self.base_quality_scores = spaced_base_quality_scores
+
   @property
   def bases_encoded(self) -> np.ndarray:
     bases_encoded = np.ndarray(
@@ -257,6 +265,7 @@ class Read(collections.Sequence):
         ip=self.ip[ccs_slice],
         sn=self.sn,
         strand=self.strand,
+        base_quality_scores=self.base_quality_scores[ccs_slice],
         ccs_idx=self.ccs_idx[ccs_slice],
         truth_idx=self.truth_idx[ccs_slice],
         truth_range=self.truth_range)
@@ -270,6 +279,7 @@ class Read(collections.Sequence):
         ip=right_pad(self.ip, pad_width, 0),
         sn=self.sn,
         strand=self.strand,
+        base_quality_scores=right_pad(self.base_quality_scores, pad_width, -1),
         ccs_idx=right_pad(self.ccs_idx, pad_width, -1),
         truth_idx=right_pad(self.truth_idx, pad_width, -1),
         truth_range=self.truth_range)
@@ -278,6 +288,10 @@ class Read(collections.Sequence):
     """Removes gaps from sequence and returns padded."""
     # Useful for reducing label width.
     keep = self.bases != dc_constants.GAP_OR_PAD
+    if self.base_quality_scores.any():
+      base_quality_scores = self.base_quality_scores[keep]
+    else:
+      base_quality_scores = np.empty(0, dtype=np.uint8)
     if sum(keep) > pad_width:
       return None
     return Read(
@@ -288,6 +302,7 @@ class Read(collections.Sequence):
         ip=self.ip[keep],
         sn=self.sn,
         strand=self.strand,
+        base_quality_scores=base_quality_scores,
         ccs_idx=self.ccs_idx[keep],
         truth_idx=self.truth_idx[keep],
         truth_range=self.truth_range).pad(pad_width)
@@ -308,6 +323,7 @@ class Read(collections.Sequence):
         ip=self.ip[r_slice],
         sn=self.sn,
         strand=self.strand,
+        base_quality_scores=self.base_quality_scores[r_slice],
         ccs_idx=self.ccs_idx[r_slice],
         truth_idx=self.truth_idx[r_slice])
 
@@ -570,6 +586,8 @@ class DcExample:
     features.feature['name'].bytes_list.value.append(self.name.encode())
     features.feature['window_pos'].int64_list.value.append(
         self.ccs.ccs_bounds.start)
+    features.feature['ccs_base_quality_scores'].int64_list.value.extend(
+        self.ccs.base_quality_scores)
 
     if self.is_training:
       label = self.label.bases_encoded
@@ -705,20 +723,19 @@ def tf_example_to_features_dict(tf_example_proto_str, inference=False):
   return features
 
 
-def fetch_ccs_seq(ccs_seqname: str,
-                  ccs_fasta: pysam.libcfaidx.FastaFile) -> Read:
-  """Fetches a ccs sequence by name."""
-  ccs_seq = ccs_fasta.fetch(ccs_seqname)
-  ccs_seq = np.array(ccs_seq, 'c')
-  # The ccs ref sequences are 1:len(ccs_seq).
+def construct_ccs_read(
+    ccs_bam_read: pysam.libcalignedsegment.AlignedSegment) -> Read:
+  """Constructs a Read with quality scores using a ccs bam read."""
+  ccs_seq = np.array(ccs_bam_read.seq, 'c')
   return Read(
-      name=ccs_seqname,
+      name=ccs_bam_read.qname,
       bases=ccs_seq,
       cigar=np.repeat(np.uint8(pysam.CMATCH), len(ccs_seq)),
       pw=np.repeat(np.uint8(0), len(ccs_seq)),
       ip=np.repeat(np.uint8(0), len(ccs_seq)),
       sn=np.repeat(0, 4),
       strand=dc_constants.Strand.UNKNOWN,
+      base_quality_scores=np.array(ccs_bam_read.query_qualities),
       ccs_idx=np.arange(len(ccs_seq)))
 
 
@@ -816,7 +833,7 @@ def expand_clip_indent(read: pysam.AlignedSegment,
     new_ip[read_idx >= 0] = ip_vals
     sn = np.array(read.get_tag('sn'))
   else:
-    sn = np.empty(0)
+    sn = np.empty(0, dtype=np.uint8)
 
   # Extract additional read properties.
   cigar_seq = itertools.chain.from_iterable([[x] * y for x, y in read.cigar])
@@ -905,7 +922,7 @@ def space_out_subreads(subreads: List[Read]) -> List[Read]:
 
 
 def create_proc_feeder(subreads_to_ccs: str,
-                       ccs_fasta: str,
+                       ccs_bam: str,
                        dc_config: DcConfig,
                        truth_bed: Optional[str] = None,
                        truth_to_ccs: Optional[str] = None,
@@ -917,7 +934,7 @@ def create_proc_feeder(subreads_to_ccs: str,
 
   # Initiate files
   subread_grouper = SubreadGrouper(subreads_to_ccs, bam_reader_threads)
-  ccs_fasta = pysam.FastaFile(ccs_fasta)
+  ccs_bam_h = pysam.AlignmentFile(ccs_bam, check_sq=False)
 
   is_training = truth_bed and truth_to_ccs and truth_split
   if is_training:
@@ -932,8 +949,17 @@ def create_proc_feeder(subreads_to_ccs: str,
       subreads = list(map(expand_clip_indent, read_set))
       ccs_seqname = '/'.join(subreads[0].name.split('/')[:2] + ['ccs'])
       # Fetch ccs sequence and append to subread set.
-      ccs_seq = fetch_ccs_seq(ccs_seqname, ccs_fasta)
-      subreads.append(ccs_seq)
+      while True:
+        ccs_bam_read = next(ccs_bam_h)
+        if ccs_bam_read.qname == ccs_seqname:
+          break
+      # If ccs read is not present in subread_to_ccs bam, throw error.
+      if ccs_bam_read.qname != ccs_seqname:
+        raise ValueError(f'ccs bam does not contain {ccs_seqname}')
+
+      ccs_read = construct_ccs_read(ccs_bam_read)
+      subreads.append(ccs_read)
+
       if is_training:
         # Fetch truth to ccs alignment.
         truth_range = truth_ref_coords.get(ccs_seqname, None)

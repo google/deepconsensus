@@ -30,7 +30,7 @@ r"""Performs preprocessing of subread-aligned data.
 Usage:
   deepconsensus preprocess \
     --subreads_to_ccs=subreads_to_ccs.bam \
-    --ccs_fasta=ccs_fasta.fasta \
+    --ccs_bam=ccs.bam \
     --truth_bed=truth_bed.bed \
     --truth_to_ccs=truth_to_ccs.bam \
     --truth_split=truth_split.tsv \
@@ -67,6 +67,7 @@ FLAGS = flags.FLAGS
 flags.DEFINE_string('subreads_to_ccs', None,
                     'Input BAM containing subreads aligned to ccs.')
 flags.DEFINE_string('ccs_fasta', None, 'Input FASTA containing ccs sequences.')
+flags.DEFINE_string('ccs_bam', None, 'Input BAM containing ccs sequences.')
 flags.DEFINE_string(
     'output', None,
     ('Output filename. If training, use @split wildcard for split name. '
@@ -91,7 +92,7 @@ flags.DEFINE_integer('limit', 0, 'Limit processing to n ZMWs.')
 def register_required_flags():
   flags.mark_flags_as_required([
       'subreads_to_ccs',
-      'ccs_fasta',
+      'ccs_bam',
       'output',
   ])
 
@@ -194,6 +195,10 @@ def main(unused_argv) -> None:
   if FLAGS.cpus == 1:
     raise ValueError('Must set cpus to 0 or >=2 for parallel processing.')
 
+  if FLAGS.ccs_fasta:
+    raise NotImplementedError('The --ccs_fasta flag has been deprecated. '
+                              'Please use --ccs_bam instead.')
+
   is_training = FLAGS.truth_to_ccs and FLAGS.truth_bed and FLAGS.truth_split
 
   if not FLAGS.output.endswith('.tfrecord.gz'):
@@ -221,7 +226,7 @@ def main(unused_argv) -> None:
 
   proc_feeder, main_counter = utils.create_proc_feeder(
       subreads_to_ccs=FLAGS.subreads_to_ccs,
-      ccs_fasta=FLAGS.ccs_fasta,
+      ccs_bam=FLAGS.ccs_bam,
       dc_config=dc_config,
       truth_bed=FLAGS.truth_bed,
       truth_to_ccs=FLAGS.truth_to_ccs,
@@ -276,8 +281,7 @@ def main(unused_argv) -> None:
     summary = dict(main_counter.items())
     summary.update(dc_config.to_dict())
     flag_list = [
-        'subreads_to_ccs', 'ccs_fasta', 'truth_to_ccs', 'truth_bed',
-        'truth_split'
+        'subreads_to_ccs', 'ccs_bam', 'truth_to_ccs', 'truth_bed', 'truth_split'
     ]
     for flag in flag_list:
       summary[flag] = FLAGS[flag].value

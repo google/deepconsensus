@@ -30,7 +30,7 @@ r"""Run DeepConsensus and generate a polished FASTQ.
 Usage:
   deepconsensus run \
     --subreads_to_ccs=subreads_to_ccs.bam \
-    --ccs_fasta=ccs_fasta.fasta \
+    --ccs_bam=ccs.bam \
     --output=predictions.fastq
 
 """
@@ -75,6 +75,7 @@ FLAGS = flags.FLAGS
 flags.DEFINE_string('subreads_to_ccs', None,
                     'Input BAM containing subreads aligned to ccs.')
 flags.DEFINE_string('ccs_fasta', None, 'Input FASTA containing ccs sequences.')
+flags.DEFINE_string('ccs_bam', None, 'Input BAM containing ccs sequences.')
 
 # Outputs:
 flags.DEFINE_string(
@@ -145,7 +146,7 @@ flags.DEFINE_integer(
 def register_required_flags():
   flags.mark_flags_as_required([
       'subreads_to_ccs',
-      'ccs_fasta',
+      'ccs_bam',
       'checkpoint',
       'output',
   ])
@@ -310,15 +311,15 @@ def stitch_predictions_for_one_zmw(
   return fastq_string
 
 
-def stream_fasta_and_bam(
-    subreads_to_ccs: str, ccs_fasta: str, options: InferenceOptions
+def stream_bam(
+    subreads_to_ccs: str, ccs_bam: str, options: InferenceOptions
 ) -> Generator[Tuple[str, str, Sequence[Any]], None, None]:
   """Streams inputs from FASTA and BAM concurrently.
 
   Args:
     subreads_to_ccs: Path to input BAM file with subreads aligned to template
       sequences.
-    ccs_fasta: Path to the input FASTA file with template sequences (e.g.
+    ccs_bam: Path to the input CCS BAM with template sequences (e.g.
       CCS or POA).
     options: Inference options, used to initialize a DcConfig object.
 
@@ -334,7 +335,7 @@ def stream_fasta_and_bam(
   # Temporarily disable unused-variable.
   # pylint: disable=unused-variable
   proc_feeder, main_counter = preprocess_utils.create_proc_feeder(
-      subreads_to_ccs=subreads_to_ccs, ccs_fasta=ccs_fasta, dc_config=dc_config)
+      subreads_to_ccs=subreads_to_ccs, ccs_bam=ccs_bam, dc_config=dc_config)
   # pylint: enable=unused_variable
 
   for input_data in proc_feeder():
@@ -581,9 +582,9 @@ def run() -> stitch_utils.OutcomeCounter:
     tf.io.gfile.makedirs(output_dir)
   fastq_writer = gfile.Open(output_filename, 'wb')
 
-  input_file_generator = stream_fasta_and_bam(
+  input_file_generator = stream_bam(
       subreads_to_ccs=FLAGS.subreads_to_ccs,
-      ccs_fasta=FLAGS.ccs_fasta,
+      ccs_bam=FLAGS.ccs_bam,
       options=options)
 
   num_zmws_to_batch = FLAGS.batch_zmws
@@ -633,6 +634,9 @@ def run() -> stitch_utils.OutcomeCounter:
 
 def main(_):
   """Main entry point."""
+  if FLAGS.ccs_fasta:
+    raise NotImplementedError('The --ccs_fasta flag has been deprecated. '
+                              'Please use --ccs_bam instead.')
   if FLAGS.use_only_gpu_index:
     with tf.device(f'GPU:{FLAGS.use_only_gpu_index}'):
       outcome_counter = run()

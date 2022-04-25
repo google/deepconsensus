@@ -50,12 +50,12 @@ class QuickInferenceTest(parameterized.TestCase):
   @parameterized.parameters(
       dict(
           subreads='human_1m/subreads_to_ccs.bam',
-          fasta='human_1m/ccs.fasta',
+          ccs_bam='human_1m/ccs.bam',
           expected_lengths=[17141, 16320]))
   @flagsaver.flagsaver
-  def test_end_to_end(self, subreads, fasta, expected_lengths):
+  def test_end_to_end(self, subreads, ccs_bam, expected_lengths):
     FLAGS.subreads_to_ccs = test_utils.deepconsensus_testdata(subreads)
-    FLAGS.ccs_fasta = test_utils.deepconsensus_testdata(fasta)
+    FLAGS.ccs_bam = test_utils.deepconsensus_testdata(ccs_bam)
     output_path = test_utils.test_tmpfile('output_path.fastq')
     FLAGS.output = output_path
     FLAGS.checkpoint = test_utils.deepconsensus_testdata('model/checkpoint-1')
@@ -89,7 +89,7 @@ class QuickInferenceTest(parameterized.TestCase):
   def test_end_to_end_multiprocessing(self, cpus, batch_zmws):
     FLAGS.subreads_to_ccs = test_utils.deepconsensus_testdata(
         'human_1m/subreads_to_ccs.bam')
-    FLAGS.ccs_fasta = test_utils.deepconsensus_testdata('human_1m/ccs.fasta')
+    FLAGS.ccs_bam = test_utils.deepconsensus_testdata('human_1m/ccs.bam')
     FLAGS.checkpoint = test_utils.deepconsensus_testdata('model/checkpoint-1')
     output_path = test_utils.test_tmpfile('output_path.fastq')
     FLAGS.output = output_path

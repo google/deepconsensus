@@ -105,12 +105,10 @@ class TestProcFeeder(absltest.TestCase):
   def test_proc_feeder_inference(self):
     subread_to_ccs = test_utils.deepconsensus_testdata(
         'human_1m/subreads_to_ccs.bam')
-    ccs_fasta = test_utils.deepconsensus_testdata('human_1m/ccs.fasta')
+    ccs_bam = test_utils.deepconsensus_testdata('human_1m/ccs.bam')
     dc_config = utils.DcConfig(max_passes=20, example_width=100, padding=20)
     proc_feeder, main_counter = utils.create_proc_feeder(
-        subreads_to_ccs=subread_to_ccs,
-        ccs_fasta=ccs_fasta,
-        dc_config=dc_config)
+        subreads_to_ccs=subread_to_ccs, ccs_bam=ccs_bam, dc_config=dc_config)
     ccs_seqnames = []
     n_subreads = 0
     for read_set, ccs_seqname, _, mode in proc_feeder():
@@ -125,7 +123,7 @@ class TestProcFeeder(absltest.TestCase):
   def test_proc_feeder_training(self):
     subreads_to_ccs = test_utils.deepconsensus_testdata(
         'human_1m/subreads_to_ccs.bam')
-    ccs_fasta = test_utils.deepconsensus_testdata('human_1m/ccs.fasta')
+    ccs_bam = test_utils.deepconsensus_testdata('human_1m/ccs.bam')
 
     # Training data
     truth_to_ccs = test_utils.deepconsensus_testdata(
@@ -136,7 +134,7 @@ class TestProcFeeder(absltest.TestCase):
     dc_config = utils.DcConfig(max_passes=20, example_width=100, padding=20)
     proc_feeder, main_counter = utils.create_proc_feeder(
         subreads_to_ccs=subreads_to_ccs,
-        ccs_fasta=ccs_fasta,
+        ccs_bam=ccs_bam,
         dc_config=dc_config,
         truth_to_ccs=truth_to_ccs,
         truth_bed=truth_bed,
@@ -406,14 +404,17 @@ class TestExpandClipIndent(parameterized.TestCase):
       self.assertEqual(expected_strand, subread.strand)
 
 
-class TestFetchCcsBases(absltest.TestCase):
+class TestCcsRead(absltest.TestCase):
 
-  def test_fetch_bases(self):
-    test_fa = deepconsensus_testdata('preprocess/test.fa')
-    fasta = pysam.FastaFile(test_fa)
-    seq_name = 'seq2'
-    read = utils.fetch_ccs_seq(seq_name, fasta)
+  def test_fetch_ccs_read(self):
+    # Test that we can construct a ccs read object with quality scores.
+    test_bam = deepconsensus_testdata('human_1m/ccs.bam')
+    ccs_bam_h = pysam.AlignmentFile(test_bam, check_sq=False)
+    ccs_bam_read = next(ccs_bam_h)
+    seq_name = 'm54238_180901_011437/4194375/ccs'
+    read = utils.construct_ccs_read(ccs_bam_read)
     self.assertEqual(seq_name, read.name)
+    self.assertTrue((read.base_quality_scores > 0).any())
 
 
 class TestFetchLabelBases(parameterized.TestCase):

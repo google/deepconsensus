@@ -11,7 +11,7 @@
  "tensor_height": "85",
  "tensor_width": "120",
  "subreads_to_ccs": "testdata/human_1m/subreads_to_ccs.bam",
- "ccs_fasta": "testdata/human_1m/ccs.fasta",
+ "ccs_bam": "testdata/human_1m/ccs.bam",
  "truth_to_ccs": null,
  "truth_bed": null,
  "truth_split": null,

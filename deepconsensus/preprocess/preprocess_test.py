@@ -74,7 +74,7 @@ class PreprocessE2E(parameterized.TestCase):
     """Tests preprocessing inference in both single and multiprocess mode."""
     n_zmws = 3
     FLAGS.subreads_to_ccs = testdata('human_1m/subreads_to_ccs.bam')
-    FLAGS.ccs_fasta = testdata('human_1m/ccs.fasta')
+    FLAGS.ccs_bam = testdata('human_1m/ccs.bam')
     FLAGS.cpus = n_cpus
     FLAGS.limit = n_zmws
     tmp_dir = self.create_tempdir()
@@ -108,7 +108,7 @@ class PreprocessE2E(parameterized.TestCase):
     """Tests preprocessing training in both single and multiprocess mode."""
     n_zmws = 10
     FLAGS.subreads_to_ccs = testdata('human_1m/subreads_to_ccs.bam')
-    FLAGS.ccs_fasta = testdata('human_1m/ccs.fasta')
+    FLAGS.ccs_bam = testdata('human_1m/ccs.bam')
     FLAGS.truth_to_ccs = testdata('human_1m/truth_to_ccs.bam')
     FLAGS.truth_bed = testdata('human_1m/truth.bed')
     FLAGS.truth_split = testdata('human_1m/truth_split.tsv')
