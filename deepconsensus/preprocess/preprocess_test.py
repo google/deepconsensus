@@ -161,8 +161,8 @@ class PreprocessE2E(parameterized.TestCase):
     features = utils.tf_example_to_features_dict(train_examples[0])
     self.assertIn('label', features)
     self.assertIn('label/shape', features)
-    self.assertTrue(
-        (features['subreads'].shape == features['subreads/shape']).all())
+    self.assertSameElements(features['subreads'].shape,
+                            features['subreads/shape'])
 
 
 if __name__ == '__main__':

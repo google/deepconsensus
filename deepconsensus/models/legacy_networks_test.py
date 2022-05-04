@@ -41,8 +41,8 @@ from deepconsensus.models import model_configs
 from deepconsensus.models import model_utils
 
 
-def get_input_example(params: ml_collections.ConfigDict,
-                      inference: bool) -> np.ndarray:
+def get_tf_example_rows(params: ml_collections.ConfigDict,
+                        inference: bool) -> np.ndarray:
   """Returns one example from the training dataset for given params."""
   dataset = data_providers.get_dataset(
       file_pattern=params.train_path,
@@ -50,8 +50,8 @@ def get_input_example(params: ml_collections.ConfigDict,
       batch_size=params.batch_size,
       params=params,
       inference=inference)
-  input_example, _ = next(dataset.as_numpy_iterator())
-  return input_example
+  tf_example = next(dataset.as_numpy_iterator())
+  return tf_example['rows']
 
 
 class ModelsTest(parameterized.TestCase):
@@ -61,7 +61,6 @@ class ModelsTest(parameterized.TestCase):
           [True, False],
           [
               'fc+test',
-              'conv_net-resnet50+test',
               'transformer+test',
               'transformer_learn_values+test',
           ],
@@ -79,11 +78,11 @@ class ModelsTest(parameterized.TestCase):
     model_utils.modify_params(params)
     model = model_utils.get_model(params)
     inference = not training
-    input_example = get_input_example(params, inference=inference)
+    rows = get_tf_example_rows(params, inference=inference)
     if use_predict:
-      softmax_output = model.predict(input_example)
+      softmax_output = model.predict(rows)
     else:
-      softmax_output = model(input_example, training=training).numpy()
+      softmax_output = model(rows, training=training).numpy()
     predictions = tf.argmax(softmax_output, -1)
 
     # First dimension will always be equal to batch_size because test config
@@ -100,7 +99,6 @@ class ModelsTest(parameterized.TestCase):
       itertools.product(
           [
               'fc+test',
-              'conv_net-resnet50+test',
               'transformer+test',
               'transformer_learn_values+test',
           ],
@@ -110,9 +108,9 @@ class ModelsTest(parameterized.TestCase):
     config = model_configs.get_config(config_name)
     model_utils.modify_params(config)
     model = model_utils.get_model(config)
-    input_example = get_input_example(config, inference=inference)
-    softmax_output_predict = model.predict(input_example)
-    softmax_output = model(input_example, training=False).numpy()
+    rows = get_tf_example_rows(config, inference=inference)
+    softmax_output_predict = model.predict(rows)
+    softmax_output = model(rows, training=False).numpy()
     self.assertTrue(
         np.allclose(softmax_output_predict, softmax_output, rtol=1e-05))
 

@@ -114,14 +114,14 @@ class DataProvidersTest(parameterized.TestCase):
         params=params,
         drop_remainder=False,
         inference=inference,
-        keep_metadata=False)
+        example_label_tuple=True)
     total = 0
-    for subreads, label in dataset.as_numpy_iterator():
+    for rows, label in dataset.as_numpy_iterator():
       # Last batch may contain fewer examples.
       if not inference:
-        self.assertLen(subreads, len(label))
-      self.assertLessEqual(len(subreads), batch_size)
-      total += len(subreads)
+        self.assertLen(rows, len(label))
+      self.assertLessEqual(len(rows), batch_size)
+      total += len(rows)
     self.assertEqual(total, num_epochs * dataset_size)
 
   @parameterized.named_parameters(
@@ -176,13 +176,16 @@ class DataProvidersTest(parameterized.TestCase):
         batch_size=batch_size,
         params=params,
         drop_remainder=False,
-        inference=inference,
-        keep_metadata=True)
+        inference=inference)
     total = 0
-    for subreads, label, num_passes, window_pos, name in dataset.as_numpy_iterator(
-    ):
+    for tf_example in dataset.as_numpy_iterator():
+      rows = tf_example['rows']
+      label = tf_example['label']
+      num_passes = tf_example['num_passes']
+      window_pos = tf_example['window_pos']
+      name = tf_example['name']
       # Last batch may contain fewer examples.
-      actual_batch_size = len(subreads)
+      actual_batch_size = len(rows)
       if not inference:
         self.assertLen(label, actual_batch_size)
       self.assertLen(window_pos, actual_batch_size)
@@ -220,16 +223,17 @@ class DataProvidersTest(parameterized.TestCase):
         params=params,
         inference=inference)
     check_not_empty = False
-    for subreads, _ in dataset.as_numpy_iterator():
+    for data in dataset.as_numpy_iterator():
+      rows = data['rows']
       check_not_empty = True
       base_indices, pw_indices, ip_indices, strand_indices, ccs_indices, sn_indices = data_providers.get_indices(
           params.max_passes)
-      base_rows = subreads[:, slice(*base_indices), :, :]
-      pw_rows = subreads[:, slice(*pw_indices), :, :]
-      ip_rows = subreads[:, slice(*ip_indices), :, :]
-      strand_rows = subreads[:, slice(*strand_indices), :, :]
-      ccs_rows = subreads[:, slice(*ccs_indices), :, :]
-      sn_rows = subreads[:, slice(*sn_indices), :, :]
+      base_rows = rows[:, slice(*base_indices), :, :]
+      pw_rows = rows[:, slice(*pw_indices), :, :]
+      ip_rows = rows[:, slice(*ip_indices), :, :]
+      strand_rows = rows[:, slice(*strand_indices), :, :]
+      ccs_rows = rows[:, slice(*ccs_indices), :, :]
+      sn_rows = rows[:, slice(*sn_indices), :, :]
       self.assertNotEmpty(base_rows)
       self.assertNotEmpty(pw_rows)
       self.assertNotEmpty(ip_rows)

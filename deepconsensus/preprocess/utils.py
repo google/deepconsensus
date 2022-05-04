@@ -394,7 +394,7 @@ class DcConfig:
     return sum(self.feature_rows.values())
 
   @property
-  def tensor_width(self) -> int:
+  def max_length(self) -> int:
     """Returns total rows for tf.Example input."""
     return self.example_width + self.padding
 
@@ -406,7 +406,7 @@ class DcConfig:
         'example_width': str(self.example_width),
         'padding': str(self.padding),
         'tensor_height': str(self.tensor_height),
-        'tensor_width': str(self.tensor_width)
+        'tensor_width': str(self.max_length)
     }
 
 
@@ -569,7 +569,8 @@ class DcExample:
         'subreads': data,
         'subreads/num_passes': self.keep_subreads,
         'name': self.name,
-        'window_pos': self.ccs.ccs_bounds.start
+        'window_pos': self.ccs.ccs_bounds.start,
+        'ccs_base_quality_scores': self.ccs.base_quality_scores
     }
     return features
 
@@ -662,7 +663,7 @@ def from_features_dict(features_dict: Dict[str, Any],
   ccs = decode_bases(data[ccs_idx])[0]
   sn = data[sn_idx][:, 1]
 
-  ccs_idx = np.repeat(-1, dc_config.tensor_width)
+  ccs_idx = np.repeat(-1, dc_config.max_length)
   ccs_end_pos = ccs_start_pos + dc_config.example_width
   ccs_idx[0:dc_config.example_width] = np.arange(ccs_start_pos, ccs_end_pos)
 
@@ -696,8 +697,12 @@ def from_features_dict(features_dict: Dict[str, Any],
 
 def set_feature(feature, shape):
   """Read in feature and set shape."""
-  feature = np.frombuffer(feature, dtype=dc_constants.NP_DATA_TYPE)
-  feature = feature.reshape(shape)
+  if not tf.executing_eagerly():
+    feature = tf.io.decode_raw(feature, dc_constants.TF_DATA_TYPE)
+    feature = tf.reshape(feature, shape)
+  else:
+    feature = np.frombuffer(feature, dtype=dc_constants.NP_DATA_TYPE)
+    feature = feature.reshape(shape)
   return feature
 
 
@@ -707,14 +712,24 @@ def tf_example_to_features_dict(tf_example_proto_str, inference=False):
       tf_example_proto_str, inference=inference)
 
   for key, val in features.items():
-    features[key] = val.numpy()
+    if tf.executing_eagerly():
+      features[key] = val.numpy()
 
   # Cast types
-  features['name'] = str(features['name'][0], 'UTF-8')
+  if 'name' in features.keys():
+    if tf.executing_eagerly():
+      features['name'] = str(features['name'][0], 'UTF-8')
+    else:
+      features['name'] = features['name'][0]
   features['subreads/num_passes'] = int(features['subreads/num_passes'])
 
   features['subreads'] = set_feature(features['subreads/encoded'],
                                      features['subreads/shape'])
+  dc_config = DcConfig.from_shape(features['subreads/shape'])
+  features['subreads'] = data_providers.format_rows(
+      features['subreads'],
+      max_passes=dc_config.max_passes,
+      max_length=dc_config.max_length)
   del features['subreads/encoded']
   if not inference:
     features['label'] = set_feature(features['label/encoded'],

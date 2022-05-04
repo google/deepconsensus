@@ -46,7 +46,9 @@ PROTO_FEATURES_INFERENCE = {
     # Shapes are written to the int64_list of the example.
     'subreads/shape': tf.io.FixedLenFeature(shape=[3], dtype=tf.int64),
     'subreads/num_passes': tf.io.FixedLenFeature(shape=[1], dtype=tf.int64),
+    'ccs_base_quality_scores': tf.io.FixedLenFeature(shape=[], dtype=tf.int64),
 }
+
 # Add on label fields to train proto.
 PROTO_FEATURES_TRAIN = dict(
     {
@@ -93,14 +95,15 @@ def remove_internal_gaps_and_shift(label: tf.Tensor) -> tf.Tensor:
 
 def format_rows(
     subreads: tf.Tensor,
-    params: ml_collections.FrozenConfigDict,
+    max_passes: int,
+    max_length: int,
     cap_pw: bool = True,
     cap_ip: bool = True,
     cap_sn: bool = True,
 ) -> tf.Tensor:
   """Returns model input matrix formatted based on input args."""
   base_indices, pw_indices, ip_indices, strand_indices, ccs_indices, sn_indices = get_indices(
-      params.max_passes)
+      max_passes)
   base_rows = subreads[slice(*base_indices)]
   pw_rows = subreads[slice(*pw_indices)]
   ip_rows = subreads[slice(*ip_indices)]
@@ -117,21 +120,10 @@ def format_rows(
   if cap_sn:
     sn_rows = tf.clip_by_value(
         sn_rows, clip_value_min=0, clip_value_max=dc_constants.SN_MAX)
-  if params.get('input_format') == 'stack[base,pw,ip,sn]':
-    ccs_rows = tf.image.pad_to_bounding_box(ccs_rows, 0, 0, params.max_passes,
-                                            params.max_length)
-    sn_rows = tf.image.pad_to_bounding_box(sn_rows, 0, 0, params.max_passes,
-                                           params.max_length)
-    rows = tf.concat([base_rows, pw_rows, ip_rows, ccs_rows, sn_rows], axis=-1)
-    if params.max_passes < 32:
-      rows = tf.image.pad_to_bounding_box(rows, 0, 0, 32, params.max_length)
-    num_rows = max(params.max_passes, 32)
-  else:
-    rows = tf.concat(
-        [base_rows, pw_rows, ip_rows, strand_rows, ccs_rows, sn_rows], axis=0)
-    num_rows = get_total_rows(params.max_passes)
-
-  rows.set_shape((num_rows, params.max_length, params.num_channels))
+  rows = tf.concat(
+      [base_rows, pw_rows, ip_rows, strand_rows, ccs_rows, sn_rows], axis=0)
+  num_rows = get_total_rows(max_passes)
+  rows.set_shape((num_rows, max_length, 1))
   return rows
 
 
@@ -141,7 +133,7 @@ def process_feature_dict(
     cap_pw: bool = True,
     cap_ip: bool = True,
     cap_sn: bool = True,
-) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
+) -> Dict[str, tf.Tensor]:
   """Parses a serialized tf.Example to return an input, label, and metadata.
 
   Args:
@@ -164,18 +156,32 @@ def process_feature_dict(
   num_passes = features['subreads/num_passes']
   rows = format_rows(
       subreads=subreads,
-      params=params,
+      max_passes=params.max_passes,
+      max_length=params.max_length,
       cap_pw=cap_pw,
       cap_ip=cap_ip,
       cap_sn=cap_sn)
-  return rows, label, num_passes, features['window_pos'], features['name']
+  features = {
+      'rows': rows,
+      'label': label,
+      'num_passes': num_passes,
+      'window_pos': features['window_pos'],
+      'name': features['name'],
+      'ccs_base_quality_scores': features['ccs_base_quality_scores']
+  }
+  return features
 
 
-def parse_example(proto_string, inference=False):
+def parse_example(proto_string: Dict[str, tf.Tensor],
+                  inference: bool = False,
+                  max_length: int = 120) -> Dict[str, tf.Tensor]:
+  """Parses serialized Training or Inference TF.Examples."""
   if inference:
     proto_features = PROTO_FEATURES_INFERENCE
   else:
     proto_features = PROTO_FEATURES_TRAIN
+  if not proto_features['ccs_base_quality_scores'].shape:
+    proto_features['ccs_base_quality_scores'].shape.append(max_length)
   parsed_features = tf.io.parse_single_example(
       serialized=proto_string, features=proto_features)
   return parsed_features
@@ -188,7 +194,7 @@ def process_input(
     cap_pw: bool = True,
     cap_ip: bool = True,
     cap_sn: bool = True,
-) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
+) -> Dict[str, tf.Tensor]:
   """Parses a serialized tf.Example to return an input, label, and metadata.
 
   Args:
@@ -207,7 +213,7 @@ def process_input(
         read.
     name: Name of the ZMW, e.g. "m64011_181218_235052/315/ccs".
   """
-  features = parse_example(proto_string, inference)
+  features = parse_example(proto_string, inference, params.max_length)
   flat_subreads = tf.io.decode_raw(features['subreads/encoded'],
                                    dc_constants.TF_DATA_TYPE)
   subreads = tf.reshape(flat_subreads, features['subreads/shape'])
@@ -225,18 +231,26 @@ def process_input(
     label = tf.convert_to_tensor(np.array([]))
   rows = format_rows(
       subreads=subreads,
-      params=params,
+      max_passes=params.max_passes,
+      max_length=params.max_length,
       cap_pw=cap_pw,
       cap_ip=cap_ip,
       cap_sn=cap_sn)
-  return rows, label, num_passes, features['window_pos'], features['name']
+  rows = {
+      'rows': rows,
+      'label': label,
+      'num_passes': num_passes,
+      'window_pos': features['window_pos'],
+      'name': features['name'],
+      'ccs_base_quality_scores': features['ccs_base_quality_scores']
+  }
+  return rows
 
 
-def drop_metadata(*args):
+def tf_example_to_training_tuple(
+    tf_example: Dict[str, tf.Tensor]) -> Tuple[tf.Tensor, tf.Tensor]:
   """Return only subreads and label."""
-  subreads = args[0]
-  label = args[1]
-  return (subreads, label)
+  return (tf_example['rows'], tf_example['label'])
 
 
 def get_dataset(file_pattern: str,
@@ -249,7 +263,7 @@ def get_dataset(file_pattern: str,
                 cap_ip: bool = True,
                 limit: int = -1,
                 drop_remainder: bool = True,
-                keep_metadata: bool = False) -> tf.data.Dataset:
+                example_label_tuple: bool = False) -> tf.data.Dataset:
   """Parses TFRecords and return a dataset.
 
   Args:
@@ -262,8 +276,8 @@ def get_dataset(file_pattern: str,
     cap_ip: If True, interpulse distance values are capped.
     limit: Max number of examples to get. Set to -1 for no limit.
     drop_remainder: Passed to TFRecordDataset.batch
-    keep_metadata: If True, output dataset batches have all 5 elements listed
-      under "Returns", if False, they only have the first 2.
+    example_label_tuple: If True, output simplified format for training/eval
+      as (rows, label)
 
   Returns:
     A dataset for which each batch has the following elements:
@@ -275,9 +289,7 @@ def get_dataset(file_pattern: str,
     name: Name of the ZMW, e.g. "m64011_181218_235052/315/ccs".
   """
 
-  def _process_input_helper(
-      proto_string: tf.Tensor
-  ) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
+  def _process_input_helper(proto_string: tf.Tensor) -> Dict[str, tf.Tensor]:
     return process_input(
         proto_string=proto_string,
         params=params,
@@ -293,9 +305,11 @@ def get_dataset(file_pattern: str,
     ds = ds.repeat(num_epochs)
 
   # When training, we can drop num_passes, window_position, and name.
-  if not keep_metadata:
+  if example_label_tuple:
     ds = ds.map(
-        drop_metadata, num_parallel_calls=tf.data.AUTOTUNE, deterministic=False)
+        tf_example_to_training_tuple,
+        num_parallel_calls=tf.data.AUTOTUNE,
+        deterministic=False)
   ds = ds.batch(batch_size=batch_size, drop_remainder=drop_remainder)
   ds = ds.prefetch(tf.data.experimental.AUTOTUNE)
   ds = ds.take(limit)
@@ -315,9 +329,7 @@ def create_glob_list(paths: Union[str, List[str]]) -> List[str]:
 def create_input_fn(params, mode, limit: int = -1, drop_remainder: bool = True):
   """Returns an input function that will return a tfrecord based dataset."""
 
-  def _process_input_helper(
-      proto_string: tf.Tensor
-  ) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
+  def _process_input_helper(proto_string: tf.Tensor) -> Dict[str, tf.Tensor]:
     # Set inference to False here because we only use this function with
     # tf.Examples that have labels present.
     return process_input(
@@ -352,7 +364,9 @@ def create_input_fn(params, mode, limit: int = -1, drop_remainder: bool = True):
     # Best practices suggest batching before mapping.
     ds = ds.batch(batch_size, drop_remainder=drop_remainder)
     ds = ds.map(
-        drop_metadata, num_parallel_calls=tf.data.AUTOTUNE, deterministic=False)
+        tf_example_to_training_tuple,
+        num_parallel_calls=tf.data.AUTOTUNE,
+        deterministic=False)
     ds = ds.prefetch(tf.data.experimental.AUTOTUNE)
     ds = ds.take(limit)
     return ds

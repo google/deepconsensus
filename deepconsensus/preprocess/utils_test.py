@@ -771,7 +771,7 @@ class TestDcConfig(parameterized.TestCase):
     self.assertEqual(
         dc_config.indices('ip', 100), slice(ip_start, ip_start + max_passes))
     self.assertEqual(dc_config.tensor_height, expected_total_rows)
-    self.assertEqual(dc_config.tensor_width, example_width + padding)
+    self.assertEqual(dc_config.max_length, example_width + padding)
     self.assertEqual(dc_config.to_dict()['padding'], str(padding))
 
 
@@ -946,7 +946,7 @@ class TestDcExampleFunctionality(absltest.TestCase):
     # Serialize tf example and reverse.
     tf_example_str = tf_example.SerializePartialToString()
     parsed_example = data_providers.parse_example(
-        tf_example_str, inference=False)
+        tf_example_str, inference=False, max_length=dc_config.max_length)
     self.assertSetEqual(
         set(parsed_example.keys()),
         set(data_providers.PROTO_FEATURES_TRAIN.keys()))

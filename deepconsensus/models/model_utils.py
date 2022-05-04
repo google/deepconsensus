@@ -115,8 +115,6 @@ def get_model(params: ml_collections.ConfigDict) -> tf.keras.Model:
   """Returns desired model based on the given params."""
   if params.model_name == 'fc':
     model = networks.FullyConnectedNet(params)
-  elif params.model_name == 'conv_net':
-    model = networks.ConvNet(params)
   elif params.model_name == 'transformer':
     model = legacy_networks.EncoderOnlyTransformer(params)
   # I'm using "_v2" suffix for the new code migrated out of legacy. Feel free
@@ -228,11 +226,8 @@ def modify_params(params: ml_collections.ConfigDict,
       params.hidden_size += 1
 
     # Set model-specific parameters
-    if params.model_name == 'conv_net':
-      # If max_passes < 32; image will be padded as to a height of(32) req'd.
-      params.hidden_size = max(32, params.max_passes)
-    elif (params.model_name == 'transformer' or
-          params.model_name == 'transformer_v2'):
+    if (params.model_name == 'transformer' or
+        params.model_name == 'transformer_v2'):
       # Transformer code uses default_batch_size, whereas my code uses
       # batch_size, so make sure both are the same.
       params.default_batch_size = params.batch_size
@@ -277,7 +272,8 @@ def run_inference_and_write_results(model: tf.keras.Model,
           drop_remainder=False,
           # `inference` is set to False because this function is only used with
           # tf.Examples formatted for training mode as they contain a label.
-          inference=False)
+          inference=False,
+          example_label_tuple=True)
 
       history = model.evaluate(
           x=validation_dataset, batch_size=params.batch_size, steps=None)

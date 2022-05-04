@@ -65,41 +65,6 @@ def _set_base_fc_hparams(params):
   params.buffer_size = 1000
 
 
-def _set_base_conv_net_hparams(params, conv_model):
-  """Updates given params with base values for ConvNet models.
-
-  Args:
-    params: configuration dictionary.
-    conv_model: Defines the convolutional network architecture.
-  """
-
-  # Model
-  params.model_name = 'conv_net'
-  params.input_format = 'stack[base,pw,ip,sn]'
-  params.conv_model = conv_model
-
-  # Data
-  params.num_channels = 5
-  params.use_bases = True
-  params.use_pw = True
-  params.use_ip = True
-  params.use_ccs = False
-  params.use_sn = False
-  params.use_strand = False
-  params.per_base_hidden_size = 1
-  params.pw_hidden_size = 1
-  params.ip_hidden_size = 1
-  params.sn_hidden_size = 1
-  params.strand_hidden_size = 1
-
-  # Training
-  params.l2 = 0.0
-  params.batch_size = 256
-  params.num_epochs = 15
-  params.learning_rate = 0.004
-  params.buffer_size = 10000
-
-
 def _set_base_transformer_v2_hparams(params):
   """Updates given config with base values for the Transformer model."""
   # Architecture
@@ -242,7 +207,6 @@ def get_config(config_name: str) -> ml_collections.ConfigDict:
 
   Valid model names include:
     * fc
-    * conv_net
     * transformer (TODO: legacy codebase)
     * transformer_learn_values (TODO: legacy codebase)
     * transformer_v2
@@ -286,9 +250,6 @@ def get_config(config_name: str) -> ml_collections.ConfigDict:
   params.limit = -1
   if model_config_name == 'fc':
     _set_base_fc_hparams(params)
-  elif model_config_name.startswith('conv_net'):
-    _, conv_sub_model = model_config_name.split('-')
-    _set_base_conv_net_hparams(params, conv_sub_model)
   elif model_config_name == 'transformer_v2':
     _set_base_transformer_v2_hparams(params)
   elif model_config_name == 'transformer':

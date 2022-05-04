@@ -228,8 +228,7 @@ def run_model_on_examples(
     A DeepConsensusInput proto containing the prediction from the model.
   """
   def _process_input_helper(
-      features: Dict[str, tf.Tensor]
-  ) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor]:
+      features: Dict[str, tf.Tensor]) -> Dict[str, tf.Tensor]:
     return data_providers.process_feature_dict(
         features=features, params=model_params)
 
@@ -247,13 +246,18 @@ def run_model_on_examples(
               tf.TensorSpec(shape=(), dtype=tf.string),
           'window_pos':
               tf.TensorSpec(shape=(), dtype=tf.int32),
+          'ccs_base_quality_scores':
+              tf.TensorSpec(shape=(model_params.max_length), dtype=tf.int32),
       })
   dataset = dataset.map(map_func=_process_input_helper)
   dataset = dataset.batch(batch_size=options.batch_size, drop_remainder=False)
   dataset = dataset.prefetch(tf.data.experimental.AUTOTUNE)
 
   predictions = []
-  for rows, _, _, window_pos_arr, molecule_name_arr in dataset:
+  for data in dataset:
+    window_pos_arr = data['window_pos']
+    molecule_name_arr = data['name']
+    rows = data['rows']
     if FLAGS.use_saved_model:
       softmax_output = model.signatures['serving_default'](rows)
       softmax_output = softmax_output['output_1']
