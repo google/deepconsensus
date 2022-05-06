@@ -49,6 +49,7 @@ import ml_collections
 from ml_collections.config_flags import config_flags
 import tensorflow as tf
 
+from deepconsensus.models import data_providers
 from deepconsensus.models import model_utils
 
 FLAGS = flags.FLAGS
@@ -82,8 +83,8 @@ def run_inference(out_dir: str, params: ml_collections.ConfigDict,
 
   with strategy.scope():
     model = model_utils.get_model(params)
-    input_shape = (1, params.hidden_size, params.max_length,
-                   params.num_channels)
+    row_size = data_providers.get_total_rows(params.max_passes)
+    input_shape = (1, row_size, params.max_length, params.num_channels)
     model_utils.print_model_summary(model, input_shape)
     checkpoint = tf.train.Checkpoint(model=model)
     # Need to run a forward pass with the model in order for
