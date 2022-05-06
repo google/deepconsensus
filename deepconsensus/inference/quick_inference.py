@@ -137,7 +137,7 @@ flags.DEFINE_integer(
 # The following parameters are for TensorFlow ops device placement.
 flags.DEFINE_integer(
     'use_only_gpu_index', None,
-    'If set, this flag will be use for `tf.device` to specify which GPU '
+    'If set, this flag will be used for `tf.device` to specify which GPU '
     'to place the ops on. For example, if you have 3 GPU and only want to run '
     'on the 3rd GPU, you can set this to 2. By default, if you have GPUs, the '
     'lowest index one would be used.')
@@ -189,25 +189,18 @@ def timelog(stage: str,
             before: float,
             num_examples: Optional[int] = None,
             num_subreads: Optional[int] = None,
-            is_batch: bool = True,
-            update_global_variable: bool = True) -> Dict[str, Any]:
+            num_zmws: Optional[int] = None) -> None:
   """Catalogue time elapsed for a given stage relative to "before"."""
   after = time.time()
   datum = {
       'item': item,
       'stage': stage,
-      'start_time': before,
-      'end_time': after,
       'runtime': after - before,
-      'is_batch': is_batch
+      'num_zmws': num_zmws,
+      'num_examples': num_examples,
+      'num_subreads': num_subreads
   }
-  if num_examples:
-    datum['num_examples'] = num_examples
-  if num_subreads:
-    datum['num_subreads'] = num_subreads
-  if update_global_variable:
-    timing.append(datum)
-  return datum
+  timing.append(datum)
 
 
 def run_model_on_examples(
@@ -405,7 +398,7 @@ def initialize_model(
 
 def preprocess(
     one_zmw: Tuple[str, List[preprocess_utils.Read], preprocess_utils.DcConfig]
-) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+) -> List[Dict[str, Any]]:
   """Preprocess input data for one ZMW into windows of features.
 
   This is often run from multiple processes in parallel, which creates some
@@ -421,34 +414,14 @@ def preprocess(
   """
   zmw, subreads, dc_config = one_zmw
 
-  time_logs = []
-  before = time.time()
   dc_whole_zmw = preprocess_utils.subreads_to_dc_example(
       subreads=subreads, ccs_seqname=zmw, dc_config=dc_config)
-  time_logs.append(
-      timelog(
-          stage='make_dc_input',
-          item=zmw,
-          before=before,
-          num_subreads=len(subreads),
-          is_batch=False,
-          update_global_variable=False))
   if dc_whole_zmw is None or FLAGS.end_after_stage == DebugStage.DC_INPUT:
-    return [], time_logs
-
-  before = time.time()
+    return []
 
   # One feature dictionary per window/example.
   feature_dicts = [x.to_features_dict() for x in dc_whole_zmw.iter_examples()]
-  time_logs.append(
-      timelog(
-          stage='make_tf_examples',
-          item=zmw,
-          before=before,
-          num_examples=len(feature_dicts),
-          is_batch=False,
-          update_global_variable=False))
-  return feature_dicts, time_logs
+  return feature_dicts
 
 
 def inference_on_n_zmws(inputs: Sequence[Tuple[str, str, Sequence[Any]]],
@@ -492,12 +465,8 @@ def inference_on_n_zmws(inputs: Sequence[Tuple[str, str, Sequence[Any]]],
     raise ValueError('Number of processes must be positive '
                      '(for multiprocessing) or 0 (for serial execution).')
 
-  # Unpack outputs into two lists.
-  feature_dicts_for_zmws, time_logs = zip(*outputs)
-
-  # Unpack list of lists of time data (e.g. 10 ZMWs, 2 time points for each).
-  time_logs = list(itertools.chain(*time_logs))
-  timing.extend(time_logs)
+  feature_dicts_for_zmws = outputs
+  num_zmws = len(feature_dicts_for_zmws)
 
   batch_total_examples = sum([len(zmw) for zmw in feature_dicts_for_zmws])
   batch_total_subreads = sum([len(subreads) for _, subreads, _ in inputs])
@@ -506,7 +475,8 @@ def inference_on_n_zmws(inputs: Sequence[Tuple[str, str, Sequence[Any]]],
       item=batch_name,
       before=before_batch,
       num_examples=batch_total_examples,
-      num_subreads=batch_total_subreads)
+      num_subreads=batch_total_subreads,
+      num_zmws=num_zmws)
   if FLAGS.end_after_stage in [DebugStage.TF_EXAMPLES, DebugStage.DC_INPUT]:
     return
 
@@ -518,7 +488,13 @@ def inference_on_n_zmws(inputs: Sequence[Tuple[str, str, Sequence[Any]]],
 
   predictions = run_model_on_examples(feature_dict_gen_fn, model, model_params,
                                       options)
-  timelog(stage='run_model', item=batch_name, before=before)
+  timelog(
+      stage='run_model',
+      item=batch_name,
+      before=before,
+      num_examples=batch_total_examples,
+      num_subreads=batch_total_subreads,
+      num_zmws=num_zmws)
   if FLAGS.end_after_stage == DebugStage.RUN_MODEL:
     return
 
@@ -532,7 +508,13 @@ def inference_on_n_zmws(inputs: Sequence[Tuple[str, str, Sequence[Any]]],
         outcome_counter=outcome_counter)
     if fastq_string:
       fastq_writer.write(fastq_string)
-  timelog(stage='stitch_and_write_fastq', item=batch_name, before=before)
+  timelog(
+      stage='stitch_and_write_fastq',
+      item=batch_name,
+      before=before,
+      num_examples=batch_total_examples,
+      num_subreads=batch_total_subreads,
+      num_zmws=num_zmws)
   logging.info('Processed a batch of %d ZMWs in %s seconds', len(inputs),
                time.time() - before_batch)
 
@@ -541,14 +523,9 @@ def save_runtime(time_points, output_prefix):
   """Save CSV of runtime."""
   df = pd.DataFrame(time_points)
 
-  # Show program start time as 0.
-  min_time = min(df['start_time'])
-  df['start_time'] -= min_time
-  df['end_time'] -= min_time
-
   # Save CSV to file.
   with tf.io.gfile.GFile(f'{output_prefix}.csv', 'w') as writer:
-    df.to_csv(writer)
+    df.to_csv(writer, index=False)
 
 
 def run() -> stitch_utils.OutcomeCounter:
@@ -610,7 +587,7 @@ def run() -> stitch_utils.OutcomeCounter:
           model_params=model_params,
           fastq_writer=fastq_writer,
           options=options,
-          batch_name=f'batch {batch_count}: {len(stored_n_zmws)} ZMWs',
+          batch_name=str(batch_count),
           outcome_counter=outcome_counter)
       batch_count += 1
       stored_n_zmws = []
@@ -624,7 +601,7 @@ def run() -> stitch_utils.OutcomeCounter:
         model_params=model_params,
         fastq_writer=fastq_writer,
         options=options,
-        batch_name=f'batch {batch_count}: {len(stored_n_zmws)} ZMWs',
+        batch_name=str(batch_count),
         outcome_counter=outcome_counter)
 
   fastq_writer.close()
