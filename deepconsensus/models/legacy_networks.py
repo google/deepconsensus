@@ -314,6 +314,18 @@ class EncoderOnlyLearnedValuesTransformer(EncoderOnlyTransformer):
       self.strand_embedding_layer = EmbeddingSharedWeights(
           strand_vocab_size, params['strand_hidden_size'])
 
+    # Define a dense layer to linearly map the concatenated embeddings of
+    # all subreads at a given position to a smaller dimension
+    # (transformer_input_size) in order to keep the transformer layers small.
+    if self.params.condense_transformer_input:
+      logging.info('Condensing input.')
+      self.transformer_input_condenser = tf.keras.layers.Dense(
+          units=(params.transformer_input_size),
+          activation=None,
+          use_bias=False,
+          kernel_initializer='glorot_uniform',
+          bias_initializer='zeros')
+
   def encode(self, inputs: tf.Tensor, attention_bias: tf.Tensor,
              training: bool) -> tf.Tensor:
     """Runs the input through Encoder stack and problem-specific layers."""

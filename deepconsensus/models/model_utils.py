@@ -237,6 +237,7 @@ def modify_params(params: ml_collections.ConfigDict,
       # batch_size, so make sure both are the same.
       params.default_batch_size = params.batch_size
       if params.condense_transformer_input:
+        logging.info('Setting hidden size to transformer_input_size.')
         params.hidden_size = params.transformer_input_size
     if 'transformer' in params.model_name:
       transformer_params = misc.get_model_params(

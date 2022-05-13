@@ -147,6 +147,8 @@ def _set_transformer_learned_embeddings_hparams(params):
   params.ip_hidden_size = 8
   params.strand_hidden_size = 2
   params.sn_hidden_size = 8
+  params.condense_transformer_input = True
+  params.transformer_input_size = 280
 
 
 def _set_transformer_learned_embeddings_v2_hparams(params):
@@ -164,6 +166,8 @@ def _set_transformer_learned_embeddings_v2_hparams(params):
   params.ip_hidden_size = 8
   params.strand_hidden_size = 2
   params.sn_hidden_size = 8
+  params.condense_transformer_input = True
+  params.transformer_input_size = 280
 
 
 

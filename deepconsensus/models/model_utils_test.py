@@ -35,6 +35,7 @@ from absl.testing import parameterized
 
 import tensorflow as tf
 
+from deepconsensus.models import data_providers
 from deepconsensus.models import model_configs
 from deepconsensus.models import model_utils
 from deepconsensus.utils import test_utils
@@ -98,8 +99,8 @@ class RunInferenceAndWriteResultsTest(absltest.TestCase):
     # assert_existing_objects_matched will not raise an error even if the wrong
     # checkpoint is used.
     # Some context here: b/148023980.
-    input_shape = (1, params.hidden_size, params.max_length,
-                   params.num_channels)
+    row_size = data_providers.get_total_rows(params.max_passes)
+    input_shape = (1, row_size, params.max_length, params.num_channels)
     model_utils.print_model_summary(model, input_shape)
     checkpoint.restore(checkpoint_path).assert_existing_objects_matched()
     model.compile(
