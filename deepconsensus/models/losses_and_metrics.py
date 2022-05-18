@@ -27,7 +27,7 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """Custom metrics and losses for DeepConsensus models."""
 
-from typing import Callable, Optional, Tuple
+from typing import Callable, Mapping, Optional, Tuple, Union
 
 import tensorflow as tf
 
@@ -122,7 +122,8 @@ def xentropy_subs_cost_fn(y_true: tf.Tensor,
   """Pointwise cross-entropy substitution cost function for alignment loss.
 
   Args:
-    y_true: A tf.Tensor<int>[batch, m] representing the ground-truth sequences.
+    y_true: A tf.Tensor<int>[batch, m, n_tokens] representing the one-hot
+      encoded ground-truth sequences.
     y_pred: A tf.Tensor<float>[batch, n, n_tokens] representing the scores for
       for predicted sequences. It is assumed that y_pred[b][l] lies in a k-dim
       probability simplex.
@@ -136,6 +137,51 @@ def xentropy_subs_cost_fn(y_true: tf.Tensor,
   y_pred = tf.clip_by_value(y_pred, eps, 1 - eps)
   y_true, y_pred = tf.expand_dims(y_true, 2), tf.expand_dims(y_pred, 1)
   return -tf.reduce_sum(tf.math.xlogy(y_true, y_pred), axis=-1)
+
+
+def accuracy_subs_cost_fn(y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
+  """Pointwise accuracy substitution cost function for alignment metric.
+
+  Args:
+    y_true: A tf.Tensor<int>[batch, m, n_tokens] representing the one-hot
+      encoded ground-truth sequences.
+    y_pred: A tf.Tensor<float>[batch, n, n_tokens] representing the scores for
+      for predicted sequences. It is assumed that y_pred[b][l] lies in a k-dim
+      probability simplex.
+
+  Returns:
+    A tf.Tensor<float>[batch, m, n] such that out[b][l1][l2] has value 1.0 if
+    argmax(y_true[b][l1]) equals argmax(y_pred[b][l2]) being 0.0 otherwise.
+  """
+  dtype = y_pred.dtype
+  y_true, y_pred = tf.argmax(y_true, axis=-1), tf.argmax(y_pred, axis=-1)
+  y_true, y_pred = tf.expand_dims(y_true, 2), tf.expand_dims(y_pred, 1)
+  return tf.cast(y_true == y_pred, dtype)
+
+
+def pbmm2_subs_cost_fn(
+    y_true: tf.Tensor,
+    y_pred: tf.Tensor,
+    *,
+    matching_score: tf.Tensor,
+    mismatch_penalty: tf.Tensor,
+) -> tf.Tensor:
+  """Pointwise match/mismatch substitution cost function for alignment metric.
+
+  Args:
+    y_true: A tf.Tensor<int>[batch, m] representing the ground-truth sequences.
+    y_pred: A tf.Tensor<float>[batch, n] representing the (argmax-decoded)
+      predicted sequences.
+    matching_score: The score with which to reward matches.
+    mismatch_penalty: The penalty with which to punish mismatches.
+
+  Returns:
+    A tf.Tensor<float>[batch, m, n] such that out[b][l1][l2] has value
+    matching_score if y_true[b][l1] equals y_pred[b][l2] being -mismatch_penalty
+    otherwise.
+  """
+  y_true, y_pred = tf.expand_dims(y_true, 2), tf.expand_dims(y_pred, 1)
+  return tf.where(y_true == y_pred, matching_score, -mismatch_penalty)
 
 
 def xentropy_ins_cost_fn(y_pred: tf.Tensor, eps=1e-7) -> tf.Tensor:
@@ -155,6 +201,59 @@ def xentropy_ins_cost_fn(y_pred: tf.Tensor, eps=1e-7) -> tf.Tensor:
   gap_token = dc_constants.VOCAB.find(dc_constants.GAP_OR_PAD)
   ins_scores = tf.clip_by_value(y_pred[..., gap_token], eps, 1 - eps)
   return -tf.math.log(ins_scores)
+
+
+def wavefrontify(tensor: tf.Tensor) -> tf.Tensor:
+  """Rearranges batch of input 2D tensors for vectorized wavefront algorithm.
+
+  Args:
+    tensor: A tf.Tensor<dtype>[batch, len1, len2].
+
+  Returns:
+    A single tf.Tensor<dtype>[len1 + len2 - 1, len1, batch] satisfying
+      out[k][i][n] = t[n][i][k - i]
+    if the RHS is well-defined, and 0 otherwise.
+    In other words, for each len1 x len2 matrix t[n], out[..., n] is a
+    (len1 + len2 - 1) x len1 matrix whose rows correspond to antidiagonals of
+    t[n].
+  """
+  b, l1, l2 = tf.shape(tensor)[0], tf.shape(tensor)[1], tf.shape(tensor)[2]
+  n_pad, padded_len = l1 - 1, l1 + l2 - 1
+
+  ta = tf.TensorArray(tensor.dtype, size=l1, clear_after_read=True)
+  for i in tf.range(l1):
+    row_i = tf.squeeze(tf.slice(tensor, [0, i, 0], [b, 1, l2]), axis=1)
+    row_i = tf.pad(row_i, [[0, 0], [n_pad, n_pad]])
+    row_i = tf.slice(row_i, [0, n_pad - i], [b, padded_len])
+    ta = ta.write(i, row_i)  # row_i[b, padded_len]
+  ta = ta.stack()  # ta[l1, b, padded_len]
+
+  return tf.transpose(ta, (2, 0, 1))  # out[padded_len, l1, b]
+
+
+def wavefrontify_vec(tensor: tf.Tensor, len1: int) -> tf.Tensor:
+  """Rearranges batch of 1D input tensors for vectorized wavefront algorithm.
+
+  Args:
+    tensor: A tf.Tensor<dtype>[batch, len2].
+    len1: An integer corresponding to the length of y_true plus one.
+
+  Returns:
+    A single tf.Tensor<dtype>[len1 + len2 - 1, len1, batch] satisfying
+      out[k][i][n] = t[n][k - i]
+    if the RHS is well-defined, and 0 otherwise.
+  """
+  b, len2 = tf.shape(tensor)[0], tf.shape(tensor)[1]
+  n_pad, padded_len = len1 - 1, len1 + len2 - 1
+
+  ta = tf.TensorArray(tensor.dtype, size=len1, clear_after_read=True)
+  for i in tf.range(len1):
+    row_i = tf.pad(tensor, [[0, 0], [n_pad, n_pad]])
+    row_i = tf.slice(row_i, [0, n_pad - i], [b, padded_len])
+    ta = ta.write(i, row_i)  # row_i[b, padded_len]
+  ta = ta.stack()  # ta[len1, b, padded_len]
+
+  return tf.transpose(ta, (2, 0, 1))  # out[padded_len, len1, b]
 
 
 class AlignmentLoss(tf.keras.losses.Loss):
@@ -240,59 +339,6 @@ class AlignmentLoss(tf.keras.losses.Loss):
     y_pred = y_pred / tf.reduce_sum(y_pred, axis=-1, keepdims=True)
     return y_pred
 
-  @staticmethod
-  def wavefrontify(tensor: tf.Tensor) -> tf.Tensor:
-    """Rearranges batch of input 2D tensors for vectorized wavefront algorithm.
-
-    Args:
-      tensor: A tf.Tensor<dtype>[batch, len1, len2].
-
-    Returns:
-      A single tf.Tensor<dtype>[len1 + len2 - 1, len1, batch] satisfying
-        out[k][i][n] = t[n][i][k - i]
-      if the RHS is well-defined, and 0 otherwise.
-      In other words, for each len1 x len2 matrix t[n], out[..., n] is a
-      (len1 + len2 - 1) x len1 matrix whose rows correspond to antidiagonals of
-      t[n].
-    """
-    b, l1, l2 = tf.shape(tensor)[0], tf.shape(tensor)[1], tf.shape(tensor)[2]
-    n_pad, padded_len = l1 - 1, l1 + l2 - 1
-
-    ta = tf.TensorArray(tensor.dtype, size=l1, clear_after_read=True)
-    for i in tf.range(l1):
-      row_i = tf.squeeze(tf.slice(tensor, [0, i, 0], [b, 1, l2]), axis=1)
-      row_i = tf.pad(row_i, [[0, 0], [n_pad, n_pad]])
-      row_i = tf.slice(row_i, [0, n_pad - i], [b, padded_len])
-      ta = ta.write(i, row_i)  # row_i[b, padded_len]
-    ta = ta.stack()  # ta[l1, b, padded_len]
-
-    return tf.transpose(ta, (2, 0, 1))  # out[padded_len, l1, b]
-
-  @staticmethod
-  def wavefrontify_vec(tensor: tf.Tensor, len1: int) -> tf.Tensor:
-    """Rearranges batch of 1D input tensors for vectorized wavefront algorithm.
-
-    Args:
-      tensor: A tf.Tensor<dtype>[batch, len2].
-      len1: An integer corresponding to the length of y_true plus one.
-
-    Returns:
-      A single tf.Tensor<dtype>[len1 + len2 - 1, len1, batch] satisfying
-        out[k][i][n] = t[n][k - i]
-      if the RHS is well-defined, and 0 otherwise.
-    """
-    b, len2 = tf.shape(tensor)[0], tf.shape(tensor)[1]
-    n_pad, padded_len = len1 - 1, len1 + len2 - 1
-
-    ta = tf.TensorArray(tensor.dtype, size=len1, clear_after_read=True)
-    for i in tf.range(len1):
-      row_i = tf.pad(tensor, [[0, 0], [n_pad, n_pad]])
-      row_i = tf.slice(row_i, [0, n_pad - i], [b, padded_len])
-      ta = ta.write(i, row_i)  # row_i[b, padded_len]
-    ta = ta.stack()  # ta[len1, b, padded_len]
-
-    return tf.transpose(ta, (2, 0, 1))  # out[padded_len, len1, b]
-
   def alignment(self, subs_costs, ins_costs, del_cost, seq_lens, inf, dtype):
     """Computes the alignment score values.
 
@@ -313,8 +359,8 @@ class AlignmentLoss(tf.keras.losses.Loss):
     b, m = tf.shape(subs_costs)[0], tf.shape(subs_costs)[1]
     n = tf.shape(subs_costs)[2]  # We assume tf.shape(y_pred)[0] equals b.
     # Computes and rearranges cost tensors for vectorized wavefront iterations.
-    subs_costs = self.wavefrontify(subs_costs)
-    ins_costs = self.wavefrontify_vec(ins_costs, m + 1)
+    subs_costs = wavefrontify(subs_costs)
+    ins_costs = wavefrontify_vec(ins_costs, m + 1)
 
     # Sets up reduction operators.
     if self.loss_reg is None:
@@ -476,6 +522,54 @@ class AlignmentLoss(tf.keras.losses.Loss):
     fetch_indices = self.index_ending_band(len_1, seq_lens)
     return tf.gather_nd(input_band, fetch_indices)
 
+  def eval(
+      self,
+      y_true: tf.Tensor,
+      y_pred: tf.Tensor,
+      return_matches: bool = False,
+  ) -> Union[tf.Tensor, Tuple[tf.Tensor, tf.Tensor]]:
+    """Computes the alignment loss for a batch of sequences.
+
+    Args:
+      y_true: A tf.Tensor<[float, int]>[batch, m] representing the ground-truth
+        sequences.
+      y_pred: A tf.Tensor<float>[batch, n, n_tokens], (n >= m) representing the
+        scores for predicted sequences.
+      return_matches: If True, return an extra tensor representing the aligned
+        base pairs.
+
+    Returns:
+      A tf.Tensor<float>[batch] with the value of the loss for each example. If
+      return_matches is True, it also returns a tf.Tensor<float>[batch, m, n]
+      whose entries represent the probability that y_true[b][i] is aligned to
+      y_pred[b][j] according to the Gibbs distribution implied by the (soft)
+      alignment model.
+    """
+    # Gathers type variables.
+    dtype = y_pred.dtype
+    # Defines an appropriate large positive float to represent "infinity".
+    inf = tf.convert_to_tensor(1e9, dtype)  # TODO: float16 support?
+
+    # Removes internal gaps, computes length excl. pad and converts to one-hot.
+    y_true, seq_lens = self.preprocess_y_true(y_true)
+    # Combines pad and gap tokens and ensures predicted scores add to be one.
+    y_pred = self.preprocess_y_pred(y_pred)
+    subs_costs = self.subs_cost_fn(y_true, y_pred)
+    ins_costs = self.ins_cost_fn(y_pred)
+    del_cost = tf.convert_to_tensor(self.del_cost, dtype)
+
+    args = (subs_costs, ins_costs, del_cost, seq_lens, inf, dtype)
+    fn = self.alignment if self.width is None else self.banded_alignment
+    if return_matches:
+      # TODO: replace by a custom backtracking implementation.
+      with tf.GradientTape() as tape:
+        tape.watch(subs_costs)
+        loss_val = fn(*args)
+      matches = tape.gradient(loss_val, subs_costs)
+      return loss_val, matches
+    else:
+      return fn(*args)
+
   def call(self, y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
     """Computes the alignment loss for a batch of sequences.
 
@@ -488,22 +582,434 @@ class AlignmentLoss(tf.keras.losses.Loss):
     Returns:
       A tf.Tensor<float>[batch] with the value of the loss for each example.
     """
+    return self.eval(y_true, y_pred, return_matches=False)
+
+
+def preprocess_y_true_metric(y_true: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
+  """Applies AlignmentMetric-specific preprocessing to labels tensor.
+
+  Args:
+    y_true: A tf.Tensor<[float, int]>[batch, m] representing the ground-truth
+      sequences.
+
+  Returns:
+    A tuple (y_true, y_true_lens) such that
+      +  y_true is a tf.Tensor<int>[batch, m]. It contains the input y_true,
+          with dc_constants.GAP_OR_PAD tokens removed and extra
+          dc_constants.GAP_OR_PAD tokens appended if necessary.
+      +  y_true_lens is a tf.Tensor<int>[batch] containing the length of each
+          label sequence in y_true, excluding any pad and gap tokens.
+  """
+  # Ensures y_true is of integer type.
+  y_true = tf.cast(y_true, tf.int32)
+  # Removes internal gaps, shifting sequences left and adding padding when
+  # necessary.
+  y_true = left_shift_sequence(y_true)
+  # Computes per-example label sequence length, excluding padding.
+  pad_token = dc_constants.VOCAB.find(dc_constants.GAP_OR_PAD)
+  y_true_lens = tf.reduce_sum(tf.cast(y_true != pad_token, y_true.dtype), -1)
+  return y_true, y_true_lens
+
+
+def preprocess_y_pred_metric(y_pred: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
+  """Applies AlignmentMetric-specific preprocessing to predictions tensor.
+
+  Args:
+    y_pred: A tf.Tensor<[float, int]>[batch, m, n_tokens] representing the
+      predicted tokens.
+
+  Returns:
+    A tuple (y_pred, y_pred_lens) such that
+      +  y_pred is a tf.Tensor<int>[batch, m]. It contains the most likely
+          token at each position of the input y_pred, with
+          dc_constants.GAP_OR_PAD tokens removed and extra
+          dc_constants.GAP_OR_PAD tokens appended if necessary.
+      +  y_pred_lens is a tf.Tensor<int>[batch] containing the length of each
+          predicted sequence in y_pred, excluding any pad and gap tokens.
+  """
+  # Find the most likely base per position.
+  y_pred = tf.argmax(y_pred, axis=-1)
+  # Ensures y_pred is of integer type.
+  y_pred = tf.cast(y_pred, tf.int32)
+  # Removes internal gaps, shifting sequences left and adding padding when
+  # necessary.
+  y_pred = left_shift_sequence(y_pred)
+  # Computes per-example label sequence length, excluding padding.
+  pad_token = dc_constants.VOCAB.find(dc_constants.GAP_OR_PAD)
+  y_pred_lens = tf.reduce_sum(tf.cast(y_pred != pad_token, y_pred.dtype), -1)
+  return y_pred, y_pred_lens
+
+
+class AlignmentMetric(tf.keras.metrics.Metric):
+  r"""Implements an accelerator-friendly alignment metric for DeepConsensus.
+
+  The metric is a (rough) approximation of PBMM2. At the moment, it is
+  implemented as a Needleman-Wunsch (NW) alignment (i.e. global) with an affine
+  gap penalty model.
+
+  Differences:
+    + PBMM2 uses a piece-wise affine gap penalty model min{o+ke,O+kE}, whereas
+      AlignmentMetric so far implements a single component, i.e., o+ke.
+    + TODO: double-check if PBMM2 is local / global and whether any
+      heuristics are used instead of NW.
+
+  Attributes:
+    matching_score: The score of matches (-A).
+    mismatch_penalty: The penalty of mismatches (-B).
+    gap_open_penalty: The penalty of opening gaps (-o).
+    gap_extend_penalty: The penalty of extending gaps (-e).
+  """
+
+  def __init__(self,
+               matching_score: float = 2.0,
+               mismatch_penalty: float = 5.0,
+               gap_open_penalty: float = 5.0,
+               gap_extend_penalty: float = 4.0,
+               name: str = 'alignment_metric',
+               **kwargs):
+    super(AlignmentMetric, self).__init__(name=name, **kwargs)
+    self.matching_score = matching_score
+    self.mismatch_penalty = mismatch_penalty
+    # PBMM2 uses gap_open + gap_len * gap_extend but alignment routine used the
+    # alterative definition gap_open + (gap_len - 1) * gap_extend.
+    self.gap_open_penalty = gap_open_penalty + gap_extend_penalty
+    self.gap_extend_penalty = gap_extend_penalty
+    self._pid = tf.metrics.Mean()
+
+  def alignment(
+      self,
+      y_true: tf.Tensor,
+      y_pred: tf.Tensor,
+  ) -> Tuple[tf.Tensor, tf.Tensor, Mapping[str, tf.Tensor]]:
+    """Computes the alignment loss for a batch of sequences.
+
+    Args:
+      y_true: A tf.Tensor<[float, int]>[batch, m] representing the ground-truth
+        sequences.
+      y_pred: A tf.Tensor<float>[batch, n, n_tokens], (n >= m) representing the
+        scores for predicted sequences.
+
+    Returns:
+      A tuple (v_opt, paths, metric_values) such that:
+      + v_opt is a tf.Tensor<float>[batch] with the optimal alignment score for
+        each example.
+      + paths is a tf.Tensor<float>[batch, m, n] whose entries represent the
+        probability that y_true[b][i] is aligned to y_pred[b][j] according to
+        the Gibbs distribution implied by the (soft) alignment model.
+      + metric_values is a dict with the following (key: value) pairs
+        - num_matches: tf.Tensor<int>[batch].
+        - num_insertions: tf.Tensor<int>[batch].
+        - num_deletions: tf.Tensor<int>[batch].
+        - num_correct_matches: tf.Tensor<int>[batch].
+        - alignment_length: tf.Tensor<int>[batch].
+        - pid: tf.Tensor<float>[batch].
+        These represent per-example alignment-derived metrics.
+    """
     # Gathers type variables.
     dtype = y_pred.dtype
+    # Gathers shape variables.
+    b = tf.shape(y_true)[0]  # Equals tf.shape(y_pred)[0].
+    # Note: the assert will not be executed on TPU.
+    tf.debugging.assert_equal(
+        x=b,
+        y=tf.shape(y_pred)[0],
+        message='y_true and y_pred must have the same batch size.')
+    m, n = tf.shape(y_true)[1], tf.shape(y_pred)[1]
     # Defines an appropriate large positive float to represent "infinity".
-    # inf = tf.dtypes.float16.max if dtype == tf.dtypes.float16 else 1e9
     inf = tf.convert_to_tensor(1e9, dtype)  # TODO: float16 support?
+    # Convert parameters to tf.Tensor.
+    matching_score = tf.convert_to_tensor(self.matching_score, dtype=dtype)
+    mismatch_penalty = tf.convert_to_tensor(self.mismatch_penalty, dtype=dtype)
+    gap_open = tf.convert_to_tensor(self.gap_open_penalty, dtype=dtype)
+    gap_extend = tf.convert_to_tensor(self.gap_extend_penalty, dtype=dtype)
 
-    # Removes internal gaps, computes length excl. pad and converts to one-hot.
-    y_true, seq_lens = self.preprocess_y_true(y_true)
-    # Combines pad and gap tokens and ensures predicted scores add to be one.
-    y_pred = self.preprocess_y_pred(y_pred)
-    subs_costs = self.subs_cost_fn(y_true, y_pred)
-    ins_costs = self.ins_cost_fn(y_pred)
-    del_cost = tf.convert_to_tensor(self.del_cost, dtype)
-    if self.width is None:
-      return self.alignment(subs_costs, ins_costs, del_cost, seq_lens, inf,
-                            dtype)
-    else:
-      return self.banded_alignment(subs_costs, ins_costs, del_cost, seq_lens,
-                                   inf, dtype)
+    # Removes internal gaps and computes length excluding padding.
+    y_true, y_true_lens = preprocess_y_true_metric(y_true)
+    # Applies argmax-decoding, removes internal gaps and computes length
+    # excluding padding.
+    y_pred, y_pred_lens = preprocess_y_pred_metric(y_pred)
+
+    # Computes substitution costs for each pair of positions and rearranges the
+    # tensor for vectorized wavefront iterations.
+    subs_costs = pbmm2_subs_cost_fn(
+        y_true,
+        y_pred,
+        matching_score=matching_score,
+        mismatch_penalty=mismatch_penalty)
+    wavefrontified_subs_costs = wavefrontify(subs_costs)
+    # Stacks gap penalties as tf.Tensor of shape [3, 1, 1] for broadcasting.
+    gap_pens = tf.stack([gap_open, gap_open, gap_extend])[:, None, None]
+
+    # Setups reduction operators.
+    def reduce_max_with_argmax(t: tf.Tensor,
+                               axis: int = 0) -> Tuple[tf.Tensor, tf.Tensor]:
+      # Note(fllinares): I haven't yet managed to beat the performance of this
+      # (wasteful) implementation with tf.argmax + tf.gather / tf.gather_nd :(
+      t_max = tf.reduce_max(t, axis=axis)
+      t_argmax = tf.argmax(t, axis=axis, output_type=tf.int32)
+      return t_max, t_argmax
+
+    # -------------------------------------------------------------------------
+    # INITIALIZATION OF FORWARD RECURSION
+    # -------------------------------------------------------------------------
+
+    # Precomputes auxiliary (constant) tensors used during the recursion.
+    i_range = tf.range(m + 1, dtype=tf.int32)
+    # Indexes antidiagonal containing last entry, w/o pad.
+    k_end = y_true_lens + y_pred_lens
+    # Indexes last entries in "wavefrontified" slices, accounting for padding.
+    samp_idx = tf.range(b, dtype=tf.int32)
+    nd_indices = tf.stack([y_true_lens, samp_idx], axis=-1)
+
+    # Initializes DP values for antidiagonal k = 0.
+    # M: V[0][i, -i] = 0 if i = 0 else -inf.
+    # I: V[1][i, -i] = -inf.
+    # D: V[2][i, -i] = -inf.
+    # v_all_p2 has shape [3, m, b] since the last col (i = m) is discarded.
+    v_all_p2 = tf.concat(
+        [
+            tf.pad(
+                tf.fill([1, m - 1, b], -inf),
+                paddings=[[0, 0], [1, 0], [0, 0]],
+                constant_values=tf.convert_to_tensor(0.0, dtype=dtype)),
+            tf.fill([2, m, b], -inf)
+        ],
+        axis=0,
+    )
+    # Initializes DP values for antidiagonal k = 1.
+    # M: V[0][i, 1 - i] = -inf for all i.
+    # I: V[1][i, 1 - i] = -gap_open if i = 0 else -inf.
+    # D: V[2][i, 1 - i] = -gap_open if i = 1 else -inf.
+    # v_all_p1 has shape [3, m + 1, b], for i = 0, 1, ..., m.
+    v_all_p1 = tf.stack([
+        tf.fill([m + 1, b], -inf),
+        tf.pad(
+            tf.fill([m, b], -inf),
+            paddings=[[1, 0], [0, 0]],
+            constant_values=-gap_open),
+        tf.roll(
+            tf.pad(
+                tf.fill([m, b], -inf),
+                paddings=[[1, 0], [0, 0]],
+                constant_values=-gap_open),
+            shift=1,
+            axis=0),
+    ])
+    # Allocates memory for backtracking "directions" tensor.
+    dir_all = tf.TensorArray(tf.int32, size=m + n + 1, clear_after_read=True)
+    # Initializes backtracking "directions" for antidiagonal k = 0.
+    # M: DIR[0][i, -i] = -1 if i = 0 else -2 (invalid).
+    # I: DIR[1][i, -i] = -2 (invalid).
+    # D: DIR[2][i, -i] = -2 (invalid).
+    # d_p2 has shape [3, m + 1, b], for i = 0, 1, ..., m.
+    dir_all_p2 = tf.concat(
+        [
+            tf.pad(
+                tf.fill([1, m, b], -2),
+                paddings=[[0, 0], [1, 0], [0, 0]],
+                constant_values=tf.convert_to_tensor(-1, dtype=tf.int32)),
+            tf.fill([2, m + 1, b], -2)
+        ],
+        axis=0,
+    )
+    # Initializes backtracking "directions" for antidiagonal k = 1.
+    dir_all = dir_all.write(0, tf.cast(dir_all_p2, tf.int32))
+    # M: DIR[0][i, 1 - i] = -2 (invalid) for all i.
+    # I: DIR[1][i, 1 - i] = 0 (M) if i = 0 else -2 (invalid).
+    # D: DIR[2][i, 1 - i] = 0 (M) if i = 1 else -2 (invalid).
+    # d_p1 has shape [3, m + 1, b], for i = 0, 1, ..., m.
+    dir_all_p1 = tf.stack([
+        tf.fill([m + 1, b], -2),
+        tf.pad(
+            tf.fill([m, b], -2),
+            paddings=[[1, 0], [0, 0]],
+            constant_values=tf.convert_to_tensor(0, dtype=tf.int32)),
+        tf.roll(
+            tf.pad(
+                tf.fill([m, b], -2),
+                paddings=[[1, 0], [0, 0]],
+                constant_values=tf.convert_to_tensor(0, dtype=tf.int32)),
+            shift=1,
+            axis=0),
+    ])
+    dir_all = dir_all.write(1, tf.cast(dir_all_p1, tf.int32))
+
+    # Initializes optimal score per sequence.
+    # The initial value corresponds to the solution for the edge case where both
+    # `y_true[idx]` and `y_pred[idx]` are "empty", i.e., consist only of gaps.
+    # This is the only case in which `v_opt` and `m_opt` will *not* be updated
+    # during the forward recursion.
+    v_opt = tf.fill([b], tf.convert_to_tensor(0.0, dtype=dtype))
+    # Initializes optimal last state (M/I/D) per sequence.
+    m_opt = tf.fill([b], tf.convert_to_tensor(-1, dtype=tf.int32))
+
+    # -------------------------------------------------------------------------
+    # FORWARD RECURSION
+    # -------------------------------------------------------------------------
+
+    def maybe_update(
+        k: Union[int, tf.Tensor],
+        v_opt: tf.Tensor,
+        m_opt: tf.Tensor,
+        v_all_p1: tf.Tensor,
+    ) -> Tuple[tf.Tensor, tf.Tensor]:
+      # Online computation of optimal alignment scores and final optimal state.
+      v_opt_k, m_opt_k = reduce_max_with_argmax(v_all_p1, axis=0)
+      # For each sequence, checks if the antidiagonal contains the entry
+      # (y_true_lens[i], y_pred_lens[i]) for i = 1, ..., b.
+      update_cond = k_end == k
+      # If that's the case, fetches those entries from v_opt_k and m_opt_k and
+      # stores them in v_opt and m_opt.
+      v_opt = tf.where(update_cond, tf.gather_nd(v_opt_k, nd_indices), v_opt)
+      m_opt = tf.where(update_cond, tf.gather_nd(m_opt_k, nd_indices), m_opt)
+      return v_opt, m_opt
+
+    # Performs out-of-loop updates for antidiagonal k = 1.
+    # This covers the edge case `k_end[idx] = 1` for some pair `y_true[idx]`,
+    # `y_pred[idx]`. That is, the case for which one of the two sequences
+    # consists of only gaps and the other has exactly one base.
+    v_opt, m_opt = maybe_update(1, v_opt, m_opt, v_all_p1)
+
+    for k in tf.range(2, m + n + 1):
+      # Masks invalid entries in "wavefrontified" value tensor.
+      j_range = k - i_range
+      inv_mask = tf.logical_and(j_range >= 0, j_range <= n)[None, :, None]
+
+      o_match = v_all_p2 + wavefrontified_subs_costs[k - 2]  # [3, m, b].
+      o_ins = v_all_p1[:2] - gap_pens[1:]  # [2, m + 1, b].
+      # Assigns v_p2 <- v_p1 for next iteration, discarding the last column,
+      # i.e., i = m - 1.
+      v_all_p2 = v_all_p1[:, :-1]  # [3, m, b].
+      o_del = v_all_p2 - gap_pens  # [3, m, b].
+
+      v_match, dir_match = reduce_max_with_argmax(o_match, axis=0)  # [m, b].
+      v_ins, dir_ins = reduce_max_with_argmax(o_ins, axis=0)  # [m + 1, b].
+      v_del, dir_del = reduce_max_with_argmax(o_del, axis=0)  # [m, b].
+
+      # Adds sentinel values to (0, i) entries of V[0] (M) and V[2] (D).
+      # Only V[1] (I) has finite values for (0, 1) entries, which are equal to
+      # -(gap_open + (i + 1) * gap_extend).
+      v_match = tf.pad(v_match, [[1, 0], [0, 0]], constant_values=-inf)
+      v_del = tf.pad(v_del, [[1, 0], [0, 0]], constant_values=-inf)
+      # Adds sentinel values to (0, i) entries of DIR[0] (M) and DIR[2] (D).
+      # Only DIR[1] (I) has valid values for (0, i) entries, which are equal to
+      # 1 (previous state being also I) except (0, 1), which has value 0
+      # (previous state being M by convention, see dir_p1 above).
+      dir_match = tf.pad(dir_match, [[1, 0], [0, 0]], constant_values=-2)
+      dir_del = tf.pad(dir_del, [[1, 0], [0, 0]], constant_values=-2)
+
+      v_all_p1 = tf.where(inv_mask, tf.stack([v_match, v_ins, v_del]), -inf)
+      dir_all = dir_all.write(k, tf.stack([dir_match, dir_ins, dir_del]))
+      v_opt, m_opt = maybe_update(k, v_opt, m_opt, v_all_p1)
+
+    # -------------------------------------------------------------------------
+    # INITIALIZATION OF BACKWARD RECURSION
+    # -------------------------------------------------------------------------
+
+    # TODO: use an Enum to make these variables a bit more readable.
+
+    # Creates auxiliary tensors to encode backtracking "actions".
+    #   A match (0) sends us two antidiagonals up, one col left.
+    #   An insert (1) sends us one antidiagonal up in the same col.
+    #   A deletion (2) sends us one antidiagonal up, one col left.
+    steps_k = tf.convert_to_tensor([-2, -1, -1], dtype=tf.int32)
+    steps_i = tf.convert_to_tensor([-1, 0, -1], dtype=tf.int32)
+    # Creates auxiliary tensor to encode alignment states.
+    #   match state (1): {match, insert, deletion} -> {match}.
+    #   insert open (2): {match, deletion} -> {insert}.
+    #   insert extend (3): {insert} -> {insert}.
+    #   delete open (4): {match, insert} -> {delete}.
+    #   delete extend (5): {delete} -> {delete}.
+    trans_enc = tf.constant([[1, 1, 1], [2, 3, 2], [4, 4, 5]],
+                            dtype=tf.int32)  # [m_curr, m_prev]
+    # Initializes additional backtracking variables.
+    k_opt = k_end  # [b], next antidiagonal for backtracking.
+    i_opt = y_true_lens  # [b], next col for backtracking.
+    # Allocates memory for sparse representation of alignment.
+    paths_sp = tf.TensorArray(tf.int32, size=m + n + 1, clear_after_read=True)
+
+    # -------------------------------------------------------------------------
+    # BACKWARD RECURSION
+    # -------------------------------------------------------------------------
+
+    for k in tf.range(m + n, -1, -1):
+      # Safeguards against invalid indexing after stop condition is reached.
+      safe_m_opt = tf.maximum(m_opt, 0)
+      safe_i_opt = tf.maximum(i_opt, 0)
+      # Computes tentative next indices for each alignment.
+      k_opt_n = k_opt + tf.gather(steps_k, safe_m_opt)
+      i_opt_n = i_opt + tf.gather(steps_i, safe_m_opt)
+      # Computes tentative next state types for each alignment.
+      m_opt_n_idx = tf.stack([safe_m_opt, safe_i_opt, samp_idx], -1)
+      m_opt_n = tf.gather_nd(dir_all.read(k), m_opt_n_idx)
+      # Computes tentative next sparse updates for paths tensor, safeguarding
+      # against invalid indexing.
+      safe_m_opt_n = tf.maximum(m_opt_n, 0)
+      edges_n = tf.gather_nd(trans_enc,
+                             tf.stack([safe_m_opt, safe_m_opt_n], axis=-1))
+      paths_sp_n = tf.stack([samp_idx, i_opt, k_opt - i_opt, edges_n], -1)
+
+      # Checks if start (0, 0) was reached during backtracking.
+      reached_start = m_opt_n == -1
+      # Indicates alignments to be updated in this iteration.
+      cond = tf.logical_and(k_opt == k, tf.logical_not(reached_start))
+      # Conditionally applies updates for each alignment.
+      k_opt = tf.where(cond, k_opt_n, k_opt)
+      i_opt = tf.where(cond, i_opt_n, i_opt)
+      m_opt = tf.where(cond, m_opt_n, m_opt)
+      paths_sp_k = tf.where(cond[:, None], paths_sp_n, tf.zeros([b, 4],
+                                                                tf.int32))
+      paths_sp = paths_sp.write(k, paths_sp_k)  # [0, 0, 0, 0] used as dummy up.
+
+    # Applies sparse updates, building paths tensor.
+    paths_sp = tf.reshape(paths_sp.stack(), [-1, 4])  # [((m + n + 1) * b), 4].
+    paths_sp_idx, paths_sp_upd = paths_sp[:, :3], paths_sp[:, 3]
+    paths = tf.scatter_nd(paths_sp_idx, paths_sp_upd, [b, m + 1, n + 1])
+
+    # -------------------------------------------------------------------------
+    # COMPUTE METRICS FROM ALIGNMENT
+    # -------------------------------------------------------------------------
+    matches_mask = paths == 1
+    insertions_mask = tf.logical_or(paths == 2, paths == 3)
+    deletions_mask = tf.logical_or(paths == 4, paths == 5)
+    # Note: the following assumes that matching_score and mismatch_penalty are
+    # both strictly greater than zero to avoid recomputing the pairwise comp.
+    # between y_true and y_pred.
+    correct_matches = tf.logical_and(matches_mask[:, 1:, 1:], subs_costs > 0)
+
+    sum_positions = lambda t: tf.reduce_sum(tf.cast(t, tf.int32), axis=[1, 2])
+    metric_values = {
+        'num_matches': sum_positions(matches_mask),
+        'num_insertions': sum_positions(insertions_mask),
+        'num_deletions': sum_positions(deletions_mask),
+        'num_correct_matches': sum_positions(correct_matches),
+    }
+    metric_values['alignment_length'] = (
+        metric_values['num_matches'] + metric_values['num_insertions'] +
+        metric_values['num_deletions'])
+    # Computes percent identity (PID). PID is defined as 1.0 in the particular
+    # case in which the ground-truth and predicted sequences are "empty", i.e.,
+    # consist only of gap tokens.
+    unsafe_pid = (
+        metric_values['num_correct_matches'] /
+        metric_values['alignment_length'])
+    metric_values['pid'] = tf.where(metric_values['alignment_length'] > 0,
+                                    tf.cast(unsafe_pid, dtype),
+                                    tf.convert_to_tensor(1.0, dtype))
+
+    return v_opt, paths, metric_values
+
+  def update_state(
+      self,
+      y_true: tf.Tensor,
+      y_pred: tf.Tensor,
+      sample_weight: Optional[tf.Tensor] = None,
+  ):
+    _, _, metric_values = self.alignment(y_true, y_pred)
+    self._pid.update_state(metric_values['pid'], sample_weight=sample_weight)
+
+  def result(self) -> tf.Tensor:
+    return self._pid.result()
+
+  def reset_states(self):
+    self._pid.reset_states()

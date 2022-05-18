@@ -27,6 +27,7 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """Tests for losses_and_metrics."""
 
+from typing import Sequence, Tuple
 from absl.testing import absltest
 from absl.testing import parameterized
 import numpy as np
@@ -432,6 +433,115 @@ class AlignmentLossTest(parameterized.TestCase):
         del_cost=del_cost, loss_reg=loss_reg, width=width)
     loss = loss_obj(y_true, y_pred_scores)
     self.assertAlmostEqual(float(loss), expected_loss, places=2)
+
+
+class AlignmentMetricTest(parameterized.TestCase):
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='Identical sequences, no pad',
+          sequences=(['TTAGGC', 'AGCTGG'], ['TTAGGC', 'AGCTGG']),
+          matching_score=2.0,
+          mismatch_penalty=5.0,
+          gap_open_penalty=5.0,
+          gap_extend_penalty=4.0,
+          expected_pid=(1.0, 1.0)),
+      dict(
+          testcase_name='Two errors, no pad',
+          sequences=(['TTAGGC', 'AGCTGG'], ['AAAGGC', 'TGCTGC']),
+          matching_score=2.0,
+          mismatch_penalty=5.0,
+          gap_open_penalty=5.0,
+          gap_extend_penalty=4.0,
+          expected_pid=(0.667, 0.667)),
+      dict(
+          testcase_name='Correct insertions only, no pad.',
+          sequences=(['TTAGGC', 'AGCTGG'], ['T TA G G C', 'AGC    TGG']),
+          matching_score=2.0,
+          mismatch_penalty=5.0,
+          gap_open_penalty=5.0,
+          gap_extend_penalty=4.0,
+          expected_pid=(1.0, 1.0)),
+      dict(
+          testcase_name='One deletion, with pad.',
+          sequences=(['TTAGGC', 'AGCTGG'], ['TTAGG ', 'GCTGG ']),
+          matching_score=2.0,
+          mismatch_penalty=5.0,
+          gap_open_penalty=5.0,
+          gap_extend_penalty=4.0,
+          expected_pid=(0.833, 0.833)),
+      dict(
+          testcase_name='One erroneous insertion, no pad.',
+          sequences=(['TTAGGC', 'ATCGAC',
+                      'AGCTGG'], ['TTAGGCA', 'ATCCGAC', 'CAGCTGG']),
+          matching_score=2.0,
+          mismatch_penalty=5.0,
+          gap_open_penalty=5.0,
+          gap_extend_penalty=4.0,
+          expected_pid=(0.857, 0.857, 0.857)),
+      dict(
+          testcase_name='One deletion, shorter, with pad.',
+          sequences=(['ATCG ', 'ATCG '], ['TCG  ', 'TCG  ']),
+          matching_score=2.0,
+          mismatch_penalty=5.0,
+          gap_open_penalty=5.0,
+          gap_extend_penalty=4.0,
+          expected_pid=(0.75, 0.75)),
+      dict(
+          testcase_name='Empty predictions.',
+          sequences=(['ATCG ', 'ATCG '], ['     ', '     ']),
+          matching_score=2.0,
+          mismatch_penalty=5.0,
+          gap_open_penalty=5.0,
+          gap_extend_penalty=4.0,
+          expected_pid=(0.0, 0.0)),
+      dict(
+          testcase_name='Empty ground-truth.',
+          sequences=(['     ', '     '], ['ATCG ', 'ATCG ']),
+          matching_score=2.0,
+          mismatch_penalty=5.0,
+          gap_open_penalty=5.0,
+          gap_extend_penalty=4.0,
+          expected_pid=(0.0, 0.0)),
+      dict(
+          testcase_name='Empty predictions, ground-truth length one.',
+          sequences=(['A    ', 'T    '], ['     ', '     ']),
+          matching_score=2.0,
+          mismatch_penalty=5.0,
+          gap_open_penalty=5.0,
+          gap_extend_penalty=4.0,
+          expected_pid=(0.0, 0.0)),
+      dict(
+          testcase_name='Empty ground-truth, predictions length one.',
+          sequences=(['     ', '     '], ['A    ', 'T    ']),
+          matching_score=2.0,
+          mismatch_penalty=5.0,
+          gap_open_penalty=5.0,
+          gap_extend_penalty=4.0,
+          expected_pid=(0.0, 0.0)),
+      dict(
+          testcase_name='Both empty.',
+          sequences=(['     ', '     '], ['     ', '     ']),
+          matching_score=2.0,
+          mismatch_penalty=5.0,
+          gap_open_penalty=5.0,
+          gap_extend_penalty=4.0,
+          expected_pid=(1.0, 1.0)),  # Expected PID defined as special case.
+  )
+  def test_alignment_metric(self, sequences: Tuple[Sequence[str],
+                                                   Sequence[str]],
+                            matching_score: float, mismatch_penalty: float,
+                            gap_open_penalty: float, gap_extend_penalty: float,
+                            expected_pid: Tuple[float]):
+    y_true, y_pred_scores = test_utils.convert_seqs(sequences)
+    alignment_metric_obj = losses_and_metrics.AlignmentMetric(
+        matching_score=matching_score,
+        mismatch_penalty=mismatch_penalty,
+        gap_open_penalty=gap_open_penalty,
+        gap_extend_penalty=gap_extend_penalty)
+    pid = alignment_metric_obj.alignment(y_true, y_pred_scores)[2]['pid']
+    for i, _ in enumerate(sequences):
+      self.assertAlmostEqual(float(pid[i]), expected_pid[i], places=2)
 
 
 if __name__ == '__main__':
