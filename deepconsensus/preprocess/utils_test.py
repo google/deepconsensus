@@ -414,6 +414,7 @@ class TestCcsRead(absltest.TestCase):
     seq_name = 'm54238_180901_011437/4194375/ccs'
     read = utils.construct_ccs_read(ccs_bam_read)
     self.assertEqual(seq_name, read.name)
+    self.assertGreater(read.avg_base_quality_score, 0)
     self.assertTrue((read.base_quality_scores > 0).any())
 
 

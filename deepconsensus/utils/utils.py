@@ -27,8 +27,10 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """Utilities for DeepConsensus."""
 
-import math
-from typing import List
+from typing import List, Union
+import numpy as np
+import tensorflow as tf
+from deepconsensus.utils import dc_constants
 
 
 def quality_score_to_string(score: int) -> str:
@@ -58,9 +60,53 @@ def quality_string_to_array(quality_string: str) -> List[int]:
   return [ord(char) - 33 for char in quality_string]
 
 
-def avg_phred(base_qualities: List[int]) -> float:
-  """Returns the average phred quality of the provided base qualities."""
-  if not base_qualities:
-    return 0
-  return -10 * math.log(
-      sum([10**(i / -10) for i in base_qualities]) / len(base_qualities), 10)
+def tf_avg_phred(base_qualities: tf.Tensor) -> tf.float32:
+  """Calculate the avg phred using tensorflow."""
+
+  def un_phred(val):
+    return tf.pow(10.0, (val / -10.0))
+
+  base_qualities = tf.cast(base_qualities, dc_constants.TF_DATA_TYPE)
+  base_qualities = base_qualities[base_qualities >= 0]
+  if not tf.reduce_any(tf.greater(base_qualities, 0)):
+    return 0.0
+  else:
+    probs = tf.map_fn(un_phred, base_qualities)
+    probs_len = tf.cast(tf.shape(probs), dc_constants.TF_DATA_TYPE)
+    avg_prob = tf.reduce_sum(probs) / probs_len
+    avg_q = -10.0 * (tf.math.log(avg_prob) / tf.math.log(10.0))
+    return float(avg_q)
+
+
+def avg_phred(base_qualities: Union[np.ndarray, List[int]]) -> float:
+  """Get the average phred quality given base qualities of a read.
+
+  Args:
+     base_qualities: A numpy array containing the base qualities of a read.
+
+  Returns:
+     The average error rate of the read quality list.
+  """
+  # Filter out base qualities that are set to -1
+  # These are used to encode spacing.
+  base_qualities = np.asarray(base_qualities)
+  base_qualities = base_qualities[base_qualities >= 0]
+  if not base_qualities.any():
+    return 0.0
+  probs = 10**(base_qualities / -10.)
+  avg_prob = probs.sum() / len(probs)
+  avg_q = -10 * np.log10(avg_prob)
+  return avg_q
+
+
+def left_shift_seq(seq: np.ndarray) -> np.ndarray:
+  """Left shift a numeric-encoded sequence."""
+  return np.concatenate([
+      seq[seq != dc_constants.GAP_OR_PAD_INT],
+      seq[seq == dc_constants.GAP_OR_PAD_INT]
+  ])
+
+
+def left_shift(batch_seq: np.ndarray, axis: int = 1) -> np.ndarray:
+  """Performs left_shift on a batch of sequences."""
+  return np.apply_along_axis(left_shift_seq, axis, batch_seq)

@@ -29,6 +29,8 @@
 
 from absl.testing import absltest
 from absl.testing import parameterized
+import numpy as np
+import tensorflow as tf
 
 from deepconsensus.utils import utils
 
@@ -50,6 +52,87 @@ class QualityStringToArrayTest(parameterized.TestCase):
                             ('!+5?I', [0, 10, 20, 30, 40]))
   def test_string_to_int(self, string, expected_scores):
     self.assertEqual(utils.quality_string_to_array(string), expected_scores)
+
+
+class TestAvgPhred(parameterized.TestCase):
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='single_value',
+          ccs_base_quality_scores=np.array([1]),
+          expected_avg_quality=0.9999,
+      ),
+      dict(
+          testcase_name='integer list',
+          ccs_base_quality_scores=[1, 2, 3],
+          expected_avg_quality=1.9235,
+      ),
+      dict(
+          testcase_name='multiple_values',
+          ccs_base_quality_scores=np.array([1, 2, 3]),
+          expected_avg_quality=1.9235,
+      ),
+      dict(
+          testcase_name='spacer values',
+          ccs_base_quality_scores=np.array([1, -1, 3]),
+          expected_avg_quality=1.8858,
+      ),
+      dict(
+          testcase_name='no values',
+          ccs_base_quality_scores=np.array([-1, -1, -1]),
+          expected_avg_quality=0.0,
+      ))
+  def test_avg_ccs_quality(self, ccs_base_quality_scores, expected_avg_quality):
+    np_phred = utils.avg_phred(ccs_base_quality_scores)
+    self.assertAlmostEqual(np_phred, expected_avg_quality, 3)
+    # Test tensorflow implementation
+    tf_phred = utils.tf_avg_phred(tf.convert_to_tensor(ccs_base_quality_scores))
+    self.assertAlmostEqual(np_phred, tf_phred, 3)
+
+
+class TestLeftSeq(parameterized.TestCase):
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='no_gap',
+          input_seq=np.array([1, 2, 3, 4, 1, 2, 3, 4]),
+          expected_seq=np.array([1, 2, 3, 4, 1, 2, 3, 4]),
+      ),
+      dict(
+          testcase_name='single_gap',
+          input_seq=np.array([1, 2, 3, 4, 0, 0, 1, 2, 3, 4]),
+          expected_seq=np.array([1, 2, 3, 4, 1, 2, 3, 4, 0, 0]),
+      ),
+      dict(
+          testcase_name='multiple_gaps',
+          input_seq=np.array(
+              [0, 0, 1, 2, 3, 4, 0, 0, 1, 2, 3, 4, 0, 0, 1, 2, 3, 4, 0, 0]),
+          expected_seq=np.array(
+              [1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 0, 0, 0, 0, 0, 0, 0, 0]),
+      ))
+  def test_avg_ccs_quality(self, input_seq, expected_seq):
+    left_shifted_seq = utils.left_shift_seq(input_seq)
+    self.assertTrue((left_shifted_seq == expected_seq).all())
+
+
+class TestBatchLeftSeq(parameterized.TestCase):
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='no_gap',
+          input_seq=np.array([[1, 2, 3, 4], [1, 2, 3, 4]]),
+          expected_seq=np.array([[1, 2, 3, 4], [1, 2, 3, 4]]),
+      ),
+      dict(
+          testcase_name='staggered_gaps',
+          input_seq=np.array([[0, 0, 1, 1, 0, 0, 2, 2],
+                              [1, 1, 0, 0, 2, 2, 0, 0]]),
+          expected_seq=np.array([[1, 1, 2, 2, 0, 0, 0, 0],
+                                 [1, 1, 2, 2, 0, 0, 0, 0]]),
+      ))
+  def test_avg_ccs_quality(self, input_seq, expected_seq):
+    left_shifted_seq = utils.left_shift(input_seq)
+    self.assertTrue((left_shifted_seq == expected_seq).all())
 
 
 if __name__ == '__main__':

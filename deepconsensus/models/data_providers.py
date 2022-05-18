@@ -36,6 +36,7 @@ import numpy as np
 import tensorflow.compat.v2 as tf
 
 from deepconsensus.utils import dc_constants
+from deepconsensus.utils import utils
 
 
 # Define base fields for TFRecords.
@@ -253,6 +254,16 @@ def tf_example_to_training_tuple(
   return (tf_example['rows'], tf_example['label'])
 
 
+def filter_ccs_q_score(tf_example: Dict[str, tf.Tensor],
+                       max_phred_qual: int = 0) -> bool:
+  """Returns True if phred is less than max_phred_qual."""
+  # When max_phred_qual is 0, do not filter.
+  if max_phred_qual == 0:
+    return True
+  phred = utils.tf_avg_phred(tf_example['ccs_base_quality_scores'])
+  return phred <= max_phred_qual
+
+
 def get_dataset(file_pattern: str,
                 num_epochs: Optional[int],
                 batch_size: int,
@@ -297,10 +308,15 @@ def get_dataset(file_pattern: str,
         cap_ip=cap_ip,
         inference=inference)
 
+  def _filter_q_helper(tf_example: Dict[str, tf.Tensor]) -> bool:
+    return filter_ccs_q_score(tf_example, params.max_phred_qual)
+
   file_patterns = create_glob_list(file_pattern)
   ds = tf.data.TFRecordDataset(file_patterns, compression_type='GZIP')
   ds = ds.map(map_func=_process_input_helper)
+  ds = ds.filter(_filter_q_helper)
   ds = ds.shuffle(buffer_size=params.buffer_size, reshuffle_each_iteration=True)
+
   if num_epochs:
     ds = ds.repeat(num_epochs)
 
@@ -339,6 +355,9 @@ def create_input_fn(params, mode, limit: int = -1, drop_remainder: bool = True):
         cap_pw=True,
         cap_ip=True)
 
+  def _filter_q_helper(tf_example: Dict[str, tf.Tensor]) -> bool:
+    return filter_ccs_q_score(tf_example, params.max_phred_qual)
+
   def input_fn() -> tf.data.Dataset:
     """Prepares a dataset for training or evaluation."""
     is_training = (mode == 'train')
@@ -351,9 +370,6 @@ def create_input_fn(params, mode, limit: int = -1, drop_remainder: bool = True):
         lambda x: tf.data.TFRecordDataset(x, compression_type='GZIP'),
         num_parallel_calls=tf.data.AUTOTUNE,
         deterministic=False)
-    if is_training:
-      ds = ds.shuffle(
-          buffer_size=params['buffer_size'], reshuffle_each_iteration=True)
 
     # Best practices suggest batching first, but this map errors out when we
     # batch first, so do this before mapping.
@@ -361,6 +377,13 @@ def create_input_fn(params, mode, limit: int = -1, drop_remainder: bool = True):
         _process_input_helper,
         num_parallel_calls=tf.data.experimental.AUTOTUNE,
         deterministic=False)
+
+    ds = ds.filter(_filter_q_helper, 'ccs_quality_filter')
+
+    if is_training:
+      ds = ds.shuffle(
+          buffer_size=params['buffer_size'], reshuffle_each_iteration=True)
+
     # Best practices suggest batching before mapping.
     ds = ds.batch(batch_size, drop_remainder=drop_remainder)
     ds = ds.map(

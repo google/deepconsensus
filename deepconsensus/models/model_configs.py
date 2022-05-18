@@ -243,6 +243,9 @@ def get_config(config_name: str) -> ml_collections.ConfigDict:
   params.del_cost = 10.0
   params.loss_reg = 0.1
 
+  # Avg CCS Quality Filter; When set to 0 no examples will be filtered.
+  params.max_phred_qual = 0
+
 
   # Scaling factor to multiply the batch_size when using TPUs since they have
   # more memory than GPUs.

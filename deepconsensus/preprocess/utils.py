@@ -38,6 +38,7 @@ import tensorflow as tf
 
 from deepconsensus.models import data_providers
 from deepconsensus.utils import dc_constants
+from deepconsensus.utils import utils
 
 Issue = dc_constants.Issue
 
@@ -208,6 +209,11 @@ class Read(collections.Sequence):
     for k, base in enumerate(dc_constants.VOCAB):
       bases_encoded[self.bases == base] = k
     return bases_encoded
+
+  @property
+  def avg_base_quality_score(self) -> float:
+    """Outputs the average CCS base quality score."""
+    return utils.avg_phred(self.base_quality_scores)
 
   @property
   def zmw(self) -> int:
