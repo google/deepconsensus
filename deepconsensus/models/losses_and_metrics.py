@@ -1013,3 +1013,45 @@ class AlignmentMetric(tf.keras.metrics.Metric):
 
   def reset_states(self):
     self._pid.reset_states()
+
+
+class DistillationLoss(tf.keras.losses.Loss):
+  """Computes the distillation loss between the student and teacher logits.
+
+  Distillation loss is defined as the mean KL divergence between
+  temperature-scaled softmax probabilities derived from the student and teacher
+  models, with the mean taken over the positions in the window.
+
+  Attributes:
+    temperature: Temperature for softening probability distributions. Larger
+      temperature gives softer distributions.
+    reduction: (Optional) type of `tf.keras.losses.Reduction` to apply to loss.
+      Default value is `AUTO`. When used in custom training loops under the
+      scope of `tf.distribute.Strategy`, must be set to `NONE` or `SUM`.
+  """
+
+  def __init__(
+      self,
+      temperature: float = 1.0,
+      reduction: tf.keras.losses.Reduction = tf.keras.losses.Reduction.AUTO):
+    super(DistillationLoss, self).__init__(reduction=reduction)
+    self.temperature = temperature
+
+  def call(self, teacher_logits: tf.Tensor,
+           student_logits: tf.Tensor) -> tf.Tensor:
+    """Computes the distillation loss between student and teacher logits.
+
+    Args:
+      teacher_logits: A tf.Tensor<float>[batch, window_length, vocab_size]
+        representing the logits produced by the teacher model.
+      student_logits: A tf.Tensor<float>[batch, window_length, vocab_size]
+        representing the logits produced by the student model.
+
+    Returns:
+      A tf.Tensor<float> with the value of the loss.
+    """
+    teacher_probs = tf.nn.softmax(teacher_logits / self.temperature, axis=-1)
+    student_probs = tf.nn.softmax(student_logits / self.temperature, axis=-1)
+    kl = tf.keras.losses.kld(teacher_probs, student_probs)
+    # Take the mean across the positions in the sequence.
+    return tf.math.reduce_mean(kl, axis=-1)

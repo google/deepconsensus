@@ -544,5 +544,78 @@ class AlignmentMetricTest(parameterized.TestCase):
       self.assertAlmostEqual(float(pid[i]), expected_pid[i], places=2)
 
 
+def softmax(x):
+  """Compute softmax values for logits in x."""
+  return np.exp(x) / np.sum(np.exp(x), axis=0)
+
+
+def distill_loss_per_pos_fn_np(teacher_logits, student_logits, temperature):
+  """Computes per position distillation loss."""
+  teacher_probs = softmax(teacher_logits / temperature)
+  student_probs = softmax(student_logits / temperature)
+  # Compute the KL divergence.
+  kl = np.sum(teacher_probs * np.log(teacher_probs / student_probs), axis=-1)
+  return kl
+
+
+class DistillationLossTest(parameterized.TestCase):
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='Temperature=1',
+          batch_size=2,
+          window_length=10,
+          temperature=1,
+          are_logits_equal=False,
+      ),
+      dict(
+          testcase_name='Temperature=10',
+          batch_size=2,
+          window_length=10,
+          temperature=10,
+          are_logits_equal=False),
+      dict(
+          testcase_name='Student and teacher have the same logits.',
+          batch_size=2,
+          window_length=10,
+          temperature=1,
+          are_logits_equal=True),
+  )
+  def test_distillation_loss_fn(self, batch_size, window_length, temperature,
+                                are_logits_equal):
+    """Checks that pointwise Distillation values agree with numpy."""
+    # Generate random data.
+    seed_teacher = 0
+    if are_logits_equal:
+      seed_student = seed_teacher
+    else:
+      seed_student = seed_teacher + 1
+    vocab_size = len(dc_constants.VOCAB)
+    np.random.seed(seed_teacher)
+    teacher_logits = np.random.normal(
+        size=(batch_size, window_length, vocab_size))
+    np.random.seed(seed_student)
+    student_logits = np.random.normal(
+        size=(batch_size, window_length, vocab_size))
+
+    distill_loss_fn = losses_and_metrics.DistillationLoss(
+        temperature=temperature, reduction=tf.keras.losses.Reduction.NONE)
+    expected_loss = distill_loss_fn(
+        tf.constant(teacher_logits, dtype=tf.float32),
+        tf.constant(student_logits, dtype=tf.float32)).numpy()
+
+    # Compute distillation loss in numpy pointwise.
+    for example_ind in range(batch_size):
+      distill_loss = 0
+      for pos_ind in range(window_length):
+        kl_ij = distill_loss_per_pos_fn_np(
+            teacher_logits[example_ind, pos_ind, :],
+            student_logits[example_ind, pos_ind, :], temperature)
+        distill_loss = distill_loss + kl_ij
+      # Get the distillation loss over the whole window.
+      distill_loss = distill_loss / window_length
+      self.assertAlmostEqual(distill_loss, expected_loss[example_ind])
+
+
 if __name__ == '__main__':
   absltest.main()
