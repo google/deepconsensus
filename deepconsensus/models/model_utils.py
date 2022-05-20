@@ -75,6 +75,8 @@ def get_deepconsensus_metrics(name_prefix='') -> List[tf.keras.metrics.Metric]:
       tf.keras.metrics.SparseCategoricalAccuracy(name=f'{name_prefix}accuracy'),
       losses_and_metrics.PerExampleAccuracy(
           name=f'{name_prefix}per_example_accuracy'),
+      losses_and_metrics.AlignmentMetric(
+          name=f'{name_prefix}alignment_identity')
   ] + per_class_accuracy_metrics
 
 

@@ -73,6 +73,9 @@ flags.DEFINE_bool('debug', False,
 flags.DEFINE_bool(
     'write_checkpoint_metrics', False,
     'Whether to write eval metrics for each checkpoint during training.')
+flags.DEFINE_bool(
+    'eval_and_log_every_step', False, 'Eval and log after every step. '
+    'Use this e.g. for testing training and inspecting metrics locally.')
 
 
 class DTypeEncoder(json.JSONEncoder):
@@ -109,7 +112,11 @@ def get_datasets(
 
 def get_step_counts(params: ml_collections.ConfigDict) -> Tuple[int, int]:
   """Returns the steps for training and evaluation."""
-  if params.limit <= 0:
+
+  if FLAGS.eval_and_log_every_step:
+    steps_per_epoch = 1
+    steps_per_eval = 1
+  elif params.limit <= 0:
     steps_per_epoch = params.n_examples_train // params.batch_size
     steps_per_eval = params.n_examples_eval // params.batch_size
   else:
@@ -259,6 +266,8 @@ def train_model(out_dir: str, params: ml_collections.ConfigDict,
         tf.distribute.ReduceOp.SUM, per_replica_losses, axis=None)
 
   log_steps = 100
+  if FLAGS.eval_and_log_every_step:
+    log_steps = 1
   train_iterator = iter(train_dataset)
   eval_iterator = iter(eval_dataset)
   min_eval_loss = 1e6
