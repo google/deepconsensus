@@ -160,7 +160,7 @@ class Read(collections.Sequence):
     # When insertions are encountered in the label, add them in
     # to maintain spacing correctly.
     if self.truth_range:
-      while self.is_insertion[self.idx_seq]:
+      while not self.is_out_of_bounds() and self.is_insertion[self.idx_seq]:
         # For label insertions, insert bases.
         self.seq_indices[self.idx_seq] = self.idx_spaced
         self.idx_seq += 1
@@ -929,7 +929,8 @@ def space_out_subreads(subreads: List[Read]) -> List[Read]:
         r.add_gap()
       else:
         # In all other cases, just take the next base and move on.
-        r.move()
+        if not r.is_out_of_bounds():
+          r.move()
         if r.is_out_of_bounds():
           # Finally, format reads with spacing.
           r.done = True

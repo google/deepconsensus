@@ -570,6 +570,33 @@ class TestSpaceOutSubreads(parameterized.TestCase):
               'begin': 0,
               'end': 8
           }),
+      dict(
+          testcase_name='insertion at end of label',
+          bases="""
+           TTTTT
+           TTTTT
+           TTTTT
+           TTTTTGG
+          """,
+          cigars="""
+           MMMMM
+           MMMMM
+           MMMMM
+           MMMMMII
+          """,
+          expected="""
+           TTTTT
+           TTTTT
+           TTTTT
+           TTTTTGG
+          """,
+          ccs_idx=[[0, 1, 2, 3, 4], [0, 1, 2, 3, 4], [0, 1, 2, 3, 4],
+                   [0, 1, 2, 3, 4, -1, -1]],
+          truth_range={
+              'contig': 'chr1',
+              'begin': 0,
+              'end': 7
+          }),
   )
   def test_space_out_subreads(self,
                               bases,
