@@ -127,7 +127,7 @@ def get_model(params: ml_collections.ConfigDict) -> tf.keras.Model:
     model = legacy_networks.EncoderOnlyLearnedValuesTransformer(params)
   # I'm using "_v2" suffix for the new code migrated out of legacy. Feel free
   # to suggest more informative names.
-  elif params.model_name == 'transformer_learn_values_v2':
+  elif 'transformer_learn_values_v2' in params.model_name:
     model = networks.EncoderOnlyLearnedValuesTransformer(params)
   else:
     raise ValueError('Unknown model name: %s' % params.model_name)

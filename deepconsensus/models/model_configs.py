@@ -170,6 +170,38 @@ def _set_transformer_learned_embeddings_v2_hparams(params):
   params.transformer_input_size = 280
 
 
+def _set_transformer_learned_embeddings_v2_distill_hparams(params):
+  """Updates given config with values for the distilled transformer."""
+  _set_transformer_learned_embeddings_v2_hparams(params)
+  params.model_name = 'transformer_learn_values_v2_distill'
+
+  # Student architecture parameters.
+  params.num_hidden_layers = 3
+  params.filter_size = 2048
+
+  # Whether to initialize encoder layers using the teacher model.
+  params.init_encoder_stack = True
+  # Whether to initialize non-encoder layers using the teacher model.
+  params.init_nonencoder_layers = True
+  # The order of indices in params.teacher_encoder_layers and
+  # params.student_encoder_layers determines the layer to layer initialization.
+  params.teacher_encoder_layers = [0, 1, 5]
+  params.student_encoder_layers = [0, 1, 2]
+  if params.init_encoder_stack:
+    assert len(params.teacher_encoder_layers) == len(
+        params.student_encoder_layers)
+    assert len(params.student_encoder_layers) == params.num_hidden_layers
+    assert max(params.student_encoder_layers) < params.num_hidden_layers
+
+  # Distillation loss parameters.
+  # Weight corresponding to the distillation loss.
+  params.distill_alpha = 1000
+  # Weight corresponding to the student loss.
+  params.student_alpha = 1
+  # Temperature for softening probability distributions.
+  params.temperature = 1
+
+
 
 
 ############### Base params for different datasets ###############
@@ -265,6 +297,8 @@ def get_config(config_name: str) -> ml_collections.ConfigDict:
     _set_transformer_learned_embeddings_v2_hparams(params)
   elif model_config_name == 'transformer_learn_values':
     _set_transformer_learned_embeddings_hparams(params)
+  elif model_config_name == 'transformer_learn_values_v2_distill':
+    _set_transformer_learned_embeddings_v2_distill_hparams(params)
   else:
     raise ValueError('Unknown model_config_name: %s' % model_config_name)
 
