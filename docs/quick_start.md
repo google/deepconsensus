@@ -117,7 +117,7 @@ gsutil cp gs://brain-genomics-public/research/deepconsensus/models/v0.2/* "${MOD
 In our example run, because we're using GPU, we used:
 
 ```bash
-curl https://raw.githubusercontent.com/google/deepvariant/r1.3/scripts/install_nvidia_docker.sh -o install_nvidia_docker.sh
+curl https://raw.githubusercontent.com/google/deepvariant/r1.4/scripts/install_nvidia_docker.sh -o install_nvidia_docker.sh
 bash install_nvidia_docker.sh
 ```
 
