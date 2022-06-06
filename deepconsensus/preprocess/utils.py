@@ -47,8 +47,10 @@ class SubreadGrouper(collections.Iterator):
   """Returns all subreads belonging to a single zmw as a list."""
 
   def __init__(self, subreads_to_ccs, reader_threads):
+    save = pysam.set_verbosity(0)  # Avoid confusing index file warning.
     self.bam_reader = pysam.AlignmentFile(
         subreads_to_ccs, check_sq=False, threads=reader_threads)
+    pysam.set_verbosity(save)
     self.keep_iter = True
     self.subread_group = []
     # Setup subread group.
@@ -956,7 +958,10 @@ def create_proc_feeder(subreads_to_ccs: str,
 
   # Initiate files
   subread_grouper = SubreadGrouper(subreads_to_ccs, bam_reader_threads)
+
+  save = pysam.set_verbosity(0)  # Avoid confusing index file warning.
   ccs_bam_h = pysam.AlignmentFile(ccs_bam, check_sq=False)
+  pysam.set_verbosity(save)
 
   is_training = truth_bed and truth_to_ccs and truth_split
   if is_training:
