@@ -206,27 +206,41 @@ class EncoderOnlyTransformer(tf.keras.Model):
       Output from softmax layer, which is a distribution over the vocabulary at
       each position in the sequence.
     """
-
     with tf.name_scope('Transformer'):
+      logits = self.get_logits(inputs, training=training)
+      preds = self.softmax(logits)
+      return preds
 
-      # Get rid of the channel dimension as we only have one channel.
-      inputs = tf.squeeze(inputs, -1)
+  def get_logits(self, inputs: tf.Tensor, training: bool) -> tf.Tensor:
+    """Get logits of the model.
 
-      # `inputs` is of shape (batch_size, hidden_size, input_length). For the
-      # Transformer, we need to change the format to be the following:
-      # (batch_size, input_length, hidden_size).
-      inputs = tf.transpose(inputs, [0, 2, 1])
+    Args:
+      inputs: tensor of shape (batch_size, hidden_size, input_length
+        num_channels).
+      training: boolean, whether in training mode or not.
 
-      # Attention_bias for our model should be all 0s with shape
-      # (batch_size, 1, 1, input_length). See model_utils.get_padding_bias
-      # to see how this is calculated in the base model.
-      all_zeros = tf.reduce_sum(tf.zeros_like(inputs), -1)
-      attention_bias = tf.expand_dims(tf.expand_dims(all_zeros, 1), 1)
+    Returns:
+      Output logits over the vocabulary at each position in the sequence. The
+        output tensor is of shape (batch_size, length, vocab_size).
+    """
 
-      # Run the inputs through the encoder. Encoder returns the softmax output.
-      encoder_outputs = self.encode(inputs, attention_bias, training)
-      logits = encoder_outputs
-      return logits
+    # Get rid of the channel dimension as we only have one channel.
+    inputs = tf.squeeze(inputs, -1)
+
+    # `inputs` is of shape (batch_size, hidden_size, input_length). For the
+    # Transformer, we need to change the format to be the following:
+    # (batch_size, input_length, hidden_size).
+    inputs = tf.transpose(inputs, [0, 2, 1])
+
+    # Attention_bias for our model should be all 0s with shape
+    # (batch_size, 1, 1, input_length). See model_utils.get_padding_bias
+    # to see how this is calculated in the base model.
+    all_zeros = tf.reduce_sum(tf.zeros_like(inputs), -1)
+    attention_bias = tf.expand_dims(tf.expand_dims(all_zeros, 1), 1)
+
+    # Run inputs through the encoder. Encoder returns logits from dense layer.
+    encoder_outputs = self.encode(inputs, attention_bias, training)
+    return encoder_outputs
 
   def encode(self, inputs: tf.Tensor, attention_bias: tf.Tensor,
              training: bool) -> tf.Tensor:
@@ -277,9 +291,8 @@ class EncoderOnlyTransformer(tf.keras.Model):
       encoder_outputs = self.encoder_stack(
           encoder_inputs, attention_bias, inputs_padding, training=training)
 
-      # Pass through dense layer, and output a distribution.
+      # Pass through dense layer and output logits over vocab for each position.
       encoder_outputs = self.fc1(encoder_outputs)
-      encoder_outputs = self.softmax(encoder_outputs)
       return encoder_outputs
 
   def decode(self, encoder_outputs: tf.Tensor, attention_bias: tf.Tensor,
