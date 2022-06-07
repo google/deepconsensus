@@ -30,8 +30,7 @@ r"""Training binary for all neural network models using a custom training loop.
 To use this binary for training a specific model, the corresponding config file
 should be specified as input. Example usage:
 
-# TODO Migrate to transformer_learn_values_v2 when ready.
-CONFIG="//learning/genomics/deepconsensus/models/model_configs.py:transformer_learn_values+ccs"
+CONFIG="//learning/genomics/deepconsensus/models/model_configs.py:transformer_learn_values_v2+ccs"
 OUT_DIR=/tmp
 
 time blaze run -c opt \
@@ -41,12 +40,10 @@ time blaze run -c opt \
   --alsologtostderr
 """
 
-import io
-import json
 import logging
 import os
 import random
-from typing import Any, List, Optional, Tuple, Union
+from typing import Optional
 
 from absl import app
 from absl import flags
@@ -54,7 +51,6 @@ import ml_collections
 from ml_collections.config_flags import config_flags
 import tensorflow as tf
 
-from deepconsensus.models import data_providers
 from deepconsensus.models import model_utils
 
 
@@ -78,130 +74,16 @@ flags.DEFINE_bool(
     'Use this e.g. for testing training and inspecting metrics locally.')
 
 
-class DTypeEncoder(json.JSONEncoder):
-  """json encoder that allows for dtypes to be encoded."""
-
-  def default(self, obj):
-    if isinstance(obj, tf.DType):
-      return repr(obj)
-    else:
-      return json.JSONEncoder.default(self, obj)
-
-
-def save_params_as_json(out_dir: str,
-                        params: ml_collections.ConfigDict) -> None:
-  """Saves params to a JSON file."""
-  json_path = os.path.join(out_dir, 'params.json')
-  tf.io.gfile.makedirs(os.path.dirname(json_path))
-  with tf.io.gfile.GFile(json_path, 'w') as json_file:
-    json_file.write(json.dumps(dict(params), indent=4, cls=DTypeEncoder))
-
-
-def get_datasets(
-    params: ml_collections.ConfigDict, strategy: tf.distribute.Strategy
-) -> Tuple[tf.distribute.DistributedDataset, tf.distribute.DistributedDataset]:
-  """Returns datasets for training and evaluation."""
-  train_input_fn = data_providers.create_input_fn(
-      params=params, mode='train', limit=params.limit)
-  eval_input_fn = data_providers.create_input_fn(
-      params=params, mode='eval', limit=params.limit)
-  train_dataset = strategy.experimental_distribute_dataset(train_input_fn())
-  eval_dataset = strategy.experimental_distribute_dataset(eval_input_fn())
-  return train_dataset, eval_dataset
-
-
-def get_step_counts(params: ml_collections.ConfigDict) -> Tuple[int, int]:
-  """Returns the steps for training and evaluation."""
-
-  if FLAGS.eval_and_log_every_step:
-    steps_per_epoch = 1
-    steps_per_eval = 1
-  elif params.limit <= 0:
-    steps_per_epoch = params.n_examples_train // params.batch_size
-    steps_per_eval = params.n_examples_eval // params.batch_size
-  else:
-    # When `params.limit` is set, use it to determine epoch size.
-    steps_per_epoch = max(1, params.limit // params.batch_size)
-    steps_per_eval = max(1, params.limit // params.batch_size)
-  return steps_per_epoch, steps_per_eval
-
-
-def get_checkpoint_and_initial_epoch(
-    model: tf.keras.models.Model, optimizer: tf.keras.optimizers.Optimizer,
-    out_dir: str, steps_per_epoch: int) -> Tuple[tf.train.Checkpoint, int]:
-  """Loads a checkpoint if available and sets epoch to start training."""
-  checkpoint = tf.train.Checkpoint(model=model, optimizer=optimizer)
-  latest_checkpoint = tf.train.latest_checkpoint(out_dir)
-  initial_epoch = 0
-  if latest_checkpoint:
-    checkpoint.restore(latest_checkpoint)
-    logging.info('Loaded checkpoint %s', latest_checkpoint)
-    initial_epoch = optimizer.iterations.numpy() // steps_per_epoch
-  return checkpoint, initial_epoch
-
-
-def reset_all_metrics(metrics: List[tf.keras.metrics.Metric]) -> None:
-  """Resets the values of provided metrics."""
-  for metric in metrics:
-    metric.reset_states()
-
-
-def log_and_save_metrics(epoch: int, step: int, total_steps: int,
-                         optimizer: tf.keras.optimizers.Optimizer,
-                         loss_name: str, loss_value: float,
-                         metrics: List[tf.keras.metrics.Metric],
-                         training: bool) -> None:
-  """Logs metrics and saves them for TensorBoard."""
-  logging.info('epoch: %d  step: %d of %d loss: %f', epoch, step, total_steps,
-               loss_value)
-  if training:
-    tf.summary.scalar('learning_rate', optimizer.lr, step=optimizer.iterations)
-  tf.summary.scalar(loss_name, loss_value, step=optimizer.iterations)
-  for metric in metrics:
-    tf.summary.scalar(metric.name, metric.result(), step=optimizer.iterations)
-
-
-def write_row(handle: Union[io.TextIOWrapper], row: List[Any]) -> None:
-  """Formats an array as tab-delimited and writes."""
-  handle.write('\t'.join(map(str, row)) + '\n')
-
-
-def save_checkpoint(checkpoint: tf.train.Checkpoint, out_dir: str,
-                    train_metrics: List[tf.keras.metrics.Metric],
-                    eval_metrics: List[tf.keras.metrics.Metric],
-                    write_checkpoint_metrics: bool) -> str:
-  """Save checkpoint and return its name."""
-  checkpoint_name = checkpoint.save(os.path.join(out_dir, 'checkpoint'))
-  logging.info('Saved checkpoint to %s', checkpoint_name)
-  logging.info('Logging checkpoint %s metrics.', checkpoint_name)
-  metrics_file = os.path.join(out_dir, 'checkpoint_metrics.tsv')
-  if write_checkpoint_metrics:
-    if not tf.io.gfile.exists(metrics_file):
-      with tf.io.gfile.GFile(metrics_file, 'w') as f:
-        row = ['checkpoint_name', 'group', 'name', 'value']
-        write_row(f, row)
-
-    with tf.io.gfile.GFile(metrics_file, 'a') as f:
-      for group_name, metrics in [('train', train_metrics),
-                                  ('eval', eval_metrics)]:
-        for metric in metrics:
-          row = [
-              checkpoint_name, group_name, metric.name,
-              float(metric.result())
-          ]
-          write_row(f, row)
-  return checkpoint_name
-
-
 def train_model(out_dir: str, params: ml_collections.ConfigDict,
                 strategy: tf.distribute.Strategy,
                 write_checkpoint_metrics: bool) -> None:
   """Trains the model under the given strategy and params."""
   # Freeze config dict here to ensure it is hashable.
   params = ml_collections.FrozenConfigDict(params)
-  save_params_as_json(out_dir, params)
-  train_dataset, eval_dataset = get_datasets(params, strategy)
-  steps_per_epoch, steps_per_eval = get_step_counts(params)
+  model_utils.save_params_as_json(out_dir, params)
+  train_dataset, eval_dataset = model_utils.get_datasets(params, strategy)
+  steps_per_epoch, steps_per_eval = model_utils.get_step_counts(
+      params, FLAGS.eval_and_log_every_step)
 
   with strategy.scope():
     logging.info('Building model.')
@@ -223,7 +105,7 @@ def train_model(out_dir: str, params: ml_collections.ConfigDict,
           per_example_loss, global_batch_size=params.batch_size)
 
     # model, optimizer, and checkpoint must be created under `strategy.scope`.
-    checkpoint, initial_epoch = get_checkpoint_and_initial_epoch(
+    checkpoint, initial_epoch = model_utils.get_checkpoint_and_initial_epoch(
         model, optimizer, out_dir, steps_per_epoch)  # pytype: disable=wrong-arg-types  # typed-keras
 
   # Create summary writers
@@ -277,35 +159,37 @@ def train_model(out_dir: str, params: ml_collections.ConfigDict,
       for step in range(steps_per_epoch):
         reduced_train_loss = distributed_train_step(train_iterator)
         if step % log_steps == 0:
-          log_and_save_metrics(
+          train_loss_dict = {train_loss.name: reduced_train_loss}
+          model_utils.log_and_save_metrics(
               epoch=epoch,
               step=step,
               total_steps=steps_per_epoch,
               optimizer=optimizer,
-              loss_name=train_loss.name,
-              loss_value=reduced_train_loss,
+              losses_dict=train_loss_dict,
               metrics=train_metrics,
               training=True)
     with eval_writer.as_default():
       for step in range(steps_per_eval):
         reduced_eval_loss = distributed_eval_step(eval_iterator)
-      log_and_save_metrics(
+      eval_loss_dict = {eval_loss.name: reduced_eval_loss}
+      model_utils.log_and_save_metrics(
           epoch=epoch,
           step=step,
           total_steps=steps_per_eval,
           optimizer=optimizer,
-          loss_name=eval_loss.name,
-          loss_value=reduced_eval_loss,
+          losses_dict=eval_loss_dict,
           metrics=eval_metrics,
           training=False)
-    checkpoint_name = save_checkpoint(checkpoint, out_dir, train_metrics,
-                                      eval_metrics, write_checkpoint_metrics)
+    checkpoint_name = model_utils.save_checkpoint(checkpoint, out_dir,
+                                                  train_metrics, eval_metrics,
+                                                  write_checkpoint_metrics)
     if min_eval_loss > float(eval_loss.result()):
       min_eval_loss = float(eval_loss.result())
       with tf.io.gfile.GFile(os.path.join(out_dir, 'best_checkpoint.txt'),
                              'w') as f:
         f.write(os.path.basename(checkpoint_name))
-    reset_all_metrics([train_loss, eval_loss] + train_metrics + eval_metrics)
+    model_utils.reset_all_metrics([train_loss, eval_loss] + train_metrics +
+                                  eval_metrics)
 
 
 def train(out_dir: str,

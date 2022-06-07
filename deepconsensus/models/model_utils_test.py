@@ -122,5 +122,48 @@ class RunInferenceAndWriteResultsTest(absltest.TestCase):
           ]) + '\n')
 
 
+class GetStepCountsTest(parameterized.TestCase):
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='simple',
+          n_examples_train=1000,
+          n_examples_eval=100,
+          batch_size=10,
+          limit=-1,
+          eval_and_log_every_step=False,
+          expected_step_counts=(100, 10)),
+      dict(
+          testcase_name='with_limit',
+          n_examples_train=1000,
+          n_examples_eval=100,
+          batch_size=10,
+          limit=100,
+          eval_and_log_every_step=False,
+          expected_step_counts=(10, 10)),
+      dict(
+          testcase_name='simple_eval_log_every_step',
+          n_examples_train=1000,
+          n_examples_eval=100,
+          batch_size=10,
+          limit=-1,
+          eval_and_log_every_step=True,
+          expected_step_counts=(1, 1)),
+  )
+  def test_get_step_counts(self, n_examples_train, n_examples_eval, batch_size,
+                           limit, eval_and_log_every_step,
+                           expected_step_counts):
+    params = model_configs.get_config('fc+test')
+    with params.unlocked():
+      params.n_examples_train = n_examples_train
+      params.n_examples_eval = n_examples_eval
+      params.limit = limit
+      params.batch_size = batch_size
+
+    self.assertEqual(
+        model_utils.get_step_counts(params, eval_and_log_every_step),
+        expected_step_counts)
+
+
 if __name__ == '__main__':
   absltest.main()

@@ -27,10 +27,11 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """Utilities for running training and inference."""
 
+import io
 import json
 import logging
 import os
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Any, Union, Dict
 
 import ml_collections
 import numpy as np
@@ -318,3 +319,124 @@ def read_params_from_json(checkpoint_path: str) -> ml_collections.ConfigDict:
     del params.dtype
     params.dtype = dc_constants.TF_DATA_TYPE
   return params
+
+
+class DTypeEncoder(json.JSONEncoder):
+  """json encoder that allows for dtypes to be encoded."""
+
+  def default(self, o: Any) -> Any:
+    if isinstance(o, tf.DType):
+      return repr(o)
+    else:
+      return json.JSONEncoder.default(self, o)
+
+
+def save_params_as_json(out_dir: str,
+                        params: ml_collections.ConfigDict) -> None:
+  """Saves params to a JSON file."""
+  json_path = os.path.join(out_dir, 'params.json')
+  tf.io.gfile.makedirs(os.path.dirname(json_path))
+  with tf.io.gfile.GFile(json_path, 'w') as json_file:
+    json_file.write(json.dumps(dict(params), indent=4, cls=DTypeEncoder))
+
+
+def get_datasets(
+    params: ml_collections.ConfigDict, strategy: tf.distribute.Strategy
+) -> Tuple[tf.distribute.DistributedDataset, tf.distribute.DistributedDataset]:
+  """Returns datasets for training and evaluation."""
+  train_input_fn = data_providers.create_input_fn(
+      params=params, mode='train', limit=params.limit)
+  eval_input_fn = data_providers.create_input_fn(
+      params=params, mode='eval', limit=params.limit)
+  train_dataset = strategy.experimental_distribute_dataset(train_input_fn())
+  eval_dataset = strategy.experimental_distribute_dataset(eval_input_fn())
+  return train_dataset, eval_dataset
+
+
+def get_step_counts(params: ml_collections.ConfigDict,
+                    eval_and_log_every_step: bool) -> Tuple[int, int]:
+  """Returns the steps for training and evaluation."""
+
+  if eval_and_log_every_step:
+    steps_per_epoch = 1
+    steps_per_eval = 1
+  elif params.limit <= 0:
+    steps_per_epoch = params.n_examples_train // params.batch_size
+    steps_per_eval = params.n_examples_eval // params.batch_size
+  else:
+    # When `params.limit` is set, use it to determine epoch size.
+    steps_per_epoch = max(1, params.limit // params.batch_size)
+    steps_per_eval = max(1, params.limit // params.batch_size)
+  return steps_per_epoch, steps_per_eval
+
+
+def get_checkpoint_and_initial_epoch(
+    model: tf.keras.models.Model, optimizer: tf.keras.optimizers.Optimizer,
+    out_dir: str, steps_per_epoch: int) -> Tuple[tf.train.Checkpoint, int]:
+  """Loads a checkpoint if available and sets epoch to start training."""
+  checkpoint = tf.train.Checkpoint(model=model, optimizer=optimizer)
+  latest_checkpoint = tf.train.latest_checkpoint(out_dir)
+  initial_epoch = 0
+  if latest_checkpoint:
+    checkpoint.restore(latest_checkpoint)
+    logging.info('Loaded checkpoint %s', latest_checkpoint)
+    initial_epoch = optimizer.iterations.numpy() // steps_per_epoch
+  return checkpoint, initial_epoch
+
+
+def reset_all_metrics(metrics: List[tf.keras.metrics.Metric]) -> None:
+  """Resets the values of provided metrics."""
+  for metric in metrics:
+    metric.reset_states()
+
+
+def log_and_save_metrics(epoch: int, step: int, total_steps: int,
+                         optimizer: tf.keras.optimizers.Optimizer,
+                         losses_dict: Dict[str, float],
+                         metrics: List[tf.keras.metrics.Metric],
+                         training: bool) -> None:
+  """Logs metrics and saves them for TensorBoard."""
+  logging.info(
+      'epoch: %d  step: %d of %d metrics: %s', epoch, step, total_steps,
+      ' '.join(f'{loss_name}= {losses_dict[loss_name]}'
+               for loss_name in losses_dict.keys()))
+
+  if training:
+    tf.summary.scalar('learning_rate', optimizer.lr, step=optimizer.iterations)
+  for loss_name in losses_dict.keys():
+    tf.summary.scalar(
+        loss_name, losses_dict[loss_name], step=optimizer.iterations)
+  for metric in metrics:
+    tf.summary.scalar(metric.name, metric.result(), step=optimizer.iterations)
+
+
+def write_row(handle: Union[io.TextIOWrapper], row: List[Any]) -> None:
+  """Formats an array as tab-delimited and writes."""
+  handle.write('\t'.join(map(str, row)) + '\n')
+
+
+def save_checkpoint(checkpoint: tf.train.Checkpoint, out_dir: str,
+                    train_metrics: List[tf.keras.metrics.Metric],
+                    eval_metrics: List[tf.keras.metrics.Metric],
+                    write_checkpoint_metrics: bool) -> str:
+  """Save checkpoint and return its name."""
+  checkpoint_name = checkpoint.save(os.path.join(out_dir, 'checkpoint'))
+  logging.info('Saved checkpoint to %s', checkpoint_name)
+  logging.info('Logging checkpoint %s metrics.', checkpoint_name)
+  metrics_file = os.path.join(out_dir, 'checkpoint_metrics.tsv')
+  if write_checkpoint_metrics:
+    if not tf.io.gfile.exists(metrics_file):
+      with tf.io.gfile.GFile(metrics_file, 'w') as f:
+        row = ['checkpoint_name', 'group', 'name', 'value']
+        write_row(f, row)
+
+    with tf.io.gfile.GFile(metrics_file, 'a') as f:
+      for group_name, metrics in [('train', train_metrics),
+                                  ('eval', eval_metrics)]:
+        for metric in metrics:
+          row = [
+              checkpoint_name, group_name, metric.name,
+              float(metric.result())
+          ]
+          write_row(f, row)
+  return checkpoint_name
