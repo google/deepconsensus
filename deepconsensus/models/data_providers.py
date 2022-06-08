@@ -243,7 +243,7 @@ def process_input(
       'num_passes': num_passes,
       'window_pos': features['window_pos'],
       'name': features['name'],
-      'ccs_base_quality_scores': features['ccs_base_quality_scores']
+      'ccs_base_quality_scores': features['ccs_base_quality_scores'],
   }
   return rows
 
@@ -314,7 +314,10 @@ def get_dataset(file_pattern: str,
   file_patterns = create_glob_list(file_pattern)
   ds = tf.data.TFRecordDataset(file_patterns, compression_type='GZIP')
   ds = ds.map(map_func=_process_input_helper)
-  ds = ds.filter(_filter_q_helper)
+
+  if params.max_phred_qual:
+    ds = ds.filter(_filter_q_helper)
+
   ds = ds.shuffle(buffer_size=params.buffer_size, reshuffle_each_iteration=True)
 
   if num_epochs:

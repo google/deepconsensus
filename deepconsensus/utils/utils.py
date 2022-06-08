@@ -33,6 +33,11 @@ import tensorflow as tf
 from deepconsensus.utils import dc_constants
 
 
+def encoded_sequence_to_string(encoded_sequence: np.ndarray) -> str:
+  encoded_sequence = encoded_sequence.astype(int)
+  return ''.join(np.vectorize(dc_constants.VOCAB.__getitem__)(encoded_sequence))
+
+
 def quality_score_to_string(score: int) -> str:
   """Returns the string representation for the given quality score.
 

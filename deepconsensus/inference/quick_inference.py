@@ -113,6 +113,11 @@ flags.DEFINE_integer(
 flags.DEFINE_integer(
     'batch_zmws', 20, 'Number of ZMWs to process at the same time. '
     'If 0, process all ZMWs in one batch.')
+flags.DEFINE_integer(
+    'max_phred_qual', 0,
+    'Average CCS Base Quality used to skip individual windows from being '
+    'processed by the neural network. This can help speed up DeepConsensus. '
+    'Use 0 for no skipping.')
 
 # The following parameters are for debugging.
 flags.DEFINE_integer('limit', None, 'Only process this many ZMWs. ')
@@ -169,6 +174,8 @@ class InferenceOptions:
     batch_size: Number of examples passed through model at once.
     cpus: Number of processes to use for multiprocessing. Must be
       positive (for multiprocessing) or 0 (for serial execution).
+    max_phred_qual: Run DeepConsensus when the avg(ccs_base_qual) per window is
+      is below this value.
   """
   example_width: int
   example_height: int
@@ -179,6 +186,7 @@ class InferenceOptions:
   min_length: int
   batch_size: int
   cpus: int
+  max_phred_qual: int
 
 
 timing = []
@@ -203,6 +211,21 @@ def timelog(stage: str,
   timing.append(datum)
 
 
+def process_examples_to_skip(
+    example: Dict[str, Any]) -> stitch_utils.DCModelOutput:
+  """Identifies examples to skip based on ccs quality scores."""
+  rows = example['rows']
+  ccs = rows[-5, :, 0]
+  ccs_seq = utils.encoded_sequence_to_string(ccs)
+  dc_output = stitch_utils.DCModelOutput(
+      window_pos=example['window_pos'],
+      molecule_name=example['name'].decode('utf=8'),
+      sequence=ccs_seq,
+      quality_string=utils.quality_scores_to_string(
+          example['ccs_base_quality_scores']))
+  return dc_output
+
+
 def run_model_on_examples(
     feature_dict_gen_fn: Callable[[], Dict[str, Union[np.ndarray, int, bytes]]],
     model: tf.keras.Model,
@@ -222,8 +245,16 @@ def run_model_on_examples(
   """
   def _process_input_helper(
       features: Dict[str, tf.Tensor]) -> Dict[str, tf.Tensor]:
-    return data_providers.process_feature_dict(
+    tf_example = data_providers.process_feature_dict(
         features=features, params=model_params)
+    tf_example['avg_ccs_base_quality'] = utils.tf_avg_phred(
+        tf_example['ccs_base_quality_scores'])
+    return tf_example
+
+  def _q_filter_helper(features: Dict[str, tf.Tensor]) -> bool:
+    if not options.max_phred_qual:
+      return True
+    return features['avg_ccs_base_quality'] <= options.max_phred_qual
 
   dataset = tf.data.Dataset.from_generator(
       feature_dict_gen_fn,
@@ -242,12 +273,19 @@ def run_model_on_examples(
           'ccs_base_quality_scores':
               tf.TensorSpec(shape=(model_params.max_length), dtype=tf.int32),
       })
-  dataset = dataset.map(map_func=_process_input_helper)
-  dataset = dataset.batch(batch_size=options.batch_size, drop_remainder=False)
-  dataset = dataset.prefetch(tf.data.experimental.AUTOTUNE)
+  dataset = dataset.map(
+      map_func=_process_input_helper, num_parallel_calls=tf.data.AUTOTUNE)
 
+  examples_to_run = dataset.filter(_q_filter_helper)
+  examples_to_run = examples_to_run.batch(
+      batch_size=options.batch_size, drop_remainder=False)
+  examples_to_run = examples_to_run.prefetch(tf.data.experimental.AUTOTUNE)
+
+  before = time.time()
+  num_examples_through_model = 0
   predictions = []
-  for data in dataset:
+  for data in examples_to_run:
+    num_examples_through_model += data['rows'].shape[0]
     window_pos_arr = data['window_pos']
     molecule_name_arr = data['name']
     rows = data['rows']
@@ -278,6 +316,30 @@ def run_model_on_examples(
       dc_output.sequence = y_pred_bases
       dc_output.quality_string = quality_string
       predictions.append(dc_output)
+
+  time_to_run_dc = time.time() - before
+  before = time.time()
+
+  examples_to_skip = dataset.filter(lambda x: not _q_filter_helper(x)).prefetch(
+      tf.data.experimental.AUTOTUNE)
+
+  # Each call to preprocess gets one ZMW from inputs.
+  skipped_examples = list(
+      map(process_examples_to_skip, examples_to_skip.as_numpy_iterator()))
+
+  predictions += skipped_examples
+  num_examples_skipped = len(skipped_examples)
+
+  time_to_skip = time.time() - before
+
+  total_examples = num_examples_through_model + num_examples_skipped
+  logging.info(
+      'Example summary: ran dc=%d (%0.2f%%; %0.3fs) skip=%d (%0.2f%%; %0.3fs) total=%d.',
+      num_examples_through_model,
+      100 * (num_examples_through_model / total_examples), time_to_run_dc,
+      num_examples_skipped, 100 * (num_examples_skipped / total_examples),
+      time_to_skip, total_examples)
+
   return predictions
 
 
@@ -499,6 +561,10 @@ def inference_on_n_zmws(inputs: Sequence[Tuple[str, str, Sequence[Any]]],
     return
 
   before = time.time()
+  # Sort predictions prior to grouping
+  # pylint: disable=g-long-lambda
+  predictions = sorted(
+      predictions, key=lambda dc: (dc.molecule_name, dc.window_pos))
   for zmw, predictions_for_zmw in itertools.groupby(predictions,
                                                     lambda p: p.molecule_name):
     fastq_string = stitch_predictions_for_one_zmw(
@@ -515,7 +581,7 @@ def inference_on_n_zmws(inputs: Sequence[Tuple[str, str, Sequence[Any]]],
       num_examples=batch_total_examples,
       num_subreads=batch_total_subreads,
       num_zmws=num_zmws)
-  logging.info('Processed a batch of %d ZMWs in %s seconds', len(inputs),
+  logging.info('Processed a batch of %d ZMWs in %0.3f seconds', len(inputs),
                time.time() - before_batch)
 
 
@@ -541,7 +607,8 @@ def run() -> stitch_utils.OutcomeCounter:
       min_quality=FLAGS.min_quality,
       min_length=FLAGS.min_length,
       batch_size=FLAGS.batch_size,
-      cpus=FLAGS.cpus)
+      cpus=FLAGS.cpus,
+      max_phred_qual=FLAGS.max_phred_qual)
   outcome_counter = stitch_utils.OutcomeCounter()
 
   # Set up model.
@@ -591,7 +658,7 @@ def run() -> stitch_utils.OutcomeCounter:
           outcome_counter=outcome_counter)
       batch_count += 1
       stored_n_zmws = []
-      logging.info('Processed %s ZMWs in %f seconds', zmw_counter,
+      logging.info('Processed %s ZMWs in %0.3f seconds', zmw_counter,
                    time.time() - before_all_zmws)
 
   if stored_n_zmws:
@@ -606,7 +673,7 @@ def run() -> stitch_utils.OutcomeCounter:
 
   fastq_writer.close()
 
-  logging.info('Processed %s ZMWs in %s seconds', zmw_counter,
+  logging.info('Processed %s ZMWs in %0.3f seconds', zmw_counter,
                time.time() - before_all_zmws)
   logging.info('Outcome counts: %s', outcome_counter)
   save_runtime(time_points=timing, output_prefix=f'{output_filename}.runtime')

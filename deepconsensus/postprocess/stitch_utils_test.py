@@ -27,7 +27,6 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """Tests for deepconsensus.postprocess.stitch_utils."""
 
-import copy
 import random
 
 from absl import logging
@@ -52,10 +51,11 @@ def fake_model_output(start: int, window_size: int, padding: int):
 
 
 def fake_model_outputs(window_size: int, num_windows: int, padding: int = 0):
-  return [
+  outputs = [
       fake_model_output(start=start, window_size=window_size, padding=padding)
       for start in range(0, window_size * num_windows, window_size)
   ]
+  return outputs
 
 
 class GetFullSequenceTest(parameterized.TestCase):
@@ -68,11 +68,9 @@ class GetFullSequenceTest(parameterized.TestCase):
         [dc_output.sequence for dc_output in dc_outputs])
     expected_quality_string = ''.join(
         [dc_output.quality_string for dc_output in dc_outputs])
-    dc_outputs_shuffled = copy.deepcopy(dc_outputs)
-    random.shuffle(dc_outputs_shuffled)
 
     sequence_output, quality_output = stitch_utils.get_full_sequence(
-        deepconsensus_outputs=dc_outputs_shuffled, example_width=width)
+        deepconsensus_outputs=dc_outputs, example_width=width)
     self.assertEqual(expected_sequence, sequence_output)
     self.assertEqual(expected_quality_string, quality_output)
 
@@ -94,13 +92,9 @@ class GetFullSequenceTest(parameterized.TestCase):
         [dc_output.quality_string for dc_output in dc_outputs])
     # Knockout sequence
     dc_outputs.pop(rand_seq_knockout)
-    dc_outputs_shuffled = copy.deepcopy(dc_outputs)
-    random.shuffle(dc_outputs_shuffled)
 
     sequence_output, quality_output = stitch_utils.get_full_sequence(
-        deepconsensus_outputs=dc_outputs_shuffled,
-        example_width=width,
-        fill_n=True)
+        deepconsensus_outputs=dc_outputs, example_width=width, fill_n=True)
     self.assertEqual(expected_sequence, sequence_output)
     self.assertEqual(expected_quality_string, quality_output)
 

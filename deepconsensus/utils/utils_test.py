@@ -35,6 +35,16 @@ import tensorflow as tf
 from deepconsensus.utils import utils
 
 
+class EncodedSequenceToString(parameterized.TestCase):
+
+  @parameterized.parameters(([0], ' '), ([1], 'A'), ([2], 'T'), ([3], 'C'),
+                            ([4], 'G'), ([2, 0, 1], 'T A'))
+  def test_score_to_string(self, encoded_val, expected_char):
+    encoded_val = np.asarray(encoded_val)
+    self.assertEqual(
+        utils.encoded_sequence_to_string(encoded_val), expected_char)
+
+
 class QualityScoreToStringTest(parameterized.TestCase):
 
   @parameterized.parameters((0, '!'), (40, 'I'), (20, '5'))
