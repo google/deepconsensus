@@ -213,8 +213,7 @@ def modify_params(params: ml_collections.ConfigDict,
     else:
       params.max_length = extract_max_length(params.train_path)
 
-    if (params.model_name == 'transformer_learn_values' or
-        params.model_name == 'transformer_learn_values_v2'):
+    if 'transformer_learn_values' in params.model_name:
       dim = ((params.use_bases * params.per_base_hidden_size) +
              (params.use_pw * params.pw_hidden_size) +
              (params.use_ip * params.ip_hidden_size) +
@@ -234,8 +233,7 @@ def modify_params(params: ml_collections.ConfigDict,
       # Transformer code uses default_batch_size, whereas my code uses
       # batch_size, so make sure both are the same.
       params.default_batch_size = params.batch_size
-    elif (params.model_name == 'transformer_learn_values' or
-          params.model_name == 'transformer_learn_values_v2'):
+    elif 'transformer_learn_values' in params.model_name:
       # Transformer code uses default_batch_size, whereas my code uses
       # batch_size, so make sure both are the same.
       params.default_batch_size = params.batch_size

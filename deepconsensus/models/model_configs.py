@@ -176,7 +176,7 @@ def _set_transformer_learned_embeddings_v2_distill_hparams(params):
   params.model_name = 'transformer_learn_values_v2_distill'
 
   # Student architecture parameters.
-  params.num_hidden_layers = 3
+  params.num_hidden_layers = 4
   params.filter_size = 2048
 
   # Whether to initialize encoder layers using the teacher model.
@@ -185,8 +185,8 @@ def _set_transformer_learned_embeddings_v2_distill_hparams(params):
   params.init_nonencoder_layers = True
   # The order of indices in params.teacher_encoder_layers and
   # params.student_encoder_layers determines the layer to layer initialization.
-  params.teacher_encoder_layers = [0, 1, 5]
-  params.student_encoder_layers = [0, 1, 2]
+  params.teacher_encoder_layers = [0, 1, 2, 4]
+  params.student_encoder_layers = [0, 1, 2, 3]
   if params.init_encoder_stack:
     assert len(params.teacher_encoder_layers) == len(
         params.student_encoder_layers)
@@ -195,7 +195,7 @@ def _set_transformer_learned_embeddings_v2_distill_hparams(params):
 
   # Distillation loss parameters.
   # Weight corresponding to the distillation loss.
-  params.distill_alpha = 1000
+  params.distill_alpha = 500
   # Weight corresponding to the student loss.
   params.student_alpha = 1
   # Temperature for softening probability distributions.
