@@ -31,9 +31,10 @@ Usage:
   deepconsensus run \
     --subreads_to_ccs=subreads_to_ccs.bam \
     --ccs_bam=ccs.bam \
+    --checkpoint=saved_model_directory \
     --output=predictions.fastq
-
 """
+
 import dataclasses
 import enum
 import itertools
@@ -84,16 +85,13 @@ flags.DEFINE_string(
 
 # Model checkpoint:
 flags.DEFINE_string(
-    'checkpoint', None, 'Path to checkpoint directory + prefix. '
-    'For example: <path/to/model>/checkpoint-50.')
-flags.DEFINE_bool(
-    'use_saved_model', None,
-    'If true, --checkpoint should be the directory path that contains '
-    'saved_model.pb.')
+    'checkpoint', None, 'Path to either a checkpoint directory + prefix '
+    '(e.g. "/path/to/model_directory/checkpoint-50"), '
+    'or to a saved model directory, (e.g. "/path/to/model_directory") '
+    'which is the directory that contains a saved_model.pb')
 config_flags.DEFINE_config_file(
-    'params', None,
-    'params.json configuration file. By default, <path/to/model>/params.json '
-    'is used.')
+    'params', None, 'params.json configuration file. By default, '
+    '/path/to/model_directory/params.json is used.')
 
 # The following just need to match the training parameters.
 flags.DEFINE_integer('max_passes', 20, 'Maximum subreads in each input.')
@@ -176,6 +174,8 @@ class InferenceOptions:
       positive (for multiprocessing) or 0 (for serial execution).
     max_phred_qual: Run DeepConsensus when the avg(ccs_base_qual) per window is
       is below this value.
+    use_saved_model: True if the given checkpoint is a saved model, false if it
+      is a regular checkpoint.
   """
   example_width: int
   example_height: int
@@ -187,6 +187,7 @@ class InferenceOptions:
   batch_size: int
   cpus: int
   max_phred_qual: int
+  use_saved_model: bool
 
 
 timing = []
@@ -289,7 +290,7 @@ def run_model_on_examples(
     window_pos_arr = data['window_pos']
     molecule_name_arr = data['name']
     rows = data['rows']
-    if FLAGS.use_saved_model:
+    if options.use_saved_model:
       softmax_output = model.signatures['serving_default'](rows)
       softmax_output = softmax_output['output_1']
     else:
@@ -403,14 +404,13 @@ def stream_bam(
 
 
 def initialize_model(
-    checkpoint_path: str, use_saved_model: bool, params: config_dict.ConfigDict,
+    checkpoint_path: str, params: config_dict.ConfigDict,
     options: InferenceOptions
 ) -> Tuple[Optional[tf.keras.Model], Optional[config_dict.ConfigDict]]:
   """Initializes the model and gathers parameters.
 
   Args:
     checkpoint_path: Path to model checkpoint.
-    use_saved_model: If True, checkpoint_path is a SavedModel path.
     params: Parameter object, from flags.
     options: Contains a few more parameters some of which will replace those in
       the params object.
@@ -430,7 +430,7 @@ def initialize_model(
   with params.unlocked():
     params.max_passes = options.max_passes
   logging.info('Loading %s', checkpoint_path)
-  if use_saved_model:
+  if options.use_saved_model:
     model = tf.saved_model.load(checkpoint_path)
   else:
     model = model_utils.get_model(params)
@@ -598,6 +598,10 @@ def run() -> stitch_utils.OutcomeCounter:
   """Called by main."""
   dc_config = preprocess_utils.DcConfig(FLAGS.max_passes, FLAGS.example_width,
                                         FLAGS.padding)
+  # Determine if --checkpoint is a saved model.
+  use_saved_model = (
+      tf.io.gfile.exists(FLAGS.checkpoint) and
+      tf.io.gfile.exists(f'{FLAGS.checkpoint}/saved_model.pb'))
   options = InferenceOptions(
       example_width=FLAGS.example_width,
       example_height=dc_config.tensor_height,
@@ -608,14 +612,14 @@ def run() -> stitch_utils.OutcomeCounter:
       min_length=FLAGS.min_length,
       batch_size=FLAGS.batch_size,
       cpus=FLAGS.cpus,
-      max_phred_qual=FLAGS.max_phred_qual)
+      max_phred_qual=FLAGS.max_phred_qual,
+      use_saved_model=use_saved_model)
   outcome_counter = stitch_utils.OutcomeCounter()
 
   # Set up model.
   before_model_setup = time.time()
   loaded_model, model_params = initialize_model(
       checkpoint_path=FLAGS.checkpoint,
-      use_saved_model=FLAGS.use_saved_model,
       params=FLAGS.params,
       options=options)
   logging.info('Model setup took %s seconds.', time.time() - before_model_setup)
