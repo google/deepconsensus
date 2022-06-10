@@ -109,10 +109,10 @@ flags.DEFINE_integer(
     'batch_size', 1024,
     'Number of examples to batch together for TensorFlow model prediction.')
 flags.DEFINE_integer(
-    'batch_zmws', 20, 'Number of ZMWs to process at the same time. '
+    'batch_zmws', 100, 'Number of ZMWs to process at the same time. '
     'If 0, process all ZMWs in one batch.')
 flags.DEFINE_integer(
-    'max_phred_qual', 0,
+    'max_phred_qual', 45,
     'Average CCS Base Quality used to skip individual windows from being '
     'processed by the neural network. This can help speed up DeepConsensus. '
     'Use 0 for no skipping.')
