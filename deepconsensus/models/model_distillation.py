@@ -85,6 +85,43 @@ flags.DEFINE_bool(
     'Use this e.g. for testing training and inspecting metrics locally.')
 
 
+def init_student_from_teacher(
+    student_model: tf.keras.Model, teacher_model: tf.keras.Model,
+    params: ml_collections.ConfigDict) -> tf.keras.Model:
+  """Initialize student model using teacher model weights based on params."""
+  row_size = data_providers.get_total_rows(params.max_passes)
+  input_shape = (1, row_size, params.max_length, params.num_channels)
+  model_utils.print_model_summary(teacher_model, input_shape)
+  if params.init_encoder_stack:
+    teacher2student_encoder_map = dict(
+        zip(params.teacher_encoder_layers, params.student_encoder_layers))
+
+    for teacher_layer_id in teacher2student_encoder_map:
+      student_layer_id = teacher2student_encoder_map[teacher_layer_id]
+      # Copy attention layer.
+      teacher_weights = teacher_model.encoder_stack.layers[teacher_layer_id][
+          0].layer.get_weights()
+      student_model.encoder_stack.layers[student_layer_id][0].layer.set_weights(
+          teacher_weights)
+      # Copy ffn layer.
+      teacher_weights = teacher_model.encoder_stack.layers[teacher_layer_id][
+          1].layer.get_weights()
+      student_model.encoder_stack.layers[student_layer_id][1].layer.set_weights(
+          teacher_weights)
+
+  if params.init_nonencoder_layers:
+    # Get layers with weights that are not in the encoder stack.
+    layer_ind_for_copy = []
+    for ind, layer in enumerate(teacher_model.layers):
+      if (layer.trainable_weights) and ('encoder_stack' not in layer.name):
+        layer_ind_for_copy.append(ind)
+
+    for layer_ind in layer_ind_for_copy:
+      teacher_weights = teacher_model.get_layer(index=layer_ind).get_weights()
+      student_model.get_layer(index=layer_ind).set_weights(teacher_weights)
+  return student_model
+
+
 def get_teacher_model(checkpoint_path: str,
                       strategy: tf.distribute.Strategy) -> tf.keras.Model:
   """Get teacher model with an existing checkpoint."""
@@ -122,7 +159,14 @@ def train_model(teacher_model: tf.keras.Model, out_dir: str,
   with strategy.scope():
     logging.info('Building model.')
     model = model_utils.get_model(params)
+    # Note that the `print_model_summary` is necessary because we need to run a
+    # forward pass with the model to be able to initialize student from teacher.
+    row_size = data_providers.get_total_rows(params.max_passes)
+    input_shape = (1, row_size, params.max_length, params.num_channels)
+    model_utils.print_model_summary(model, input_shape)
     logging.info('Done building model.')
+    # Initialize student model from teacher based on model params.
+    model = init_student_from_teacher(model, teacher_model, params)
     optimizer = tf.keras.optimizers.Adam(learning_rate=params.learning_rate)
     train_loss = tf.keras.metrics.Mean(name='loss')
     train_metrics = model_utils.get_deepconsensus_metrics(name_prefix='')
