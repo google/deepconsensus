@@ -212,21 +212,6 @@ def timelog(stage: str,
   timing.append(datum)
 
 
-def process_examples_to_skip(
-    example: Dict[str, Any]) -> stitch_utils.DCModelOutput:
-  """Identifies examples to skip based on ccs quality scores."""
-  rows = example['rows']
-  ccs = rows[-5, :, 0]
-  ccs_seq = utils.encoded_sequence_to_string(ccs)
-  dc_output = stitch_utils.DCModelOutput(
-      window_pos=example['window_pos'],
-      molecule_name=example['name'].decode('utf=8'),
-      sequence=ccs_seq,
-      quality_string=utils.quality_scores_to_string(
-          example['ccs_base_quality_scores']))
-  return dc_output
-
-
 def run_model_on_examples(
     feature_dict_gen_fn: Callable[[], Dict[str, Union[np.ndarray, int, bytes]]],
     model: tf.keras.Model,
@@ -246,16 +231,8 @@ def run_model_on_examples(
   """
   def _process_input_helper(
       features: Dict[str, tf.Tensor]) -> Dict[str, tf.Tensor]:
-    tf_example = data_providers.process_feature_dict(
+    return data_providers.process_feature_dict(
         features=features, params=model_params)
-    tf_example['avg_ccs_base_quality'] = utils.tf_avg_phred(
-        tf_example['ccs_base_quality_scores'])
-    return tf_example
-
-  def _q_filter_helper(features: Dict[str, tf.Tensor]) -> bool:
-    if not options.max_phred_qual:
-      return True
-    return features['avg_ccs_base_quality'] <= options.max_phred_qual
 
   dataset = tf.data.Dataset.from_generator(
       feature_dict_gen_fn,
@@ -274,19 +251,12 @@ def run_model_on_examples(
           'ccs_base_quality_scores':
               tf.TensorSpec(shape=(model_params.max_length), dtype=tf.int32),
       })
-  dataset = dataset.map(
-      map_func=_process_input_helper, num_parallel_calls=tf.data.AUTOTUNE)
+  dataset = dataset.map(map_func=_process_input_helper)
+  dataset = dataset.batch(batch_size=options.batch_size, drop_remainder=False)
+  dataset = dataset.prefetch(tf.data.experimental.AUTOTUNE)
 
-  examples_to_run = dataset.filter(_q_filter_helper)
-  examples_to_run = examples_to_run.batch(
-      batch_size=options.batch_size, drop_remainder=False)
-  examples_to_run = examples_to_run.prefetch(tf.data.experimental.AUTOTUNE)
-
-  before = time.time()
-  num_examples_through_model = 0
   predictions = []
-  for data in examples_to_run:
-    num_examples_through_model += data['rows'].shape[0]
+  for data in dataset:
     window_pos_arr = data['window_pos']
     molecule_name_arr = data['name']
     rows = data['rows']
@@ -317,30 +287,6 @@ def run_model_on_examples(
       dc_output.sequence = y_pred_bases
       dc_output.quality_string = quality_string
       predictions.append(dc_output)
-
-  time_to_run_dc = time.time() - before
-  before = time.time()
-
-  examples_to_skip = dataset.filter(lambda x: not _q_filter_helper(x)).prefetch(
-      tf.data.experimental.AUTOTUNE)
-
-  # Each call to preprocess gets one ZMW from inputs.
-  skipped_examples = list(
-      map(process_examples_to_skip, examples_to_skip.as_numpy_iterator()))
-
-  predictions += skipped_examples
-  num_examples_skipped = len(skipped_examples)
-
-  time_to_skip = time.time() - before
-
-  total_examples = num_examples_through_model + num_examples_skipped
-  logging.info(
-      'Example summary: ran dc=%d (%0.2f%%; %0.3fs) skip=%d (%0.2f%%; %0.3fs) total=%d.',
-      num_examples_through_model,
-      100 * (num_examples_through_model / total_examples), time_to_run_dc,
-      num_examples_skipped, 100 * (num_examples_skipped / total_examples),
-      time_to_skip, total_examples)
-
   return predictions
 
 
@@ -486,6 +432,21 @@ def preprocess(
   return feature_dicts
 
 
+def process_skipped_window(
+    feature_dict: Dict[str, Any]) -> stitch_utils.DCModelOutput:
+  """Process a window by simply adopting the CCS sequence and base qualities."""
+  rows = feature_dict['subreads']
+  ccs = rows[-5, :, 0]
+  ccs_seq = utils.encoded_sequence_to_string(ccs)
+  dc_output = stitch_utils.DCModelOutput(
+      window_pos=feature_dict['window_pos'],
+      molecule_name=feature_dict['name'],
+      sequence=ccs_seq,
+      quality_string=utils.quality_scores_to_string(
+          feature_dict['ccs_base_quality_scores']))
+  return dc_output
+
+
 def inference_on_n_zmws(inputs: Sequence[Tuple[str, str, Sequence[Any]]],
                         model: tf.keras.Model,
                         model_params: Union[config_dict.ConfigDict,
@@ -543,13 +504,55 @@ def inference_on_n_zmws(inputs: Sequence[Tuple[str, str, Sequence[Any]]],
     return
 
   before = time.time()
+  before_skipping = time.time()
+
+  if options.max_phred_qual:
+    # Skip windows with average CCS predicted qualities above threshold.
+    feature_dicts_for_model = []
+    predictions_for_skipped_windows = []
+    for one_zmw in feature_dicts_for_zmws:
+      for window in one_zmw:
+        avg_ccs_base_quality = utils.avg_phred(
+            window['ccs_base_quality_scores'])
+        if avg_ccs_base_quality <= options.max_phred_qual:
+          feature_dicts_for_model.append(window)
+        else:
+          dc_output_for_window = process_skipped_window(window)
+          predictions_for_skipped_windows.append(dc_output_for_window)
+  else:
+    # Go straight to model without skipping any windows.
+    feature_dicts_for_model = []
+    for one_zmw in feature_dicts_for_zmws:
+      for window in one_zmw:
+        feature_dicts_for_model.append(window)
+    predictions_for_skipped_windows = []
+
+  time_to_skip = time.time() - before_skipping
+
+  before_run_model = time.time()
   # Make a generator function from the list.
   def feature_dict_gen_fn():
-    for feature_dicts_for_one_zmw in feature_dicts_for_zmws:
-      yield from feature_dicts_for_one_zmw
+    yield from feature_dicts_for_model
 
-  predictions = run_model_on_examples(feature_dict_gen_fn, model, model_params,
-                                      options)
+  predictions_from_model = run_model_on_examples(feature_dict_gen_fn, model,
+                                                 model_params, options)
+  time_to_run_model = time.time() - before_run_model
+
+  predictions = predictions_from_model + predictions_for_skipped_windows
+
+  def percent_of_examples(numerator):
+    if not predictions:
+      return 0  # Avoid dividing by zero.
+    return 100 * (numerator / len(predictions))
+
+  logging.info(
+      'Example summary: ran model=%d (%0.2f%%; %0.3fs) skip=%d (%0.2f%%; %0.3fs) total=%d.',
+      len(predictions_from_model),
+      percent_of_examples(len(predictions_from_model)), time_to_run_model,
+      len(predictions_for_skipped_windows),
+      percent_of_examples(len(predictions_for_skipped_windows)), time_to_skip,
+      len(predictions))
+
   timelog(
       stage='run_model',
       item=batch_name,

@@ -55,9 +55,9 @@ def quality_score_to_string(score: int) -> str:
   return chr(ascii_code)
 
 
-def quality_scores_to_string(scores: List[int]) -> str:
+def quality_scores_to_string(scores: np.ndarray) -> str:
   """Returns the string representation for the given list of quality scores."""
-  return ''.join([quality_score_to_string(score) for score in scores])
+  return ''.join([chr(score) for score in (scores + 33)])
 
 
 def quality_string_to_array(quality_string: str) -> List[int]:

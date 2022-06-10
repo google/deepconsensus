@@ -32,6 +32,7 @@ import random
 from absl import logging
 from absl.testing import absltest
 from absl.testing import parameterized
+import numpy as np
 
 from deepconsensus.postprocess import stitch_utils
 from deepconsensus.utils import dc_constants
@@ -105,21 +106,24 @@ class RemoveGapsAndPaddingTest(parameterized.TestCase):
       dict(
           testcase_name='no gaps/padding',
           sequence='ATCG',
-          quality_string=utils.quality_scores_to_string([1, 2, 3, 4]),
+          quality_string=utils.quality_scores_to_string(np.array([1, 2, 3, 4])),
           expected_sequence='ATCG',
-          expected_quality_string=utils.quality_scores_to_string([1, 2, 3, 4]),
+          expected_quality_string=utils.quality_scores_to_string(
+              np.array([1, 2, 3, 4])),
       ),
       dict(
           testcase_name='some gaps/padding',
           sequence='AT CG ',
-          quality_string=utils.quality_scores_to_string([1, 2, 3, 4, 5, 6]),
+          quality_string=utils.quality_scores_to_string(
+              np.array([1, 2, 3, 4, 5, 6])),
           expected_sequence='ATCG',
-          expected_quality_string=utils.quality_scores_to_string([1, 2, 4, 5]),
+          expected_quality_string=utils.quality_scores_to_string(
+              np.array([1, 2, 4, 5])),
       ),
       dict(
           testcase_name='all gaps/padding',
           sequence='    ',
-          quality_string=utils.quality_scores_to_string([1, 2, 3, 4]),
+          quality_string=utils.quality_scores_to_string(np.array([1, 2, 3, 4])),
           expected_sequence=None,
           expected_quality_string=None,
       ),
@@ -171,7 +175,7 @@ class ConvertToFastqStrDoFnTest(absltest.TestCase):
     # Not all values in this range are allowed, since we are binning, but we
     # do not consider that for this test.
     possible_quals = utils.quality_scores_to_string(
-        list(range(dc_constants.EMPTY_QUAL, dc_constants.MAX_QUAL + 1)))
+        np.array(range(dc_constants.EMPTY_QUAL, dc_constants.MAX_QUAL + 1)))
     self.assertContainsSubset(quality_string_line, possible_quals)
     self.assertLen(quality_string_line, len(sequence_line))
 

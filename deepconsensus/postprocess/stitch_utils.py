@@ -30,6 +30,7 @@
 import dataclasses
 from typing import Iterable, Optional, Tuple
 from absl import logging
+import numpy as np
 
 from deepconsensus.utils import dc_constants
 from deepconsensus.utils import utils
@@ -60,7 +61,8 @@ def get_full_sequence(deepconsensus_outputs: Iterable[DCModelOutput],
       else:
         # Add N-base filler for sequences that were unable to be inferred.
         full_sequence_parts.append('N' * example_width)
-        empty_quality_scores = [dc_constants.EMPTY_QUAL] * example_width
+        empty_quality_scores = np.array([dc_constants.EMPTY_QUAL] *
+                                        example_width)
         empty_quality_string = utils.quality_scores_to_string(
             empty_quality_scores)
         quality_string_parts.append(empty_quality_string)
