@@ -107,5 +107,5 @@ DC_FEATURES = [
     'ccs_base_quality_scores'
 ]
 
-MAX_QUAL = 60
+MAX_QUAL = 40
 EMPTY_QUAL = 0
