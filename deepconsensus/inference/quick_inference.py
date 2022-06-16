@@ -112,7 +112,7 @@ flags.DEFINE_integer(
     'batch_zmws', 100, 'Number of ZMWs to process at the same time. '
     'If 0, process all ZMWs in one batch.')
 flags.DEFINE_integer(
-    'max_phred_qual', 45,
+    'skip_windows_above', 45,
     'Average CCS Base Quality used to skip individual windows from being '
     'processed by the neural network. This can help speed up DeepConsensus. '
     'Use 0 for no skipping.')
@@ -172,8 +172,8 @@ class InferenceOptions:
     batch_size: Number of examples passed through model at once.
     cpus: Number of processes to use for multiprocessing. Must be
       positive (for multiprocessing) or 0 (for serial execution).
-    max_phred_qual: Run DeepConsensus when the avg(ccs_base_qual) per window is
-      is below this value.
+    skip_windows_above: Run the model only when the avg(ccs_base_qual) of the
+      window is below this value.
     use_saved_model: True if the given checkpoint is a saved model, false if it
       is a regular checkpoint.
   """
@@ -186,7 +186,7 @@ class InferenceOptions:
   min_length: int
   batch_size: int
   cpus: int
-  max_phred_qual: int
+  skip_windows_above: int
   use_saved_model: bool
 
 
@@ -519,7 +519,7 @@ def inference_on_n_zmws(inputs: Sequence[Tuple[str, str, Sequence[Any]]],
   before = time.time()
   before_skipping = time.time()
 
-  if options.max_phred_qual:
+  if options.skip_windows_above:
     # Skip windows with average CCS predicted qualities above threshold.
     feature_dicts_for_model = []
     predictions_for_skipped_windows = []
@@ -527,7 +527,7 @@ def inference_on_n_zmws(inputs: Sequence[Tuple[str, str, Sequence[Any]]],
       for window in one_zmw:
         avg_ccs_base_quality = utils.avg_phred(
             window['ccs_base_quality_scores'])
-        if avg_ccs_base_quality <= options.max_phred_qual:
+        if avg_ccs_base_quality <= options.skip_windows_above:
           feature_dicts_for_model.append(window)
         else:
           dc_output_for_window = process_skipped_window(window)
@@ -624,7 +624,7 @@ def run() -> stitch_utils.OutcomeCounter:
       min_length=FLAGS.min_length,
       batch_size=FLAGS.batch_size,
       cpus=FLAGS.cpus,
-      max_phred_qual=FLAGS.max_phred_qual,
+      skip_windows_above=FLAGS.skip_windows_above,
       use_saved_model=use_saved_model)
   outcome_counter = stitch_utils.OutcomeCounter()
 
