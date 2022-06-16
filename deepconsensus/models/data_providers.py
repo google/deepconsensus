@@ -129,12 +129,12 @@ def format_rows(
 
 
 def process_feature_dict(
-    features: Dict[str, tf.Tensor],
+    features: Dict[str, Union[np.ndarray, int, bytes]],
     params: Union[config_dict.ConfigDict, config_dict.FrozenConfigDict],
     cap_pw: bool = True,
     cap_ip: bool = True,
     cap_sn: bool = True,
-) -> Dict[str, tf.Tensor]:
+) -> Dict[str, Union[np.ndarray, int, bytes]]:
   """Parses a serialized tf.Example to return an input, label, and metadata.
 
   Args:
@@ -162,6 +162,8 @@ def process_feature_dict(
       cap_pw=cap_pw,
       cap_ip=cap_ip,
       cap_sn=cap_sn)
+  # Don't forget to update DC_FEATURES in dc_constants.py if new features are
+  # added/removed.
   features = {
       'rows': rows,
       'label': label,

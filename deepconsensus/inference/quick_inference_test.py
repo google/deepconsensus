@@ -61,6 +61,7 @@ class QuickInferenceTest(parameterized.TestCase):
     FLAGS.checkpoint = test_utils.deepconsensus_testdata('model/checkpoint-1')
     FLAGS.min_quality = 0  # Qualities are lower due to tiny sample model.
     FLAGS.limit = 2
+    FLAGS.cpus = 2
     outcomes = quick_inference.run()
 
     count = 0

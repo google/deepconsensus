@@ -101,5 +101,11 @@ HUMAN_TRAIN_REGIONS = [str(i) for i in range(1, 19)] + [
 HUMAN_EVAL_REGIONS = ['21', '22', 'chr21', 'chr22']
 HUMAN_TEST_REGIONS = ['19', '20', 'chr19', 'chr20']
 
+# List of features in DC examples.
+DC_FEATURES = [
+    'rows', 'label', 'num_passes', 'window_pos', 'name',
+    'ccs_base_quality_scores'
+]
+
 MAX_QUAL = 60
 EMPTY_QUAL = 0

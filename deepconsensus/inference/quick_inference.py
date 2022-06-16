@@ -41,7 +41,7 @@ import itertools
 import multiprocessing
 import os
 import time
-from typing import Any, Callable, Dict, Generator, Iterable, List, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, Generator, Iterable, List, Optional, Sequence, Tuple, Union
 
 from absl import app
 from absl import flags
@@ -212,8 +212,46 @@ def timelog(stage: str,
   timing.append(datum)
 
 
+# TODO Add unit test for this function. We need to create unit test
+# infrastructure that allows to easily create input data for unit tests.
+def batch_examples(feature_dicts: List[Tuple[str, Union[np.ndarray, int,
+                                                        bytes]]],
+                   model_params: Union[config_dict.ConfigDict,
+                                       config_dict.FrozenConfigDict],
+                   options: InferenceOptions):
+  """Stack values for each feature.
+
+  Args:
+    feature_dicts: List of feature dictionaries.
+    model_params: Parameters for the model.
+    options: Some options that apply to various stages of the inference run.
+
+  Yields:
+    For Dictionary of batched features.
+  """
+
+  def process_feature_dicts(features):
+    return data_providers.process_feature_dict(
+        features=features, params=model_params)
+
+  def split_list(l, batch_size):
+    for i in range(0, len(l), batch_size):
+      yield l[i:i + batch_size]
+
+  processed_feature_dicts = list(map(process_feature_dicts, feature_dicts))
+  for one_batch in split_list(processed_feature_dicts, options.batch_size):
+    examples = {}
+    for key in dc_constants.DC_FEATURES:
+      vals = [x[key] for x in one_batch]
+      if vals:
+        examples[key] = np.stack(vals)
+      else:
+        examples[key] = vals
+    yield examples
+
+
 def run_model_on_examples(
-    feature_dict_gen_fn: Callable[[], Dict[str, Union[np.ndarray, int, bytes]]],
+    feature_dicts: List[Tuple[str, Union[np.ndarray, int, bytes]]],
     model: tf.keras.Model,
     model_params: Union[config_dict.ConfigDict, config_dict.FrozenConfigDict],
     options: InferenceOptions,
@@ -221,7 +259,7 @@ def run_model_on_examples(
   """Runs the model on one example to get one predicted output sequence.
 
   Args:
-    feature_dict_gen_fn: Generator fn of feature dictionaries.
+    feature_dicts: List of feature dictionaries.
     model: An initialized model that will be used to make predictions.
     model_params: Parameters for the model.
     options: Some options that apply to various stages of the inference run.
@@ -229,37 +267,12 @@ def run_model_on_examples(
   Returns:
     A DeepConsensusInput proto containing the prediction from the model.
   """
-  def _process_input_helper(
-      features: Dict[str, tf.Tensor]) -> Dict[str, tf.Tensor]:
-    return data_providers.process_feature_dict(
-        features=features, params=model_params)
-
-  dataset = tf.data.Dataset.from_generator(
-      feature_dict_gen_fn,
-      output_signature={
-          'subreads':
-              tf.TensorSpec(
-                  shape=(options.example_height, model_params.max_length,
-                         model_params.num_channels),
-                  dtype=dc_constants.TF_DATA_TYPE),
-          'subreads/num_passes':
-              tf.TensorSpec(shape=(), dtype=tf.int32),
-          'name':
-              tf.TensorSpec(shape=(), dtype=tf.string),
-          'window_pos':
-              tf.TensorSpec(shape=(), dtype=tf.int32),
-          'ccs_base_quality_scores':
-              tf.TensorSpec(shape=(model_params.max_length), dtype=tf.int32),
-      })
-  dataset = dataset.map(map_func=_process_input_helper)
-  dataset = dataset.batch(batch_size=options.batch_size, drop_remainder=False)
-  dataset = dataset.prefetch(tf.data.experimental.AUTOTUNE)
 
   predictions = []
-  for data in dataset:
+  for data in batch_examples(feature_dicts, model_params, options):
     window_pos_arr = data['window_pos']
     molecule_name_arr = data['name']
-    rows = data['rows']
+    rows = tf.convert_to_tensor(data['rows'])
     if options.use_saved_model:
       softmax_output = model.signatures['serving_default'](rows)
       softmax_output = softmax_output['output_1']
@@ -267,8 +280,8 @@ def run_model_on_examples(
       softmax_output = model.predict(rows)
 
     softmax_output = softmax_output.numpy()
-    window_pos_arr = window_pos_arr.numpy()
-    molecule_name_arr = molecule_name_arr.numpy()
+    window_pos_arr = np.array(window_pos_arr)
+    molecule_name_arr = np.array(molecule_name_arr)
     y_preds = np.argmax(softmax_output, -1)
     error_prob = 1 - np.max(softmax_output, axis=-1)
     quality_scores = -10 * np.log10(error_prob)
@@ -280,7 +293,7 @@ def run_model_on_examples(
                                                      window_pos_arr,
                                                      molecule_name_arr):
       dc_output = stitch_utils.DCModelOutput(
-          window_pos=window_pos, molecule_name=molecule_name.decode('utf=8'))
+          window_pos=window_pos, molecule_name=molecule_name)
       y_pred_bases = ''.join(
           np.vectorize(dc_constants.VOCAB.__getitem__)(y_pred))
       quality_string = utils.quality_scores_to_string(qs)
@@ -530,11 +543,7 @@ def inference_on_n_zmws(inputs: Sequence[Tuple[str, str, Sequence[Any]]],
   time_to_skip = time.time() - before_skipping
 
   before_run_model = time.time()
-  # Make a generator function from the list.
-  def feature_dict_gen_fn():
-    yield from feature_dicts_for_model
-
-  predictions_from_model = run_model_on_examples(feature_dict_gen_fn, model,
+  predictions_from_model = run_model_on_examples(feature_dicts_for_model, model,
                                                  model_params, options)
   time_to_run_model = time.time() - before_run_model
 
