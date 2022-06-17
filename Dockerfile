@@ -20,6 +20,7 @@ RUN conda create -n bio \
                     parallel \
                     jq \
                     gcc \
+                    memory_profiler \
                     pycocotools \
                     bioconda::seqtk \
                     bioconda::unimap \
