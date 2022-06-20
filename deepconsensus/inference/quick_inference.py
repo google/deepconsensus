@@ -35,6 +35,7 @@ Usage:
     --output=predictions.fastq
 """
 
+import concurrent.futures
 import dataclasses
 import enum
 import itertools
@@ -533,14 +534,15 @@ def process_skipped_window(
   return dc_output
 
 
-def inference_on_n_zmws(inputs: Sequence[Tuple[str, str, Sequence[Any]]],
-                        model: tf.keras.Model,
-                        model_params: Union[config_dict.ConfigDict,
-                                            config_dict.FrozenConfigDict],
-                        fastq_writer: gfile.GFile,
-                        options: InferenceOptions,
-                        batch_name: str,
-                        outcome_counter=stitch_utils.OutcomeCounter) -> None:
+def inference_on_n_zmws(
+    inputs: Sequence[Tuple[str, str, Sequence[Any]]],
+    model: tf.keras.Model,
+    model_params: Union[config_dict.ConfigDict, config_dict.FrozenConfigDict],
+    fastq_writer: gfile.GFile,
+    options: InferenceOptions,
+    batch_name: str,
+    outcome_counter: stitch_utils.OutcomeCounter,
+    pool: Optional[concurrent.futures.ProcessPoolExecutor] = None) -> None:
   """Runs the full inference process on a batch of ZMWs and writes to fastq.
 
   Args:
@@ -552,27 +554,18 @@ def inference_on_n_zmws(inputs: Sequence[Tuple[str, str, Sequence[Any]]],
     options: Some options that apply to various stages of the inference run.
     batch_name: Name of batch used for runtime metrics.
     outcome_counter: Counts outcomes for each ZMW.
+    pool: Process pool to run the preprocessing on. If None or empty,
+        preprocessing will be done sequentially on the main process.
   """
   before_batch = time.time()
 
   if options.cpus == 0:
     # Preprocess ZMWs one at a time in the main process without multiprocessing.
     outputs = [preprocess(one_zmw=one_zmw) for one_zmw in inputs]
-  elif options.cpus > 0:
-    logging.log_first_n(logging.INFO,
-                        f'Using multiprocessing: cpus is {options.cpus}.', 1)
-    # Spin up multiple processes, each taking the next ZMW when ready.
-    pool = multiprocessing.Pool(processes=options.cpus)
-
-    # Each call to preprocess gets one ZMW from inputs.
-    outputs = pool.map(preprocess, inputs)
-    pool.close()
-    logging.vlog(
-        1, 'Multiprocessing pool is done and closed. '
-        'Number of outputs: %d', len(outputs))
   else:
-    raise ValueError('Number of processes must be positive '
-                     '(for multiprocessing) or 0 (for serial execution).')
+    assert pool
+    # Each call to preprocess gets one ZMW from inputs.
+    outputs = list(pool.map(preprocess, inputs))
 
   feature_dicts_for_zmws = outputs
   num_zmws = len(feature_dicts_for_zmws)
@@ -727,6 +720,15 @@ def run() -> stitch_utils.OutcomeCounter:
       ccs_calibration_values=ccs_calibration_values)
   outcome_counter = stitch_utils.OutcomeCounter()
 
+  pool = None
+  if options.cpus > 0:
+    # Spin up multiple processes, each taking the next ZMW when ready.
+    pool = concurrent.futures.ProcessPoolExecutor(max_workers=options.cpus)
+    logging.info('Using multiprocessing: cpus is %s.', options.cpus)
+  elif options.cpus < 0:
+    raise ValueError('Number of processes must be positive '
+                     '(for multiprocessing) or 0 (for serial execution).')
+
   # Set up model.
   before_model_setup = time.time()
   loaded_model, model_params = initialize_model(
@@ -770,7 +772,8 @@ def run() -> stitch_utils.OutcomeCounter:
           fastq_writer=fastq_writer,
           options=options,
           batch_name=str(batch_count),
-          outcome_counter=outcome_counter)
+          outcome_counter=outcome_counter,
+          pool=pool)
       batch_count += 1
       stored_n_zmws = []
       logging.info('Processed %s ZMWs in %0.3f seconds', zmw_counter,
@@ -784,7 +787,11 @@ def run() -> stitch_utils.OutcomeCounter:
         fastq_writer=fastq_writer,
         options=options,
         batch_name=str(batch_count),
-        outcome_counter=outcome_counter)
+        outcome_counter=outcome_counter,
+        pool=pool)
+
+  if pool:
+    pool.shutdown(wait=True)
 
   fastq_writer.close()
 
