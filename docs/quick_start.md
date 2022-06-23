@@ -1,21 +1,40 @@
-# Quick start for DeepConsensus
+# Quick Start for DeepConsensus
 
-This Quick Start provides an example of running DeepConsensus on a small example
-dataset. This will cover the steps of running from a subreads BAM file and
-generate a FASTQ of consensus reads.
+This quick start tutorial walks through how to process PacBio Hi-Fi sequence
+data that originates as a subread BAM file, and how to run DeepConsensus to
+generate polished reads.
 
-This covers the following stages:
+This tutorial is organized as follows:
 
-1.  How to easily parallelize the work across multiple machines.
-2.  Running *[ccs]* with the `--all` option to output all reads (it is possible
-    to use DeepConsensus from existing *ccs* reads, but yield will be higher
-    when including all reads).
-3.  Aligning subreads to the *ccs* consensus with *[actc]*
-4.  Running DeepConsensus using either pip or Docker
+1.  [Setting up a VM](#setting-up-a-vm)
+2.  [Parallelization](#parallelization)
+3.  [Download Example Data](#download-example-data)
+4.  [Process Subread Data](#process-subread-data)
+5.  [Run DeepConsensus](#run-deepconsensus)
+6.  [Tips for Optimizing](#tips-for-optimizing)
 
-## System configuration
+## Setting up a VM
 
-We tested the DeepConsensus quickstart with the following configuration:
+DeepConsensus can be run on Unix systems. The command below can be used to spin
+up a compatible virtual machine (VM) on Google Cloud Platform (GCP). This
+command will spin up a
+[n1-standard-16 machine on GCP](https://cloud.google.com/compute/docs/general-purpose-machines#n1_machines),
+with an NVIDIA P100 GPU:
+
+```
+gcloud compute instances create "${USER}-gpu" \
+  --scopes "compute-rw,storage-full,cloud-platform" \
+  --maintenance-policy "TERMINATE" \
+  --accelerator=type=nvidia-tesla-p100,count=1 \
+  --image-family "ubuntu-2004-lts" \
+  --image-project "ubuntu-os-cloud" \
+  --machine-type "n1-standard-16" \
+  --boot-disk-size "200" \
+  --zone "us-west1-b" \
+  --min-cpu-platform "Intel Skylake"
+```
+
+This instance will have the following configuration:
 
 ```bash
 OS: Ubuntu 20.04.3 LTS (x86_64)
@@ -25,127 +44,180 @@ Memory: 60G
 GPU: 1 nvidia-tesla-p100
 ```
 
-DeepConsensus can be run on any compatible Unix systems. In this case, we used a
-[n1-standard-16 machine on GCP](https://cloud.google.com/compute/docs/general-purpose-machines#n1_machines),
-with an NVIDIA P100 GPU. To reproduce on GCP, use
-[this command for P100 GPU](runtime_metrics.md#p100-gpu-16vcpus-skylake-n1-standard-16-with-nvidia-tesla-p100-on-gcp).
+You can log into the new VM using `gcloud`:
 
-See the [runtime metrics page](runtime_metrics.md) for a few examples of runtime
-on different compute setups on Google Cloud.
-
-## Parallelization
-
-Let's do a little back-of-the-envelope calculation to determine what
-parallelization setup to use and what runtime to expect.
-
-One SMRTcell produces something like 3-4 million ZMWs depending on the fragment
-length of the sequencing library. That is based on an 8M SMRTcell. We will
-assume 4 million ZMWs for this estimate.
-
-For this small calculation, we'll assume 1.1 seconds/ZMW runtime to match the
-16vCPU (no GPU) machines that most people should have access to. See the
-[runtime metrics page](runtime_metrics.md) to get an estimate matching your
-compute setup.
-
-(1.1 seconds/ZMW) * (4 million ZMWs) = 4.4 million seconds = 1,222 hours.
-
-If we split this into 500 shards, that is about 2.4 hours per shard. There is
-some variability between shards, but this should give you an idea of what to
-expect. This is only for the DeepConsensus step itself, not including the
-preprocessing with *ccs* and *actc*.
-
-We recommend running a single small shard first so you have an idea of the
-runtime to expect on your compute setup and with your sequencing run, since
-factors from compute hardware to library fragment length can make a big
-difference.
-
-Note that we recommend running each shard on a separate machine/VM as opposed to
-using a tool like `parallel` to run DeepConsensus on multiple shards on the same
-machine, since currently each DeepConsensus run will use all the available
-resources. We are working on ways to restrict this to enable making better use
-of machines with many cores. The [runtime metrics page](runtime_metrics.md) is
-showing runtimes where DeepConsensus is not competing with any other jobs on the
-same machine, so expect worse runtimes when these conditions are not ideal.
-
-Here is a quick example of setting up variables and file names for parallelizing
-across shards.
-
-```bash
-# Format shard number nicely for file names:
-function to_shard_id {
-  # ${1}: n=1-based counter
-  # ${2}: n_total=1-based count
-  echo "$( printf %05g "${1}")-of-$(printf "%05g" "${2}")"
-}
-
-# Here's what this looks like with 10 shards:
-n_total=10
-for n in $(seq 1 $n_total); do
-  echo "run ccs with --chunk=${n}/${n_total}"
-  shard_id="$(to_shard_id "${n}" "${n_total}")"
-  echo "for file names: ${shard_id}"
-done
+```
+gcloud compute ssh ${USER}-gpu --zone=us-west1-b
 ```
 
-In this quick start example, we are using such a small dataset that sharding is
-unnecessary, but we will show it as if we are running 1 shard out of 1 total
-shards so it is easy to adapt.
+Because this VM has an attached GPU, we will follow the [GPU Setup](#gpu-setup)
+section below.
 
-## Download example data
+See the [runtime metrics page](runtime_metrics.md) for an overview of runtimes
+using different GCP compute VM configurations.
 
-This will download about 142 MB of data and the model is another 245 MB.
+### GPU Setup
 
-```bash
-# Set directory where all data and model will be placed.
-QUICKSTART_DIRECTORY="${HOME}/deepconsensus_quick_start"
-# This will soon have 2 subfolders: data, model.
-
-DATA="${QUICKSTART_DIRECTORY}/data"
-MODEL_DIR="${QUICKSTART_DIRECTORY}/model"
-mkdir -p "${DATA}"
-mkdir -p "${MODEL_DIR}"
-
-# Download the input data, which is PacBio subreads.
-gsutil cp gs://brain-genomics-public/research/deepconsensus/quickstart/v0.2/subreads.bam* "${DATA}"/
-
-# Download the DeepConsensus model.
-gsutil cp gs://brain-genomics-public/research/deepconsensus/models/v0.2/* "${MODEL_DIR}"/
-```
-
-## If running with GPU, set up your GPU machine correctly.
-
-In our example run, because we're using GPU, we used:
+If you are planning on running DeepConsensus with an NVIDIA GPU, you can use the
+command below to install Docker and the GPU-libraries required:
 
 ```bash
 curl https://raw.githubusercontent.com/google/deepvariant/r1.4/scripts/install_nvidia_docker.sh -o install_nvidia_docker.sh
 bash install_nvidia_docker.sh
 ```
 
-to make sure our GPU is set up correctly.
+## Parallelization
 
-## Process the data with *ccs* and *actc*
+One 8M SMRTcell can produce 3-4 million ZMWs depending on the fragment lengths
+of the sequencing library. This can result in subread bams that are hundreds of
+gigabytes to a terabyte or greater in size. In order to process such large
+files, PacBio tools and DeepConsensus can operate on shards (also known as
+chunks) and process these data in parallel.
 
-You can install *[ccs]* and *[actc]* on your own. For convenience, we put them
-in a Docker image:
+Let's do a back-of-the-envelope calculation to determine how parallelization can
+help us process millions of ZMWs and what runtime to expect.
+
+For this calculation, we'll assume 0.3825 seconds/ZMW runtime, which is what we
+observe on a 16vCPU (no GPU) machine. See the
+[runtime metrics page](runtime_metrics.md) to get an estimate matching your
+compute setup.
+
+(1.0693 seconds/ZMW) * (4 million ZMWs) = 4.27 million seconds = 1,188 hours.
+
+If we split this into 500 shards, that is about 0.85 hours per shard. There is
+some variability between shards, but this should give you an idea of what to
+expect. This estimate is only for the DeepConsensus processing step, and does
+not include the preprocessing required with *ccs* and *actc*.
+
+We recommend running a single small shard first so you have an idea of the
+runtime to expect on your compute setup and with your sequencing run, since
+factors from compute hardware to library fragment length can make a big
+difference.
+
+Keep in mind that pre-processing tools (`pbccs`, `actc`) and DeepConsensus are
+set up to make use of all available compute resources. However, subread datasets
+are very large so distributing this work via sharding across multiple VMs will
+allow for processing over reasonable timeframes.
+
+## Download example data
+
+Next we will download example data which contains 1000 ZMWs and a DeepConsensus
+model. The example data is about 210 MB and the model is 38.18 MB.
+
+We will download data using `gsutil` which is pre-installed on GCP VMs, but you
+can install it in other environments using `pip install gsutil`.
 
 ```bash
-# DOCKER_IMAGE=google/deepconsensus:0.2.0  # For CPU
-DOCKER_IMAGE=google/deepconsensus:0.2.0-gpu  # For GPU
+# Create a work directory and place to store our model for the quick start.
+QS_DIR="${HOME}/deepconsensus_quick_start"
+mkdir -p "${QS_DIR}" "${QS_DIR}/model"
+
+# Download the input PacBio Subread data.
+gsutil cp gs://brain-genomics-public/research/deepconsensus/quickstart/v0.3/n1000.subreads.bam "${QS_DIR}"/
+
+# Download the DeepConsensus model.
+gsutil cp -r gs://brain-genomics-public/research/deepconsensus/models/v0.3/* "${QS_DIR}"/model
+```
+
+This directory should now contain the following files:
+
+```
+n1000.subreads.bam
+model/params.json
+model/saved_model.pb
+model/variables/variables.data-00000-of-00001
+model/variables/variables.index
+```
+
+## Process Subread Data
+
+Now we can process subread data to generate the appropriate inputs for
+DeepConsensus. We will use the following tools to do this:
+
+*   [`pbindex`](https://github.com/PacificBiosciences/pbbam) - generates a
+    pacbio index (`.pbi`) on subread bams that allows us to process data in a
+    sharded/chunked manner. (Note: `pbindex` is installed as part of the `pbbam`
+    package).
+*   [`ccs`](https://ccs.how/) - generates a draft consensus sequence.
+*   [`actc`](https://github.com/PacificBiosciences/actc) - aligns subreads to
+    the draft consensus sequence.
+
+For convenience, we have packaged these tools in a Docker image. Be sure to use
+the appropriate version (CPU / GPU) depending on your use case.
+
+```bash
+# Define DOCKER_IMAGE *once* depending on whether you will be using CPU or GPU:
+DOCKER_IMAGE=google/deepconsensus:0.3.0  # For CPU
+DOCKER_IMAGE=google/deepconsensus:0.3.0-gpu  # For GPU
 sudo docker pull ${DOCKER_IMAGE}
 ```
 
-DeepConsensus operates on subreads aligned to a draft consensus. We use *ccs*
-to generate this.
-
-The *ccs* software helpfully shards its output for us when used with `--chunk`,
-all from the same subreads bam. You simply run the whole rest of this quick
-start on a different machine for each value of `n` up to your desired `n_total`.
+Alternatively, you can install `pbindex`, `ccs` and `actc` using
+[conda](https://docs.conda.io/en/latest/):
 
 ```bash
-# In this quick start example, we'll use the variables for sharding but just
-# show it with 1 shard so we run with all 1000 ZMWs in the sample dataset.
-n_total=1  # For a real run, try 500 here.
-n=1  # Set this for each machine as shown in the example loop above.
+# pbindex is installed as part of the pbbam package.
+# pbccs is the package name for ccs.
+conda install -c bioconda pbbam pbccs actc
+```
+
+## Running the Docker Image
+
+If you are using Docker, you can launch the docker image using the following
+command, which will also mount the quickstart directory into our container. Be
+sure to use the appropriate command for your use case. These commands will
+launch a container with an interactive terminal where you can execute commands.
+
+```bash
+# Launching Docker when using a CPU:
+sudo docker run \
+  -it \
+  -w /data \
+  -v "${QS_DIR}":/data \
+  ${DOCKER_IMAGE} /bin/bash
+
+# Launching Docker when using a GPU:
+sudo docker run \
+  --gpus all \
+  -it \
+  -w /data \
+  -v "${QS_DIR}":/data \
+  ${DOCKER_IMAGE} /bin/bash
+```
+
+Here are some details on what these docker commands are doing:
+
+*   `-i / --interactive` - Run a docker container interactively
+*   `-t / --tty` - Allocate a pseudo-TTY. This makes working interactively
+    operate like a traditional terminal session.
+*   `-w / --workdir` - Sets the working directory inside the container.
+*   `-v / --volume` - Binds a volume. You can specify a path and a corresponding
+    path inside your container. Here we specify the quickstart directory
+    (`${QS_DIR}`) to be mounted as a directory called `/data`, which also is
+    what we set as our working directory.
+
+### Index the subreads BAM with `pbindex`
+
+Our example `subreads.bam` is small - so indexing will be fast. But indexing a
+full subreads BAM can take a long time. If you already have access to a `.pbi`
+index, you should skip this step.
+
+```
+pbindex n1000.subreads.bam
+```
+
+This will generate `subreads.bam.pbi`.
+
+### Run `ccs`
+
+We will run `ccs` to generate a draft consensus. We will illustrate how sharding
+can be accomplished using the `--chunk` flag. However, we will only process the
+first of two chunks from our example dataset, which corresponds to processing
+the first half of our subreads dataset.
+
+```bash
+n=1  # Set this to the shard you would like to process.
+n_total=2  # For a full dataset, set to a larger number such as 500.
 
 function to_shard_id {
   # ${1}: n=1-based counter
@@ -154,59 +226,99 @@ function to_shard_id {
 }
 
 shard_id="$(to_shard_id "${n}" "${n_total}")"
-sudo docker run -v "${DATA}":"/data" ${DOCKER_IMAGE} \
-  ccs --all \
-    -j "$(nproc)" \
-    --chunk="${n}"/"${n_total}" \
-    "/data/subreads.bam" \
-    "/data/${shard_id}.ccs.bam"
+
+ccs --min-rq=0.88 \
+      -j "$(nproc)" \
+      --chunk="${n}"/"${n_total}" \
+      n1000.subreads.bam \
+      "${shard_id}.ccs.bam"
 ```
 
-Note that the `--all` flag is a required setting for DeepConsensus to work
-optimally. This allows DeepConsensus to rescue reads previously below the
-quality threshold.
+This command should generate a `00001-of-00002.ccs.bam` file. Here is an
+explanation of the flags we ran `ccs` with:
 
-Then, we create `subreads_to_ccs.bam` by running *actc*:
+*   `--min-rq=0.88` - this flag will filter out very low quality reads that are
+    normally filtered using a Q>=20 read filter. Poor quality reads are unlikely
+    to benefit enough from DeepConsensus polishing to be rescued from the Q>=20
+    filter. A `--min-rq=0.88` corresponds to a read with ~Q9.
+*   `-j` - sets the number of processors to use. `$(nproc)` will equal the
+    number of available processors on our VM.
+*   `--chunk` - defines a subset of the subread bam to process. We set a
+    corresponding output filename with the `${shard_id}.ccs.bam` variable.
+
+Another VM, in parallel, could process the second chunk by specifying
+`--chunk=2/2`. Sharded output files can then be processed independently.
+
+`ccs` will filter ZMWs with poor quality. Running ccs will also output a file
+called `00001-of-00002.ccs.ccs_report.txt` that shows which ZMWs are filtered
+and why:
+
+```
+ZMWs input               : 500
+
+ZMWs pass filters        : 178 (35.60%)
+ZMWs fail filters        : 322 (64.40%)
+ZMWs shortcut filters    : 0 (0.000%)
+
+ZMWs with tandem repeats : 3 (0.932%)
+
+Exclusive failed counts
+Below SNR threshold      : 4 (1.242%)
+Median length filter     : 0 (0.000%)
+Lacking full passes      : 312 (96.89%)
+Heteroduplex insertions  : 3 (0.932%)
+Coverage drops           : 0 (0.000%)
+Insufficient draft cov   : 0 (0.000%)
+Draft too different      : 0 (0.000%)
+Draft generation error   : 3 (0.932%)
+Draft above --max-length : 0 (0.000%)
+Draft below --min-length : 0 (0.000%)
+Reads failed polishing   : 0 (0.000%)
+Empty coverage windows   : 0 (0.000%)
+CCS did not converge     : 0 (0.000%)
+CCS below minimum RQ     : 0 (0.000%)
+Unknown error            : 0 (0.000%)
+
+Additional passing metrics
+ZMWs missing adapters    : 1 (0.562%)
+```
+
+### Run `actc`
+
+Next, we will process the first chunk of our dataset by aligning subreads to the
+draft consensus sequence using `actc`.
 
 ```bash
-sudo docker run -v "${DATA}":"/data" ${DOCKER_IMAGE} \
-  actc -j "$(nproc)" \
-    "/data/subreads.bam" \
-    "/data/${shard_id}.ccs.bam" \
-    "/data/${shard_id}.subreads_to_ccs.bam"
+actc -j "$(nproc)" \
+    n1000.subreads.bam \
+    "${shard_id}.ccs.bam" \
+    "${shard_id}.subreads_to_ccs.bam"
 ```
 
-DeepConsensus will take the consensus sequences output by *ccs* in FASTA format.
+This command will output `00001-of-00002.subreads_to_ccs.bam`.
 
-*actc* already converted the BAM into FASTA. Rename and index it.
-
-```bash
-sudo docker run -v "${DATA}":"/data" ${DOCKER_IMAGE} \
-  mv /data/${shard_id}.subreads_to_ccs.fasta /data/${shard_id}.ccs.fasta
-
-sudo docker run -v "${DATA}":"/data" ${DOCKER_IMAGE} \
-  samtools faidx /data/${shard_id}.ccs.fasta
-```
+Both the `${shard_id}.ccs.bam` and `${shard_id}.subreads_to_ccs.bam` files will
+be used as input for DeepConsensus.
 
 ## Run DeepConsensus
 
-### Install and run DeepConsensus via pip install
+### Installation
 
-You can install DeepConsensus using `pip`:
+If using the Docker container, DeepConsensus is pre-installed. Alternatively,
+you can install DeepConsensus using `pip`. Be sure to install the correct
+version for your use case.
 
 ```bash
 # GPU ONLY:
-pip install deepconsensus[gpu]==0.2.0
-```
+pip install deepconsensus[gpu]==0.3.0
 
-NOTE: If you're using a CPU machine, do this instead:
-
-```bash
 # CPU ONLY:
-pip install deepconsensus[cpu]==0.2.0
+pip install deepconsensus[cpu]==0.3.0
 ```
 
-To make sure the `deepconsensus` command-line interface works, set the PATH:
+To make sure the `deepconsensus` command-line interface (CLI) works, be sure
+your `PATH` variable is set to include the `bin` directory containing the
+`deepconsensus` CLI script. The following command should work in most cases:
 
 ```bash
 export PATH="/home/${USER}/.local/bin:${PATH}"
@@ -215,66 +327,27 @@ export PATH="/home/${USER}/.local/bin:${PATH}"
 The step above is important. Otherwise you might see an error like:
 `deepconsensus: command not found`.
 
-```bash
-CHECKPOINT=${MODEL_DIR}/checkpoint-50
+### Running
 
-time deepconsensus run \
-  --subreads_to_ccs=${DATA}/${shard_id}.subreads_to_ccs.bam  \
-  --ccs_fasta=${DATA}/${shard_id}.ccs.fasta \
-  --checkpoint=${CHECKPOINT} \
-  --output=${DATA}/${shard_id}.output.fastq \
+```bash
+deepconsensus run \
+  --subreads_to_ccs=${shard_id}.subreads_to_ccs.bam  \
+  --ccs_bam=${shard_id}.ccs.bam \
+  --checkpoint=model \
+  --output=${shard_id}.output.fastq \
   --batch_zmws=100
 ```
 
 At the end of your run, you should see:
 
 ```
-Processed 1000 ZMWs in 341.3297851085663 seconds
-Outcome counts: OutcomeCounter(empty_sequence=0, only_gaps_and_padding=50, failed_quality_filter=424, failed_length_filter=0, success=526)
+Processed 178 ZMWs in 144.111 seconds
+Outcome counts: Outcome counts: OutcomeCounter(empty_sequence=0, only_gaps_and_padding=0, failed_quality_filter=0, failed_length_filter=0, success=178)
 ```
 
-The final output FASTQ can be found at the following path:
+## Optimizing Runtime
 
-```bash
-ls "${DATA}"/${shard_id}.output.fastq
-```
-
-### (Optional) Run DeepConsensus using Docker
-
-If `pip install` didn't work well for you, we encourage you to file
-[a GitHub issue] to let us know.
-
-You can also try running DeepConsensus with Docker:
-
-```bash
-time sudo docker run --gpus all \
-  -v "${DATA}":"/data" -v "${MODEL_DIR}":"/model" ${DOCKER_IMAGE} \
-  deepconsensus run \
-  --subreads_to_ccs=/data/${shard_id}.subreads_to_ccs.bam  \
-  --ccs_fasta=/data/${shard_id}.ccs.fasta \
-  --checkpoint=/model/checkpoint-50 \
-  --output=/data/${shard_id}.output.fastq \
-  --batch_zmws=100
-```
-
-At the end of your run, you should see:
-
-```
-Processed 1000 ZMWs in 428.84565114974976 seconds
-Outcome counts: OutcomeCounter(empty_sequence=0, only_gaps_and_padding=50, failed_quality_filter=424, failed_length_filter=0, success=526)
-```
-
-Currently we notice that the Docker GPU version is slower. We're still trying
-to improve this. If you have any suggestions, please let us know through
-[a GitHub issue].
-
-
-## Tweaking for speed
-
-You might be able to tweak parameters like `--batch_zmws` depending on your
-hardware limit. You can also see [runtime_metrics.md](runtime_metrics.md) for
-runtime on different CPU or GPU machines.
-
-[ccs]: https://ccs.how
-[actc]: https://github.com/PacificBiosciences/align-clr-to-ccs
-[a GitHub issue]: https://github.com/google/deepconsensus/issues
+You may be able to tweak the `batch_size` and `--batch_zmws` parameters to
+optimize for runtime specific to your hardware. You can also see
+[runtime_metrics.md](runtime_metrics.md) for runtime on different CPU or GPU
+machines.
