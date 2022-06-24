@@ -28,6 +28,7 @@
 """Utility functions being used for data processing."""
 
 import collections
+from collections import abc
 import dataclasses
 import itertools
 from typing import Any, Dict, List, Optional, Union
@@ -43,7 +44,7 @@ from deepconsensus.utils import utils
 Issue = dc_constants.Issue
 
 
-class SubreadGrouper(collections.Iterator):
+class SubreadGrouper(abc.Iterator):
   """Returns all subreads belonging to a single zmw as a list."""
 
   def __init__(self, subreads_to_ccs, reader_threads):
@@ -105,7 +106,7 @@ def right_pad(arr: np.ndarray, length: int, value: Any) -> np.ndarray:
 
 
 @dataclasses.dataclass
-class Read(collections.Sequence):
+class Read(abc.Sequence):
   """Used to represent ccs alignments."""
   name: str
   bases: np.ndarray
