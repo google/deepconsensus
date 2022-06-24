@@ -149,7 +149,7 @@ flags.DEFINE_integer(
 # The following parameters are for quality score calibration
 
 flags.DEFINE_string(
-    'dc_calibration', '', 'Comma separated values of '
+    'dc_calibration', '0,1.197654,-0.99781', 'Comma separated values of '
     'linear transformation model\'s calibration values for deepconsensus base '
     'qualities. The values are set as \"threshold,w,b\" where threshold is '
     'minimum base quality threshold after which  the linear transformation '
