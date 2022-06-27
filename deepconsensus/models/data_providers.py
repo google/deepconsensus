@@ -59,16 +59,25 @@ PROTO_FEATURES_TRAIN = dict(
 
 
 def get_total_rows(max_passes: int) -> int:
-  """Returns total rows in input tf.Examples. Update if other signals added."""
-  # For each of `max_subreads`, we have three pieces of information: bases, PW,
-  # and IP. We also have four rows for SN, and one for strand.
-  # The information is structured as follows:
-  # Bases: (0, params.max_passes - 1) represent bases.
-  # PW: rows params.max_passes to (params.max_passes * 2 - 1)
-  # IP: rows (params.max_passes * 2) to (params.max_passes * 3 - 1)
-  # Strand: rows (params.max_passes * 3) to (params.max_passes * 4)
-  # CCS+SN: rows (params.max_passes * 4 + 1) to (params.max_passes * 4 + 5)
-  # The last five rows are CCS sequence (1), and SN (4).
+  """Returns total rows in input tf.Examples.
+
+  Update if other signals added.
+
+  For each of `max_subreads`, we have four pieces of information: bases, PW, IP,
+  and strand. We also have one row for CCS, and four rows for SN (in that
+  order).
+  The information is structured as follows:
+  Bases: rows 0 to  (params.max_passes - 1)
+  PW: rows (params.max_passes) to (params.max_passes * 2 - 1)
+  IP: rows (params.max_passes * 2) to (params.max_passes * 3 - 1)
+  Strand: rows (params.max_passes * 3) to (params.max_passes * 4 - 1)
+  CCS+SN: rows (params.max_passes * 4) to (params.max_passes * 4 + 5)
+
+  Args:
+    max_passes: Maximum number of subreads to show. Space is made for them all
+      even though few examples will have enough subreads to fill these rows.
+  Returns: Total number of rows in the full example.
+  """
   return (max_passes * 4) + 5
 
 
