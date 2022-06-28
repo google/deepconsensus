@@ -12,7 +12,7 @@ Biosciences (PacBio) Circular Consensus Sequencing (CCS) data.
 If you're on a GPU machine:
 
 ```bash
-pip install deepconsensus[gpu]==0.2.0
+pip install deepconsensus[gpu]==0.3.0
 # To make sure the `deepconsensus` CLI works, set the PATH:
 export PATH="/home/${USER}/.local/bin:${PATH}"
 ```
@@ -20,7 +20,7 @@ export PATH="/home/${USER}/.local/bin:${PATH}"
 If you're on a CPU machine:
 
 ```bash
-pip install deepconsensus[cpu]==0.2.0
+pip install deepconsensus[cpu]==0.3.0
 # To make sure the `deepconsensus` CLI works, set the PATH:
 export PATH="/home/${USER}/.local/bin:${PATH}"
 ```
@@ -30,13 +30,13 @@ export PATH="/home/${USER}/.local/bin:${PATH}"
 For GPU:
 
 ```bash
-sudo docker pull google/deepconsensus:0.2.0-gpu
+sudo docker pull google/deepconsensus:0.3.0-gpu
 ```
 
 For CPU:
 
 ```bash
-sudo docker pull google/deepconsensus:0.2.0
+sudo docker pull google/deepconsensus:0.3.0
 ```
 
 ### From source
