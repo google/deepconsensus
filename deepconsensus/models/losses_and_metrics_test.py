@@ -614,7 +614,7 @@ class DistillationLossTest(parameterized.TestCase):
         distill_loss = distill_loss + kl_ij
       # Get the distillation loss over the whole window.
       distill_loss = distill_loss / window_length
-      self.assertAlmostEqual(distill_loss, expected_loss[example_ind])
+      self.assertAlmostEqual(distill_loss, expected_loss[example_ind], places=6)
 
 
 if __name__ == '__main__':

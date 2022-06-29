@@ -41,7 +41,7 @@ from deepconsensus.utils import test_utils
 
 class ModelTrainTest(parameterized.TestCase):
 
-  @parameterized.parameters(['transformer_learn_values_v2_distill+test'])
+  @parameterized.parameters(['transformer_learn_values_distill+test'])
   def test_train_e2e(self, config_name):
     """Tests that training completes and output files written."""
 

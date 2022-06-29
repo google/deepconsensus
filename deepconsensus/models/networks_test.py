@@ -62,7 +62,7 @@ class ModelsTest(parameterized.TestCase):
           [
               'fc+test',
               'transformer+test',
-              'transformer_learn_values_v2+test',
+              'transformer_learn_values+test',
           ],
           [True, False]))
   def test_outputs(self, training, config_name, use_predict):
@@ -100,7 +100,7 @@ class ModelsTest(parameterized.TestCase):
           [
               'fc+test',
               'transformer+test',
-              'transformer_learn_values_v2+test',
+              'transformer_learn_values+test',
           ],
           [True, False]))
   def test_predict_and_model_fn_equal(self, config_name, inference):

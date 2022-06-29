@@ -65,46 +65,11 @@ def _set_base_fc_hparams(params):
   params.buffer_size = 1000
 
 
-def _set_base_transformer_v2_hparams(params):
-  """Updates given config with base values for the Transformer model."""
-  # Architecture
-  params.model_name = 'transformer_v2'
-  params.add_pos_encoding = True
-  # Num heads should be divisible by hidden size. This value should be tuned for
-  # the production setting. TODO: update this parameter after
-  # tuning.
-  params.num_heads = 2
-  params.layer_norm = False
-  params.dtype = dc_constants.TF_DATA_TYPE
-  params.condense_transformer_input = False
-  params.transformer_model_size = 'base'
-
-  params.num_channels = 1
-  params.use_bases = True
-  params.use_pw = True
-  params.use_ip = True
-  params.use_ccs = True
-  params.use_strand = True
-  params.use_sn = True
-  params.per_base_hidden_size = 1
-  params.pw_hidden_size = 1
-  params.ip_hidden_size = 1
-  params.sn_hidden_size = 1
-  params.strand_hidden_size = 1
-
-  # Training
-  params.batch_size = 256
-  params.num_epochs = 50
-  params.learning_rate = 1e-4
-  params.buffer_size = 1000
-
-
 def _set_base_transformer_hparams(params):
   """Updates given config with base values for the Transformer model."""
   # Architecture
   params.model_name = 'transformer'
   params.add_pos_encoding = True
-  params.use_relative_pos_enc = True
   # Num heads should be divisible by hidden size. This value should be tuned for
   # the production setting. TODO: update this parameter after
   # tuning.
@@ -136,6 +101,8 @@ def _set_base_transformer_hparams(params):
 
 def _set_transformer_learned_embeddings_hparams(params):
   """Updates given config with values for the learned embeddings transformer."""
+  # TODO: As we migrate off the legacy code, we might need to
+  # adjust the params below. For now just making a copy of the previous params.
   _set_base_transformer_hparams(params)
   params.model_name = 'transformer_learn_values'
   params.PW_MAX = dc_constants.PW_MAX
@@ -151,29 +118,10 @@ def _set_transformer_learned_embeddings_hparams(params):
   params.transformer_input_size = 280
 
 
-def _set_transformer_learned_embeddings_v2_hparams(params):
-  """Updates given config with values for the learned embeddings transformer."""
-  # TODO: As we migrate off the legacy code, we might need to
-  # adjust the params below. For now just making a copy of the previous params.
-  _set_base_transformer_v2_hparams(params)
-  params.model_name = 'transformer_learn_values_v2'
-  params.PW_MAX = dc_constants.PW_MAX
-  params.IP_MAX = dc_constants.IP_MAX
-  params.STRAND_MAX = dc_constants.STRAND_MAX
-  params.SN_MAX = dc_constants.SN_MAX
-  params.per_base_hidden_size = 8
-  params.pw_hidden_size = 8
-  params.ip_hidden_size = 8
-  params.strand_hidden_size = 2
-  params.sn_hidden_size = 8
-  params.condense_transformer_input = True
-  params.transformer_input_size = 280
-
-
-def _set_transformer_learned_embeddings_v2_distill_hparams(params):
+def _set_transformer_learned_embeddings_distill_hparams(params):
   """Updates given config with values for the distilled transformer."""
-  _set_transformer_learned_embeddings_v2_hparams(params)
-  params.model_name = 'transformer_learn_values_v2_distill'
+  _set_transformer_learned_embeddings_hparams(params)
+  params.model_name = 'transformer_learn_values_distill'
 
   # Student architecture parameters.
   params.num_hidden_layers = 4
@@ -239,14 +187,12 @@ def get_config(config_name: str) -> ml_collections.ConfigDict:
 
   Valid config names must consist of two parts: {model_name}+{dataset_name}. The
   "+" must be present as a separator between the two parts. For example,
-  transformer_learn_bases+ccs is a valid name.
+  transformer_learn_values+ccs is a valid name.
 
   Valid model names include:
     * fc
-    * transformer (TODO: legacy codebase)
-    * transformer_learn_values (TODO: legacy codebase)
-    * transformer_v2
-    * transformer_learn_values_v2
+    * transformer
+    * transformer_learn_values
 
   Valid dataset names include:
     * ecoli
@@ -289,16 +235,12 @@ def get_config(config_name: str) -> ml_collections.ConfigDict:
   params.limit = -1
   if model_config_name == 'fc':
     _set_base_fc_hparams(params)
-  elif model_config_name == 'transformer_v2':
-    _set_base_transformer_v2_hparams(params)
   elif model_config_name == 'transformer':
     _set_base_transformer_hparams(params)
-  elif model_config_name == 'transformer_learn_values_v2':
-    _set_transformer_learned_embeddings_v2_hparams(params)
   elif model_config_name == 'transformer_learn_values':
     _set_transformer_learned_embeddings_hparams(params)
-  elif model_config_name == 'transformer_learn_values_v2_distill':
-    _set_transformer_learned_embeddings_v2_distill_hparams(params)
+  elif model_config_name == 'transformer_learn_values_distill':
+    _set_transformer_learned_embeddings_distill_hparams(params)
   else:
     raise ValueError('Unknown model_config_name: %s' % model_config_name)
 

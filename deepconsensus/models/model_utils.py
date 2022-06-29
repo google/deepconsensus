@@ -31,18 +31,17 @@ import io
 import json
 import logging
 import os
-from typing import List, Optional, Tuple, Any, Union, Dict
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import ml_collections
 import numpy as np
 import tensorflow as tf
 
 from deepconsensus.models import data_providers
-from deepconsensus.models import legacy_networks
 from deepconsensus.models import losses_and_metrics
 from deepconsensus.models import networks
+from deepconsensus.models import transformer_basic_params
 from deepconsensus.utils import dc_constants
-from official.nlp.transformer import misc
 
 
 def get_deepconsensus_loss(
@@ -119,16 +118,8 @@ def get_model(params: ml_collections.ConfigDict) -> tf.keras.Model:
   if params.model_name == 'fc':
     model = networks.FullyConnectedNet(params)
   elif params.model_name == 'transformer':
-    model = legacy_networks.EncoderOnlyTransformer(params)
-  # I'm using "_v2" suffix for the new code migrated out of legacy. Feel free
-  # to suggest more informative names.
-  elif params.model_name == 'transformer_v2':
     model = networks.EncoderOnlyTransformer(params)
-  elif params.model_name == 'transformer_learn_values':
-    model = legacy_networks.EncoderOnlyLearnedValuesTransformer(params)
-  # I'm using "_v2" suffix for the new code migrated out of legacy. Feel free
-  # to suggest more informative names.
-  elif 'transformer_learn_values_v2' in params.model_name:
+  elif 'transformer_learn_values' in params.model_name:
     model = networks.EncoderOnlyLearnedValuesTransformer(params)
   else:
     raise ValueError('Unknown model name: %s' % params.model_name)
@@ -228,8 +219,7 @@ def modify_params(params: ml_collections.ConfigDict,
       params.hidden_size += 1
 
     # Set model-specific parameters
-    if (params.model_name == 'transformer' or
-        params.model_name == 'transformer_v2'):
+    if params.model_name == 'transformer':
       # Transformer code uses default_batch_size, whereas my code uses
       # batch_size, so make sure both are the same.
       params.default_batch_size = params.batch_size
@@ -241,12 +231,31 @@ def modify_params(params: ml_collections.ConfigDict,
         logging.info('Setting hidden size to transformer_input_size.')
         params.hidden_size = params.transformer_input_size
     if 'transformer' in params.model_name:
-      transformer_params = misc.get_model_params(
+      transformer_params = get_transformer_model_params(
           params.transformer_model_size, num_gpus=num_gpus)
       # Only add hyperparameters that don't already exist.
       for param_name, param_value in transformer_params.items():
         if param_name not in params:
           params[param_name] = param_value
+
+
+def get_transformer_model_params(param_set, num_gpus):
+  """Gets predefined transformer model params."""
+  params_map = {
+      'tiny': transformer_basic_params.TINY_PARAMS,
+      'base': transformer_basic_params.BASE_PARAMS,
+      'big': transformer_basic_params.BIG_PARAMS,
+  }
+  if num_gpus > 1:
+    if param_set == 'big':
+      return transformer_basic_params.BIG_MULTI_GPU_PARAMS.copy()
+    elif param_set == 'base':
+      return transformer_basic_params.BASE_MULTI_GPU_PARAMS.copy()
+    else:
+      raise ValueError('Not valid params: param_set={} num_gpus={}'.format(
+          param_set, num_gpus))
+
+  return params_map[param_set].copy()
 
 
 def run_inference_and_write_results(model: tf.keras.Model,

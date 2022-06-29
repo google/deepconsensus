@@ -88,7 +88,7 @@ class RunInferenceAndWriteResultsTest(absltest.TestCase):
 
     out_dir = f'/tmp/output_dir/{uuid.uuid1()}'
     self.assertFalse(tf.io.gfile.isdir(out_dir))
-    params = model_configs.get_config('transformer_learn_values_v2+test')
+    params = model_configs.get_config('transformer_learn_values+test')
     model_utils.modify_params(params)
     model = model_utils.get_model(params)
     checkpoint_path = test_utils.deepconsensus_testdata('model/checkpoint-1')

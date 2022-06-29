@@ -30,12 +30,12 @@ r"""Model distillation training binary using a custom training loop.
 Distillation attempts to train a smaller student model that mimics the larger
 teacher model.
 
-Currently only transformer_learn_values_v2_distill config is
+Currently only transformer_learn_values_distill config is
 supported for model training.
 
 Example usage:
 
-CONFIG="//learning/genomics/deepconsensus/models/model_configs.py:transformer_learn_values_v2_distill+ccs"
+CONFIG="//learning/genomics/deepconsensus/models/model_configs.py:transformer_learn_values_distill+ccs"
 TEACHER_MODEL_DIR=""
 OUT_DIR=/tmp
 

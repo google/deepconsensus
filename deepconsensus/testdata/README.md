@@ -27,7 +27,7 @@ This command should take ~6 min to complete.
 Generated with:
 
 ```bash
-MODEL=transformer_learn_values_v2
+MODEL=transformer_learn_values
 CONFIG="//learning/genomics/deepconsensus/models/model_configs.py:${MODEL}+test"
 TEMP_MODEL_DIR="/tmp/deepconsensus/model/$(TZ=US/Pacific date '+%Y%m%d%H%M%S')"
 MODEL_TRAIN_COMMAND="time blaze run -c opt \\

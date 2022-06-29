@@ -43,7 +43,7 @@ class ModelInferenceTest(absltest.TestCase):
   def test_inference_e2e(self):
     """Tests that inference finishes running and an output file is created."""
 
-    config_name = 'transformer_learn_values_v2+test'
+    config_name = 'transformer_learn_values+test'
     out_dir = self.create_tempdir().full_path
     checkpoint_path = test_utils.deepconsensus_testdata('model/checkpoint-1')
     params = model_configs.get_config(config_name)
