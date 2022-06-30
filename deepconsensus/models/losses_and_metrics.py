@@ -582,7 +582,7 @@ class AlignmentLoss(tf.keras.losses.Loss):
     Returns:
       A tf.Tensor<float>[batch] with the value of the loss for each example.
     """
-    return self.eval(y_true, y_pred, return_matches=False)
+    return self.eval(y_true, y_pred, return_matches=False)  # pytype: disable=bad-return-type  # dynamic-method-lookup
 
 
 def preprocess_y_true_metric(y_true: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
