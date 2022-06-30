@@ -57,3 +57,29 @@ following command for YAK:
 yak qv -t NUMBER_PROCESSES \
 -p -K 3.2g -l 100k KMER_DB ASSEMBLY_FASTA > OUTPUT_qv.txt
 ```
+
+## Data availability
+
+The data used for this analysis is available publicly.
+
+### PacBio CCS reads (FASTQ)
+
+Sample | Insert size | Method        | Version | Location
+------ | ----------- | ------------- | ------- | --------
+HG002  | 16kb        | HiFi          | -       | gs://brain-genomics-public/research/deepconsensus/data/v0.3/assembly_analysis/fastqs/HG002_16kb_2SMRT_cells.hifi.q20.fastq
+HG002  | 16kb        | DeepConsensus | v0.2    | gs://brain-genomics-public/research/deepconsensus/data/v0.3/assembly_analysis/fastqs/HG002_16kb_2SMRT_cells.dc.v0.2.q20.fastq.gz
+HG002  | 16kb        | DeepConsensus | v0.3    | gs://brain-genomics-public/research/deepconsensus/data/v0.3/assembly_analysis/fastqs/HG002_16kb_2SMRT_cells.dc.v0.3.q20.fastq.gz
+HG002  | 24kb        | HiFi          | -       | gs://brain-genomics-public/research/deepconsensus/data/v0.3/assembly_analysis/fastqs/HG002_24kb_2SMRT_cells.hifi.q20.fastq
+HG002  | 24kb        | DeepConsensus | v0.2    | gs://brain-genomics-public/research/deepconsensus/data/v0.3/assembly_analysis/fastqs/HG002_24kb_2SMRT_cells.dc.v0.2.q20.fastq.gz
+HG002  | 24kb        | DeepConsensus | v0.3    | gs://brain-genomics-public/research/deepconsensus/data/v0.3/assembly_analysis/fastqs/HG002_24kb_2SMRT_cells.dc.v0.3.q20.fastq.gz
+
+### Assembly outputs
+
+Sample | Insert size | Method        | Version | Location
+------ | ----------- | ------------- | ------- | --------
+HG002  | 16kb        | HiFi          | -       | gs://brain-genomics-public/research/deepconsensus/data/v0.3/assembly_analysis/hifiasm_outputs/HG002_16kb_2SMRT_cells_hifi_q20/
+HG002  | 16kb        | DeepConsensus | v0.2    | gs://brain-genomics-public/research/deepconsensus/data/v0.3/assembly_analysis/hifiasm_outputs/HG002_16kb_2SMRT_cells_dc_v0.2_q20/
+HG002  | 16kb        | DeepConsensus | v0.3    | gs://brain-genomics-public/research/deepconsensus/data/v0.3/assembly_analysis/hifiasm_outputs/HG002_16kb_2SMRT_cells_dc_v0.3_q20/
+HG002  | 24kb        | HiFi          | -       | gs://brain-genomics-public/research/deepconsensus/data/v0.3/assembly_analysis/hifiasm_outputs/HG002_24kb_2SMRT_cells_hifi_q20/
+HG002  | 24kb        | DeepConsensus | v0.2    | gs://brain-genomics-public/research/deepconsensus/data/v0.3/assembly_analysis/hifiasm_outputs/HG002_24kb_2SMRT_cells_dc_v0.2_q20/
+HG002  | 24kb        | DeepConsensus | v0.3    | gs://brain-genomics-public/research/deepconsensus/data/v0.3/assembly_analysis/hifiasm_outputs/HG002_24kb_2SMRT_cells_dc_v0.3_q20/
