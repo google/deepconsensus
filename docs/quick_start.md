@@ -18,14 +18,13 @@ This tutorial is organized as follows:
 DeepConsensus can be run on Unix systems. The command below can be used to spin
 up a compatible virtual machine (VM) on Google Cloud Platform (GCP). This
 command will spin up a
-[n1-standard-16 machine on GCP](https://cloud.google.com/compute/docs/general-purpose-machines#n1_machines),
-with an NVIDIA P100 GPU:
+[n1-standard-16 machine on GCP](https://cloud.google.com/compute/docs/general-purpose-machines#n1_machines).
 
-```
-gcloud compute instances create "${USER}-gpu" \
+```bash
+VM=deepconsensus-quick-start
+gcloud compute instances create "${VM}" \
   --scopes "compute-rw,storage-full,cloud-platform" \
   --maintenance-policy "TERMINATE" \
-  --accelerator=type=nvidia-tesla-p100,count=1 \
   --image-family "ubuntu-2004-lts" \
   --image-project "ubuntu-os-cloud" \
   --machine-type "n1-standard-16" \
@@ -41,17 +40,13 @@ OS: Ubuntu 20.04.3 LTS (x86_64)
 Python version: Python 3.8.10
 CPUs: 16vCPUs (x86_64, GenuineIntel, SkyLake)
 Memory: 60G
-GPU: 1 nvidia-tesla-p100
 ```
 
 You can log into the new VM using `gcloud`:
 
+```bash
+gcloud compute ssh "${VM}" --zone=us-west1-b
 ```
-gcloud compute ssh ${USER}-gpu --zone=us-west1-b
-```
-
-Because this VM has an attached GPU, we will follow the [GPU Setup](#gpu-setup)
-section below.
 
 See the [runtime metrics page](runtime_metrics.md) for an overview of runtimes
 using different GCP compute VM configurations.
@@ -59,12 +54,17 @@ using different GCP compute VM configurations.
 ### GPU Setup
 
 If you are planning on running DeepConsensus with an NVIDIA GPU, you can use the
-command below to install Docker and the GPU-libraries required:
+command below to install Docker and the GPU libraries required:
 
 ```bash
+# For GPU only:
 curl https://raw.githubusercontent.com/google/deepvariant/r1.4/scripts/install_nvidia_docker.sh -o install_nvidia_docker.sh
 bash install_nvidia_docker.sh
 ```
+
+### CPU Setup
+
+Follow https://docs.docker.com/engine/install/ubuntu/ to install Docker.
 
 ## Parallelization
 
@@ -116,17 +116,16 @@ mkdir -p "${QS_DIR}" "${QS_DIR}/model"
 gsutil cp gs://brain-genomics-public/research/deepconsensus/quickstart/v0.3/n1000.subreads.bam "${QS_DIR}"/
 
 # Download the DeepConsensus model.
-gsutil cp -r gs://brain-genomics-public/research/deepconsensus/models/v0.3/* "${QS_DIR}"/model
+gsutil cp -r gs://brain-genomics-public/research/deepconsensus/models/v0.3/model_checkpoint/* "${QS_DIR}"/model/
 ```
 
 This directory should now contain the following files:
 
 ```
 n1000.subreads.bam
+model/checkpoint.data-00000-of-00001
+model/checkpoint.index
 model/params.json
-model/saved_model.pb
-model/variables/variables.data-00000-of-00001
-model/variables/variables.index
 ```
 
 ## Process Subread Data
@@ -202,7 +201,7 @@ Our example `subreads.bam` is small - so indexing will be fast. But indexing a
 full subreads BAM can take a long time. If you already have access to a `.pbi`
 index, you should skip this step.
 
-```
+```bash
 pbindex n1000.subreads.bam
 ```
 
@@ -302,52 +301,28 @@ be used as input for DeepConsensus.
 
 ## Run DeepConsensus
 
-### Installation
-
-If using the Docker container, DeepConsensus is pre-installed. Alternatively,
-you can install DeepConsensus using `pip`. Be sure to install the correct
-version for your use case.
-
-```bash
-# GPU ONLY:
-pip install deepconsensus[gpu]==0.3.0
-
-# CPU ONLY:
-pip install deepconsensus[cpu]==0.3.0
-```
-
-To make sure the `deepconsensus` command-line interface (CLI) works, be sure
-your `PATH` variable is set to include the `bin` directory containing the
-`deepconsensus` CLI script. The following command should work in most cases:
-
-```bash
-export PATH="/home/${USER}/.local/bin:${PATH}"
-```
-
-The step above is important. Otherwise you might see an error like:
-`deepconsensus: command not found`.
-
-### Running
+If using the Docker container, DeepConsensus was installed alongside ccs and
+actc above. Alternatively, you can install DeepConsensus using `pip` (see the
+[README](../README.md)).
 
 ```bash
 deepconsensus run \
   --subreads_to_ccs=${shard_id}.subreads_to_ccs.bam  \
   --ccs_bam=${shard_id}.ccs.bam \
-  --checkpoint=model \
-  --output=${shard_id}.output.fastq \
-  --batch_zmws=100
+  --checkpoint=model/checkpoint \
+  --output=${shard_id}.output.fastq
 ```
 
 At the end of your run, you should see:
 
 ```
-Processed 178 ZMWs in 144.111 seconds
-Outcome counts: Outcome counts: OutcomeCounter(empty_sequence=0, only_gaps_and_padding=0, failed_quality_filter=0, failed_length_filter=0, success=178)
+Processed 178 ZMWs in 334.629 seconds
+Outcome counts: OutcomeCounter(empty_sequence=0, only_gaps_and_padding=0, failed_quality_filter=0, failed_length_filter=0, success=178)
 ```
 
 ## Optimizing Runtime
 
-You may be able to tweak the `batch_size` and `--batch_zmws` parameters to
+You may be able to tweak the `--batch_size` and `--batch_zmws` parameters to
 optimize for runtime specific to your hardware. You can also see
 [runtime_metrics.md](runtime_metrics.md) for runtime on different CPU or GPU
 machines.
