@@ -4,9 +4,9 @@ DeepConsensus improves the consensus accuracy and yield of the PacBio CCS reads
 which downstream can improve the quality of genome analysis. To assess the
 improvement we can achieve by using DeepConsensus reads for genome assembly, we
 used `hifiasm (v0.16.1)` assembler to assemble the HG002 sample and used `YAK
-v0.1` to assess the quality of the assembly.
+v0.1-r56` to assess the quality of the assembly.
 
-Notably, the `DeepConsensus v0.3` model is trained on the T2T v2.0 assembly of
+Notably, the `DeepConsensus v0.3` model is trained on the `T2T v2.0` assembly of
 CHM13, so HG002 is a held out sample used for this analysis.
 
 ## Results

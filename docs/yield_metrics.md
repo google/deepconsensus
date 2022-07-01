@@ -83,10 +83,10 @@ follows:
 1.  Filter DeepConsensus output to predicted Q20.
 2.  For each read, align it to the truth and calculate identity from that
     alignment: identity = # matches / (# matches + # mismatches + #
-    insertions + # deletions)
+    insertions + # deletions).
 3.  Take all the reads that have identity >= 0.999 (this is Q30).
 4.  Because longer reads are more useful than shorter reads, we count the total
-    bases and not just the number of reads
+    bases and not just the number of reads.
 5.  Next we repeat the above for the original CCS reads (run with default
     params = Q20 filtered) and subtract and divide them to get a percentage,
     e.g. 40% percent means that DeepConsensus increased yield of high quality

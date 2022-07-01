@@ -68,26 +68,13 @@ Follow https://docs.docker.com/engine/install/ubuntu/ to install Docker.
 
 ## Parallelization
 
-One 8M SMRTcell can produce 3-4 million ZMWs depending on the fragment lengths
-of the sequencing library. This can result in subread bams that are hundreds of
-gigabytes to a terabyte or greater in size. In order to process such large
-files, PacBio tools and DeepConsensus can operate on shards (also known as
-chunks) and process these data in parallel.
-
-Let's do a back-of-the-envelope calculation to determine how parallelization can
-help us process millions of ZMWs and what runtime to expect.
-
-For this calculation, we'll assume 0.3825 seconds/ZMW runtime, which is what we
-observe on a 16vCPU (no GPU) machine. See the
-[runtime metrics page](runtime_metrics.md) to get an estimate matching your
-compute setup.
-
-(1.0693 seconds/ZMW) * (4 million ZMWs) = 4.27 million seconds = 1,188 hours.
-
-If we split this into 500 shards, that is about 0.85 hours per shard. There is
-some variability between shards, but this should give you an idea of what to
-expect. This estimate is only for the DeepConsensus processing step, and does
-not include the preprocessing required with *ccs* and *actc*.
+One 8M SMRT Cell can take ~1000 hours to run (without parallelization) depending
+on the fragment lengths of the sequencing library - see the
+[yield metrics page](yield_metrics.md). If we split this into 500 shards, that
+is about 2 hours per shard. There is some variability between shards, but this
+should give you an idea of what to expect. This estimate is only for the
+DeepConsensus processing step, and does not include the preprocessing required
+with *ccs* and *actc*.
 
 We recommend running a single small shard first so you have an idea of the
 runtime to expect on your compute setup and with your sequencing run, since
@@ -186,7 +173,7 @@ sudo docker run \
 
 Here are some details on what these docker commands are doing:
 
-*   `-i / --interactive` - Run a docker container interactively
+*   `-i / --interactive` - Run a docker container interactively.
 *   `-t / --tty` - Allocate a pseudo-TTY. This makes working interactively
     operate like a traditional terminal session.
 *   `-w / --workdir` - Sets the working directory inside the container.
