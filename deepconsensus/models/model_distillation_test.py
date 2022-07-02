@@ -39,44 +39,6 @@ from deepconsensus.models import model_utils
 from deepconsensus.utils import test_utils
 
 
-class ModelTrainTest(parameterized.TestCase):
-
-  @parameterized.parameters(['transformer_learn_values_distill+test'])
-  def test_train_e2e(self, config_name):
-    """Tests that training completes and output files written."""
-
-    checkpoint_path = test_utils.deepconsensus_testdata('model/checkpoint-1')
-    out_dir = self.create_tempdir().full_path
-    params = model_configs.get_config(config_name)
-    tpu = None
-    tpu_topology = None
-    model_utils.modify_params(params, tpu=tpu, tpu_topology=tpu_topology)
-    # We encountered the issue in
-    # https://github.com/tensorflow/tensorflow/issues/50487#issuecomment-997304668
-    # with MirroredStrategy. So, setting debug=True to avoid using
-    # MirroredStrategy for testing.
-    model_distillation.train(
-        teacher_model_dir=checkpoint_path,
-        out_dir=out_dir,
-        params=params,
-        tpu=tpu,
-        tpu_topology=tpu_topology,
-        write_checkpoint_metrics=True,
-        debug=True)
-
-    # Output directory should contain TensorBoard event files for training and
-    # eval, model checkpoint files.
-    train_event_file = glob.glob(os.path.join(out_dir, 'train/*event*'))
-    eval_event_file = glob.glob(os.path.join(out_dir, 'eval/*event*'))
-    self.assertLen(train_event_file, 1)
-    self.assertLen(eval_event_file, 1)
-    checkpoint_files = glob.glob(os.path.join(out_dir, 'checkpoint*'))
-    # +2 here for checkpoint and checkpoint_metrics.tsv
-    self.assertLen(checkpoint_files, params.num_epochs * 2 + 2)
-    json_params = glob.glob(os.path.join(out_dir, 'params.json'))
-    self.assertLen(json_params, 1)
-    best_checkpoint = glob.glob(os.path.join(out_dir, 'best_checkpoint.txt'))
-    self.assertLen(best_checkpoint, 1)
 
 
 if __name__ == '__main__':

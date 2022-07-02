@@ -81,45 +81,6 @@ class ModifyParamsTest(parameterized.TestCase):
       self.assertEqual(params.batch_size, params.default_batch_size)
 
 
-class RunInferenceAndWriteResultsTest(absltest.TestCase):
-
-  def test_output_dir_created(self):
-    """Tests that output dir created when it does not exist."""
-
-    out_dir = f'/tmp/output_dir/{uuid.uuid1()}'
-    self.assertFalse(tf.io.gfile.isdir(out_dir))
-    params = model_configs.get_config('transformer_learn_values+test')
-    model_utils.modify_params(params)
-    model = model_utils.get_model(params)
-    checkpoint_path = test_utils.deepconsensus_testdata('model/checkpoint-1')
-    checkpoint = tf.train.Checkpoint(model=model)
-    # Note that the `print_model_summary` is necessary because we need to run a
-    # forward pass with the model in order for assert_existing_objects_matched
-    # to work as expected. If you don't do this, then
-    # assert_existing_objects_matched will not raise an error even if the wrong
-    # checkpoint is used.
-    # Some context here: b/148023980.
-    row_size = data_providers.get_total_rows(params.max_passes)
-    input_shape = (1, row_size, params.max_length, params.num_channels)
-    model_utils.print_model_summary(model, input_shape)
-    checkpoint.restore(checkpoint_path).assert_existing_objects_matched()
-    model.compile(
-        optimizer=tf.keras.optimizers.Adam(learning_rate=params.learning_rate),
-        loss=model_utils.get_deepconsensus_loss(params),
-        metrics=model_utils.get_deepconsensus_metrics())
-    model_utils.run_inference_and_write_results(model, out_dir, params)
-    self.assertTrue(tf.io.gfile.isdir(out_dir))
-    inference_output = os.path.join(out_dir, 'inference.csv')
-    self.assertTrue(tf.io.gfile.exists(inference_output))
-    with tf.io.gfile.GFile(inference_output) as inference_output_file:
-
-      # Check that model.metric_names was called after real data was fed through
-      # the model, and that metric names are correct.
-      first_line = inference_output_file.readline()
-      self.assertEqual(
-          first_line, 'dataset,loss,' + ','.join([
-              metric.name for metric in model_utils.get_deepconsensus_metrics()
-          ]) + '\n')
 
 
 class GetStepCountsTest(parameterized.TestCase):
