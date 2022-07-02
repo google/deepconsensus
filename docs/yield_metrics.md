@@ -44,21 +44,21 @@ m64014_200920_132517 | HG002  | 2.2       | 24 kb
       <td>121.78%</td>
       <td>4.06 Gb</td>
       <td>167.33%</td>
-      <td>301.46</td>
+      <td>277.68</td>
     </tr>
     <tr>
       <td>v0.3</td>
       <td>m64008_201124_002822</td>
       <td>chem2.2_15kb</td>
       <td>2,689,147</td>
-      <td>2,864,910</td>
+      <td>2,864,908</td>
       <td>42.41 Gb</td>
       <td>106.09%</td>
       <td>30.41 Gb</td>
       <td>115.70%</td>
       <td>7.54 Gb</td>
       <td>191.51%</td>
-      <td>739.09</td>
+      <td>683.97</td>
     </tr>
     <tr>
       <td>v0.3</td>
@@ -72,7 +72,7 @@ m64014_200920_132517 | HG002  | 2.2       | 24 kb
       <td>149.24%</td>
       <td>1.60 Gb</td>
       <td>462.97%</td>
-      <td>1,003.86</td>
+      <td>925.01</td>
     </tr>
   </tbody>
 </table>
@@ -92,11 +92,9 @@ follows:
     e.g. 40% percent means that DeepConsensus increased yield of high quality
     reads in bases by 40% over CCS.
 
-These were run on GCP `n1-standard-32` machines with no GPU (in 500 shards,
-combined above), with `--batch_zmws=500 --batch_size=1024`. However, in our
-runtime tests we find that using `n1-standard-16` VMs with `--batch_zmws=100
---batch_size=1024` has similar runtime with fewer CPUs and memory needed. For
-more information on compute setups, see the
+These were run on GCP `n1-standard-16` machines with no GPU (in 500 shards,
+combined above), with `--batch_zmws=100 --batch_size=1024`, which is generally
+what we recommend. For more information on compute setups, see the
 [runtime metrics page](runtime_metrics.md).
 
 ## Runtime-yield tradeoffs with `--skip_windows_above`
