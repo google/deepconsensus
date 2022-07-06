@@ -61,6 +61,9 @@ If you are using DeepConsensus in your work, please cite:
 
 ![DeepConsensus overview diagram](https://raw.githubusercontent.com/google/deepconsensus/main/docs/images/pipeline_figure.png)
 
+Watch [How DeepConsensus Works](https://youtu.be/TlWtIao2i9E) for a quick
+overview.
+
 See this
 [notebook](notebooks/Inspecting_DeepConsensus_examples_and_running_model.ipynb)
 to inspect some example model inputs and outputs.
