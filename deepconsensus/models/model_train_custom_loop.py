@@ -52,9 +52,7 @@ from ml_collections.config_flags import config_flags
 import tensorflow as tf
 
 from deepconsensus.models import model_utils
-
-
-# pylint: disable=unused-import
+# pylint: disable=unused-import g-import-not-at-top
 
 FLAGS = flags.FLAGS
 config_flags.DEFINE_config_file('params', None, 'Training configuration.')
