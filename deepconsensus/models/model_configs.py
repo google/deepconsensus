@@ -75,7 +75,6 @@ def _set_base_transformer_hparams(params):
   # tuning.
   params.num_heads = 2
   params.layer_norm = False
-  params.dtype = dc_constants.TF_DATA_TYPE
   params.condense_transformer_input = False
   params.transformer_model_size = 'base'
 

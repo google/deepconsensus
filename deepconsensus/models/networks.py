@@ -36,6 +36,7 @@ import tensorflow as tf
 from deepconsensus.models import data_providers
 from deepconsensus.models import encoder_stack
 from official.nlp.modeling import layers
+from deepconsensus.utils import dc_constants
 
 
 # TODO: Looking into removing this eventually.
@@ -269,7 +270,7 @@ class EncoderOnlyTransformer(tf.keras.Model):
       inputs_padding = tf.reduce_sum(tf.zeros_like(encoder_inputs), -1)
 
       # Cast input `attention_bias` to correct type, as done in the base model.
-      attention_bias = tf.cast(attention_bias, self.params['dtype'])
+      attention_bias = tf.cast(attention_bias, dc_constants.TF_DATA_TYPE)
 
       # Add positional encoding to the input. The scale of the positional
       # encoding relative to the input values will matter since we are not
@@ -277,7 +278,7 @@ class EncoderOnlyTransformer(tf.keras.Model):
       if self.params['add_pos_encoding']:
         with tf.name_scope('add_pos_encoding'):
           pos_encoding = self.position_embedding(inputs=encoder_inputs)
-          pos_encoding = tf.cast(pos_encoding, self.params['dtype'])
+          pos_encoding = tf.cast(pos_encoding, dc_constants.TF_DATA_TYPE)
           encoder_inputs += pos_encoding
 
       # Add dropout when training.
@@ -414,7 +415,7 @@ class EncoderOnlyLearnedValuesTransformer(EncoderOnlyTransformer):
         embedded_inputs.append(embedded)
 
     embedded_inputs = tf.concat(embedded_inputs, axis=-1)
-    embedded_inputs = tf.cast(embedded_inputs, self.params['dtype'])
+    embedded_inputs = tf.cast(embedded_inputs, dc_constants.TF_DATA_TYPE)
 
     if self.params.condense_transformer_input:
       # Condense the transformer input at each position to a smaller vector to

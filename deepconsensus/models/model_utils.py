@@ -319,12 +319,6 @@ def read_params_from_json(checkpoint_path: str) -> ml_collections.ConfigDict:
   json_path = os.path.join(dir_path, 'params.json')
   params = ml_collections.ConfigDict(
       json.load(tf.io.gfile.GFile(json_path, 'r')))
-  # This cannot be passed in to be updated as json serializes it as a string.
-  # This value shouldn't change across experiments, so just use what is present
-  # in cuurrent config, rather than the experiment config.
-  if params.dtype:
-    del params.dtype
-    params.dtype = dc_constants.TF_DATA_TYPE
   return params
 
 
