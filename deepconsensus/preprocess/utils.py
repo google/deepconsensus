@@ -780,7 +780,7 @@ def fetch_label_alignment(
 def read_truth_bedfile(truth_bed: str) -> Dict[str, Dict[str, Any]]:
   """Reads in complete truth bed file and returns dict."""
   bed_coords = {}
-  with open(truth_bed, 'r') as bedfile:
+  with tf.io.gfile.GFile(truth_bed, 'r') as bedfile:
     for line in bedfile:
       contig, begin, end, ccs_seqname = line.strip().split('\t')[:4]
       bed_record = {'contig': contig, 'begin': int(begin), 'end': int(end)}
@@ -798,7 +798,7 @@ def read_truth_split(split_fname: str) -> Dict[str, str]:
     split_regions[i] = 'eval'
   for i in dc_constants.HUMAN_TEST_REGIONS:
     split_regions[i] = 'test'
-  with open(split_fname, 'r') as f:
+  with tf.io.gfile.GFile(split_fname, 'r') as f:
     for line in f:
       contig, chrom = line.split()
       if chrom in split_regions:

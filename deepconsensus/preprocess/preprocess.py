@@ -277,7 +277,7 @@ def main(unused_argv) -> None:
   dataset_summary = dataset_summary.replace('@split', 'summary')
   logging.info('Writing %s.', dataset_summary)
   make_dirs(dataset_summary)
-  with open(dataset_summary, 'w') as summary_file:
+  with tf.io.gfile.GFile(dataset_summary, 'w') as summary_file:
     summary = dict(main_counter.items())
     summary.update(dc_config.to_dict())
     flag_list = [
