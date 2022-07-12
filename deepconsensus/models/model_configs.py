@@ -219,6 +219,7 @@ def get_config(config_name: str) -> ml_collections.ConfigDict:
   # AlignmentLoss-specific parameters here.
   params.del_cost = 10.0
   params.loss_reg = 0.1
+  params.band_width = None
 
   # Avg CCS Quality Filter; When set to 0 no examples will be filtered.
   params.max_phred_qual = 0

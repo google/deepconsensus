@@ -55,6 +55,7 @@ def get_deepconsensus_loss(
           losses_and_metrics.AlignmentLoss(
               del_cost=params.del_cost,
               loss_reg=params.loss_reg,
+              width=params.band_width,
               reduction=reduction),
   }[params.loss_function]
 
