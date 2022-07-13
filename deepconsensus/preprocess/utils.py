@@ -31,7 +31,9 @@ import collections
 from collections import abc
 import dataclasses
 import itertools
+import random
 from typing import Any, Dict, List, Optional, Union
+
 from absl import logging
 import numpy as np
 import pysam
@@ -356,10 +358,17 @@ class DcConfig:
   n_subread_features = ['bases', 'pw', 'ip', 'strand']
   fixed_height = 5  # ccs + sn
 
-  def __init__(self, max_passes: int, example_width: int, padding: int):
+  def __init__(self,
+               max_passes: int,
+               example_width: int,
+               padding: int,
+               skip_windows_above: Optional[int] = None,
+               prop_ccs_label_matches: Optional[float] = None):
     self.max_passes = max_passes
     self.example_width = example_width
     self.padding = padding
+    self.skip_windows_above = skip_windows_above
+    self.prop_ccs_label_matches = prop_ccs_label_matches
     self.feature_rows = {
         'bases': max_passes,
         'pw': max_passes,
@@ -508,6 +517,8 @@ class DcExample:
     example_width = self.config.example_width
     padding = self.config.padding
     total_width = example_width + padding
+    is_random_keep_ccs_label_match = False
+    is_ccs_below_q = True
     for start_pos in range(0, self.ccs_width, example_width):
       window = self[start_pos:start_pos + example_width]
       if start_pos > self.ccs_width:
@@ -515,6 +526,31 @@ class DcExample:
       if window.is_empty:
         self.counter['n_examples_no_ccs_idx'] += 1
         continue
+
+      if self.is_training:
+        if self.config.skip_windows_above:
+          is_ccs_below_q = window.ccs.avg_base_quality_score <= self.config.skip_windows_above
+        if self.config.prop_ccs_label_matches is not None:
+          # Count examples where CCS == label (pre and post quality filtering).
+          label_shifted = utils.left_shift_seq(self.label.bases)
+          ccs_seq_shifted = utils.left_shift_seq(self.ccs.bases)
+          ccs_matches_label = (label_shifted == ccs_seq_shifted).all()
+          if ccs_matches_label:
+            is_random_keep_ccs_label_match = random.uniform(
+                0, 1) <= self.config.prop_ccs_label_matches
+            if is_random_keep_ccs_label_match:
+              self.counter['n_examples_ccs_matches_label_keep'] += 1
+            else:
+              self.counter['n_examples_ccs_matches_label_discard'] += 1
+              continue
+
+        if not is_random_keep_ccs_label_match:
+          if is_ccs_below_q:
+            self.counter['n_examples_skip_windows_above_keep'] += 1
+          else:
+            self.counter['n_examples_skip_windows_above_discard'] += 1
+            continue
+
       # If the label extends beyond width + padding,
       # remove gaps and right pad.
       # Gaps are helpful for visualizing alignments, but are

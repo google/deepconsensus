@@ -88,6 +88,16 @@ flags.DEFINE_integer('bam_reader_threads', 8,
                      'Number of decompression threads to use.')
 flags.DEFINE_integer('limit', 0, 'Limit processing to n ZMWs.')
 
+flags.DEFINE_integer(
+    'skip_windows_above', None,
+    'Max(avg_ccs_quality per window) at which to generate training examples.'
+    'By default, no filtering is performed.')
+
+flags.DEFINE_float(
+    'prop_ccs_label_matches', None,
+    'Proportion of examples to retain where the CCS matches the label. '
+    'Setting to 0 discards these examples. Setting to 1 keeps all. ')
+
 
 def register_required_flags():
   flags.mark_flags_as_required([
@@ -219,10 +229,21 @@ def main(unused_argv) -> None:
     logging.info('Generating tf.Examples in inference mode.')
     splits = ['inference']
 
+  if not is_training and (FLAGS.skip_windows_above or
+                          FLAGS.prop_ccs_label_matches):
+    raise ValueError(
+        'Cannot use filtering flags --skip_windows_above or '
+        '--prop_ccs_label_matches when generating inference examples.')
+
   manager = multiprocessing.Manager()
   queue = manager.Queue()
 
-  dc_config = utils.DcConfig(max_passes=20, example_width=100, padding=20)
+  dc_config = utils.DcConfig(
+      max_passes=20,
+      example_width=100,
+      padding=20,
+      skip_windows_above=FLAGS.skip_windows_above,
+      prop_ccs_label_matches=FLAGS.prop_ccs_label_matches)
 
   proc_feeder, main_counter = utils.create_proc_feeder(
       subreads_to_ccs=FLAGS.subreads_to_ccs,
@@ -281,10 +302,12 @@ def main(unused_argv) -> None:
     summary = dict(main_counter.items())
     summary.update(dc_config.to_dict())
     flag_list = [
-        'subreads_to_ccs', 'ccs_bam', 'truth_to_ccs', 'truth_bed', 'truth_split'
+        'subreads_to_ccs', 'ccs_bam', 'truth_to_ccs', 'truth_bed',
+        'truth_split', 'skip_windows_above', 'prop_ccs_label_matches'
     ]
     for flag in flag_list:
-      summary[flag] = FLAGS[flag].value
+      # Encode these as strings to ensure aggregation does not add values.
+      summary[flag] = str(FLAGS[flag].value)
     summary['version'] = dc_constants.__version__
     json_summary = json.dumps(summary, indent=True)
     summary_file.write(json_summary)

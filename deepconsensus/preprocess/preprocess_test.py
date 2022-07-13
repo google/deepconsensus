@@ -112,6 +112,8 @@ class PreprocessE2E(parameterized.TestCase):
     FLAGS.truth_to_ccs = testdata('human_1m/truth_to_ccs.bam')
     FLAGS.truth_bed = testdata('human_1m/truth.bed')
     FLAGS.truth_split = testdata('human_1m/truth_split.tsv')
+    FLAGS.skip_windows_above = 45
+    FLAGS.prop_ccs_label_matches = 0.5
     FLAGS.cpus = n_cpus
     FLAGS.limit = n_zmws
     tmp_dir = self.create_tempdir()
