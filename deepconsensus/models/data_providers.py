@@ -266,13 +266,13 @@ def tf_example_to_training_tuple(
 
 
 def filter_ccs_q_score(tf_example: Dict[str, tf.Tensor],
-                       max_phred_qual: int = 0) -> bool:
-  """Returns True if phred is less than max_phred_qual."""
-  # When max_phred_qual is 0, do not filter.
-  if max_phred_qual == 0:
+                       skip_windows_above: int = 0) -> bool:
+  """Returns True if phred is less than skip_windows_above."""
+  # When skip_windows_above is 0, do not filter.
+  if skip_windows_above == 0:
     return True
   phred = utils.tf_avg_phred(tf_example['ccs_base_quality_scores'])
-  return phred <= max_phred_qual
+  return phred <= skip_windows_above
 
 
 def get_dataset(file_pattern: str,
@@ -320,13 +320,13 @@ def get_dataset(file_pattern: str,
         inference=inference)
 
   def _filter_q_helper(tf_example: Dict[str, tf.Tensor]) -> bool:
-    return filter_ccs_q_score(tf_example, params.max_phred_qual)
+    return filter_ccs_q_score(tf_example, params.skip_windows_above)
 
   file_patterns = create_glob_list(file_pattern)
   ds = tf.data.TFRecordDataset(file_patterns, compression_type='GZIP')
   ds = ds.map(map_func=_process_input_helper)
 
-  if params.max_phred_qual:
+  if params.skip_windows_above:
     ds = ds.filter(_filter_q_helper)
 
   ds = ds.shuffle(buffer_size=params.buffer_size, reshuffle_each_iteration=True)
@@ -370,7 +370,7 @@ def create_input_fn(params, mode, limit: int = -1, drop_remainder: bool = True):
         cap_ip=True)
 
   def _filter_q_helper(tf_example: Dict[str, tf.Tensor]) -> bool:
-    return filter_ccs_q_score(tf_example, params.max_phred_qual)
+    return filter_ccs_q_score(tf_example, params.skip_windows_above)
 
   def input_fn() -> tf.data.Dataset:
     """Prepares a dataset for training or evaluation."""

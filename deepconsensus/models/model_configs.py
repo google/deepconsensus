@@ -222,7 +222,7 @@ def get_config(config_name: str) -> ml_collections.ConfigDict:
   params.band_width = None
 
   # Avg CCS Quality Filter; When set to 0 no examples will be filtered.
-  params.max_phred_qual = 0
+  params.skip_windows_above = 0
 
 
   # Scaling factor to multiply the batch_size when using TPUs since they have

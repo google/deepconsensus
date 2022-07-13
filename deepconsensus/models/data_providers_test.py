@@ -296,26 +296,27 @@ class DataProvidersTest(parameterized.TestCase):
   @parameterized.named_parameters(
       dict(
           testcase_name='no_qfilter',
-          max_phred_qual=0,
+          skip_windows_above=0,
           expected_n=1301,
       ),
       dict(
-          testcase_name='max_phred_qual_30',
-          max_phred_qual=30,
+          testcase_name='skip_windows_above_30',
+          skip_windows_above=30,
           expected_n=534,
       ),
       dict(
-          testcase_name='max_phred_qual_40',
-          max_phred_qual=40,
+          testcase_name='skip_windows_above_40',
+          skip_windows_above=40,
           expected_n=668,
       ),
   )
-  def test_dataset_with_max_phred_quality(self, max_phred_qual, expected_n):
+  def test_dataset_with_skip_windows_above(self, skip_windows_above,
+                                           expected_n):
     """Checks that batches are of expected size and all examples yielded."""
     file_pattern, _ = get_test_dataset(inference=False)
     params = model_configs.get_config('transformer_learn_values+test')
     model_utils.modify_params(params)
-    params.max_phred_qual = max_phred_qual
+    params.skip_windows_above = skip_windows_above
     # Fetch the complete dataset.
     full_dataset = data_providers.get_dataset(
         file_pattern=file_pattern,
