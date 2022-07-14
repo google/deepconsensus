@@ -103,7 +103,7 @@ flags.DEFINE_integer(
 
 # The following parameters are used at the end for filtering the final output.
 flags.DEFINE_integer('min_length', 0, 'Minimum length for reads output.')
-flags.DEFINE_integer('min_quality', 0, 'Minimum quality for reads output.')
+flags.DEFINE_integer('min_quality', 20, 'Minimum quality for reads output.')
 
 # The following parameters affect performance of this script.
 flags.DEFINE_integer(

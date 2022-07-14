@@ -133,8 +133,8 @@ the appropriate version (CPU / GPU) depending on your use case.
 
 ```bash
 # Define DOCKER_IMAGE *once* depending on whether you will be using CPU or GPU:
-DOCKER_IMAGE=google/deepconsensus:0.3.0  # For CPU
-DOCKER_IMAGE=google/deepconsensus:0.3.0-gpu  # For GPU
+DOCKER_IMAGE=google/deepconsensus:0.3.1  # For CPU
+DOCKER_IMAGE=google/deepconsensus:0.3.1-gpu  # For GPU
 sudo docker pull ${DOCKER_IMAGE}
 ```
 
