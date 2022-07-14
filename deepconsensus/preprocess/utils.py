@@ -510,6 +510,16 @@ class DcExample:
   def is_empty(self) -> bool:
     return not (self.ccs.ccs_idx >= 0).any()
 
+  @property
+  def ccs_matches_label(self) -> bool:
+    """Does the CCS match the label."""
+    ccs = utils.left_shift_seq(self.ccs.bases_encoded)
+    label = utils.left_shift_seq(self.label.bases_encoded)
+    seq_len = max([len(ccs), len(label)])
+    ccs = right_pad(ccs, seq_len, 0)
+    label = right_pad(label, seq_len, 0)
+    return np.equal(ccs, label).all()
+
   def iter_examples(self) -> 'DcExample':
     """Generates partitions from a given window."""
     # Initiate counter
@@ -528,13 +538,14 @@ class DcExample:
         continue
 
       if self.is_training:
+
+        ccs_matches_label = window.ccs_matches_label
+        if ccs_matches_label:
+          self.counter['n_examples_ccs_matches_label'] += 1
+
         if self.config.skip_windows_above:
           is_ccs_below_q = window.ccs.avg_base_quality_score <= self.config.skip_windows_above
         if self.config.prop_ccs_label_matches is not None:
-          # Count examples where CCS == label (pre and post quality filtering).
-          label_shifted = utils.left_shift_seq(self.label.bases)
-          ccs_seq_shifted = utils.left_shift_seq(self.ccs.bases)
-          ccs_matches_label = (label_shifted == ccs_seq_shifted).all()
           if ccs_matches_label:
             is_random_keep_ccs_label_match = random.uniform(
                 0, 1) <= self.config.prop_ccs_label_matches
@@ -544,7 +555,7 @@ class DcExample:
               self.counter['n_examples_ccs_matches_label_discard'] += 1
               continue
 
-        if not is_random_keep_ccs_label_match:
+        if not is_random_keep_ccs_label_match and self.config.skip_windows_above:
           if is_ccs_below_q:
             self.counter['n_examples_skip_windows_above_keep'] += 1
           else:

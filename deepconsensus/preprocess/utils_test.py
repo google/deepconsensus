@@ -888,6 +888,9 @@ class TestDcExampleFunctionality(absltest.TestCase):
     # Test final window label.
     self.assertEqual(repr(example).splitlines()[-1].split(), ['Label', '>A'])
 
+    # Test ccs matches label
+    self.assertTrue(dc_example.ccs_matches_label)
+
     # Slicing beyond width returns empty.
     self.assertTrue(dc_example[100:].is_empty)
 
