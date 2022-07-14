@@ -39,6 +39,7 @@ import tensorflow as tf
 
 from deepconsensus.models import data_providers
 from deepconsensus.models import losses_and_metrics
+from deepconsensus.models import model_configs
 from deepconsensus.models import networks
 from deepconsensus.models import transformer_basic_params
 from deepconsensus.utils import dc_constants
@@ -313,24 +314,22 @@ def print_model_summary(model: tf.keras.Model, input_shape: Tuple[int, int, int,
 def read_params_from_json(checkpoint_path: str) -> ml_collections.ConfigDict:
   """Reads the params read from the params.json file for given checkpoint."""
   # For SavedModel, the path could be to the directory itself.
+  param_set = model_configs.get_config()
   if os.path.isdir(checkpoint_path):
     dir_path = checkpoint_path
   else:
     dir_path = os.path.dirname(checkpoint_path)
   json_path = os.path.join(dir_path, 'params.json')
-  params = ml_collections.ConfigDict(
+  json_params = ml_collections.ConfigDict(
       json.load(tf.io.gfile.GFile(json_path, 'r')))
-  return params
-
-
-class DTypeEncoder(json.JSONEncoder):
-  """json encoder that allows for dtypes to be encoded."""
-
-  def default(self, o: Any) -> Any:
-    if isinstance(o, tf.DType):
-      return repr(o)
-    else:
-      return json.JSONEncoder.default(self, o)
+  # Report new base parameters that are not present in params.json
+  for b_param in param_set:
+    if b_param not in json_params:
+      logging.warning(('A new parameter (%s=%s) was added to the base config '
+                       'that is not present in params.json'), b_param,
+                      param_set[b_param])
+  param_set.update(json_params)
+  return param_set
 
 
 def save_params_as_json(out_dir: str,
@@ -339,7 +338,7 @@ def save_params_as_json(out_dir: str,
   json_path = os.path.join(out_dir, 'params.json')
   tf.io.gfile.makedirs(os.path.dirname(json_path))
   with tf.io.gfile.GFile(json_path, 'w') as json_file:
-    json_file.write(json.dumps(dict(params), indent=4, cls=DTypeEncoder))
+    json_file.write(json.dumps(dict(params), indent=4))
 
 
 def get_datasets(

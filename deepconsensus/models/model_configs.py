@@ -29,6 +29,7 @@
 # pylint: disable=line-too-long
 import os
 
+from typing import Optional
 import ml_collections
 from deepconsensus.utils import dc_constants
 
@@ -181,7 +182,7 @@ def _set_test_data_hparams(params):
 ############### Core function for setting all config values ###############
 
 
-def get_config(config_name: str) -> ml_collections.ConfigDict:
+def get_config(config_name: Optional[str] = None) -> ml_collections.ConfigDict:
   """Returns the default configuration as instance of ConfigDict.
 
   Valid config names must consist of two parts: {model_name}+{dataset_name}. The
@@ -227,6 +228,11 @@ def get_config(config_name: str) -> ml_collections.ConfigDict:
   # Scaling factor to multiply the batch_size when using TPUs since they have
   # more memory than GPUs.
   params.tpu_scale_factor = 1
+
+  # Allow for a base config to be loaded when no config_name is passed.
+  if config_name is None:
+    return params
+
   model_config_name, dataset_config_name = config_name.split('+')
   params.model_config_name = model_config_name
   params.dataset_config_name = dataset_config_name
