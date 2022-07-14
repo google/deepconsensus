@@ -209,7 +209,6 @@ def get_config(config_name: str) -> ml_collections.ConfigDict:
   """
   params = ml_collections.ConfigDict()
   # Specify common configs here.
-  params.num_classes = len(dc_constants.VOCAB)
   params.vocab_size = len(dc_constants.VOCAB)
   params.tensorboard_update_freq = 'batch'
   params.model_checkpoint_freq = 'epoch'

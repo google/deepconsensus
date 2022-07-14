@@ -79,8 +79,8 @@ def FullyConnectedNet(params: ml_collections.ConfigDict) -> tf.keras.Model:
             net)
     net = tf.keras.layers.Dropout(rate=params.fc_dropout)(net)
 
-  net = tf.keras.layers.Dense(units=params.max_length * params.num_classes)(net)
-  net = tf.keras.layers.Reshape((params.max_length, params.num_classes))(net)
+  net = tf.keras.layers.Dense(units=params.max_length * params.vocab_size)(net)
+  net = tf.keras.layers.Reshape((params.max_length, params.vocab_size))(net)
   net = tf.keras.layers.Softmax(axis=-1)(net)
   outputs = net
   return tf.keras.Model(inputs=inputs, outputs=outputs)
@@ -109,7 +109,7 @@ class ConvNet(tf.keras.Model):
     super(ConvNet, self).__init__(params, **kwargs)
     # Most conv models only accept 3 channels.
     self.resnet_input_shape = (params.hidden_size, params.max_length, 3)
-    self.dimensions = params.max_length * params.num_classes
+    self.dimensions = params.max_length * params.vocab_size
 
     model, self.conv_preprocess = get_conv_sub_model(params.conv_model)
     self.model = model(
@@ -119,7 +119,7 @@ class ConvNet(tf.keras.Model):
         pooling='avg')
     self.use_sn = params.use_sn
     self.max_length = params.max_length
-    self.num_classes = params.num_classes
+    self.vocab_size = params.vocab_size
 
     # Define layers
     self.layer_dense = tf.keras.layers.Dense(units=self.dimensions)
@@ -145,7 +145,7 @@ class ConvNet(tf.keras.Model):
       net = tf.keras.layers.Flatten()(net)
 
     net = self.layer_dense(net)
-    net = tf.keras.layers.Reshape((self.max_length, self.num_classes))(net)
+    net = tf.keras.layers.Reshape((self.max_length, self.vocab_size))(net)
     net = tf.keras.layers.Softmax(axis=-1)(net)
     output = net
     return output

@@ -38,7 +38,7 @@
     "model_config_name": "transformer_learn_values",
     "model_name": "transformer_learn_values",
     "num_channels": 1,
-    "num_classes": 5,
+    "vocab_size": 5,
     "num_epochs": 50,
     "num_heads": 2,
     "num_hidden_layers": 6,
