@@ -66,9 +66,6 @@ class PerClassAccuracy(tf.keras.metrics.Accuracy):
   """Compute per-position accuracy for the given class."""
 
   def __init__(self, class_value: int, name: Optional[str] = None, **kwargs):
-    if not name:
-      name = str(class_value)
-    name = f'per_class_accuracy_{name}'
     self.class_value = class_value
     super(PerClassAccuracy, self).__init__(name=name, **kwargs)
 

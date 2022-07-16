@@ -37,6 +37,7 @@ time blaze run -c opt \
 //learning/genomics/deepconsensus/models:model_train_custom_loop -- \
   --params ${CONFIG} \
   --out_dir ${OUT_DIR} \
+  --xm_runlocal \
   --alsologtostderr
 """
 
@@ -88,10 +89,10 @@ def train_model(out_dir: str, params: ml_collections.ConfigDict,
     model = model_utils.get_model(params)
     logging.info('Done building model.')
     optimizer = tf.keras.optimizers.Adam(learning_rate=params.learning_rate)
-    train_loss = tf.keras.metrics.Mean(name=params.loss_function)
-    train_metrics = model_utils.get_deepconsensus_metrics(name_prefix='')
-    eval_loss = tf.keras.metrics.Mean(name=params.loss_function)
-    eval_metrics = model_utils.get_deepconsensus_metrics(name_prefix='')
+    train_loss = tf.keras.metrics.Mean(name='train/loss')
+    train_metrics = model_utils.get_deepconsensus_metrics(name_prefix='train/')
+    eval_loss = tf.keras.metrics.Mean(name='eval/loss')
+    eval_metrics = model_utils.get_deepconsensus_metrics(name_prefix='eval/')
     loss_object = model_utils.get_deepconsensus_loss(
         params, reduction=tf.keras.losses.Reduction.NONE)
 

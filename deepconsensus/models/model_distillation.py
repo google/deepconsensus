@@ -44,6 +44,7 @@ time blaze run -c opt \
   --teacher_model_dir ${TEACHER_MODEL_DIR} \
   --params ${CONFIG} \
   --out_dir ${OUT_DIR} \
+  --xm_runlocal \
   --alsologtostderr
 """
 
@@ -168,10 +169,10 @@ def train_model(teacher_model: tf.keras.Model, out_dir: str,
     # Initialize student model from teacher based on model params.
     model = init_student_from_teacher(model, teacher_model, params)
     optimizer = tf.keras.optimizers.Adam(learning_rate=params.learning_rate)
-    train_loss = tf.keras.metrics.Mean(name='loss')
-    train_metrics = model_utils.get_deepconsensus_metrics(name_prefix='')
-    eval_loss = tf.keras.metrics.Mean(name='loss')
-    eval_metrics = model_utils.get_deepconsensus_metrics(name_prefix='')
+    train_loss = tf.keras.metrics.Mean(name='train/loss')
+    train_metrics = model_utils.get_deepconsensus_metrics(name_prefix='train/')
+    eval_loss = tf.keras.metrics.Mean(name='eval/loss')
+    eval_metrics = model_utils.get_deepconsensus_metrics(name_prefix='eval/')
     student_loss_object = model_utils.get_deepconsensus_loss(
         params, reduction=tf.keras.losses.Reduction.NONE)
     distillation_loss_object = losses_and_metrics.DistillationLoss(

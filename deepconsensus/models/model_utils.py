@@ -68,11 +68,13 @@ def get_deepconsensus_metrics(name_prefix='') -> List[tf.keras.metrics.Metric]:
   }
   class_to_name['gap_or_pad'] = class_to_name[dc_constants.GAP_OR_PAD]
   del class_to_name[dc_constants.GAP_OR_PAD]
-  per_class_accuracy_metrics = [
-      losses_and_metrics.PerClassAccuracy(
-          class_value=class_value, name=f'{name_prefix}{name}')
-      for name, class_value in class_to_name.items()
-  ]
+  per_class_accuracy_metrics = []
+  for class_name, class_value in class_to_name.items():
+    per_class_accuracy_metrics.append(
+        losses_and_metrics.PerClassAccuracy(
+            class_value=class_value,
+            name=f'{name_prefix}per_class_accuracy_{class_name}'))
+
   return [
       tf.keras.metrics.SparseCategoricalAccuracy(name=f'{name_prefix}accuracy'),
       losses_and_metrics.PerExampleAccuracy(
