@@ -304,7 +304,7 @@ At the end of your run, you should see:
 
 ```
 Processed 178 ZMWs in 334.629 seconds
-Outcome counts: OutcomeCounter(empty_sequence=0, only_gaps_and_padding=0, failed_quality_filter=0, failed_length_filter=0, success=178)
+Outcome counts: OutcomeCounter(empty_sequence=0, only_gaps_and_padding=0, failed_quality_filter=3, failed_length_filter=0, success=175)
 ```
 
 ## Optimizing Runtime
