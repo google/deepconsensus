@@ -33,7 +33,7 @@ import pysam
 import tensorflow as tf
 
 # DeepConsensus Version
-__version__ = '0.3.0'
+__version__ = '0.3.1'
 
 # Vocab
 GAP_OR_PAD = ' '
