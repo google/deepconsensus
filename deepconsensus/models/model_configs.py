@@ -94,7 +94,7 @@ def _set_base_transformer_hparams(params):
 
   # Training
   params.batch_size = 256
-  params.num_epochs = 50
+  params.num_epochs = 7
   params.learning_rate = 1e-4
   params.buffer_size = 1000
 
@@ -216,6 +216,7 @@ def get_config(config_name: Optional[str] = None) -> ml_collections.ConfigDict:
   params.seed = 1
   params.remove_label_gaps = False
   params.loss_function = 'alignment_loss'
+
   # AlignmentLoss-specific parameters here.
   params.del_cost = 10.0
   params.loss_reg = 0.1
