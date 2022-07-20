@@ -241,8 +241,8 @@ class DataProvidersTest(parameterized.TestCase):
       self.assertNotEmpty(ccs_rows)
       self.assertNotEmpty(sn_rows)
       self.assertTrue(np.all(base_rows < params.vocab_size))
-      self.assertTrue(np.all(ip_rows <= dc_constants.IP_MAX))
-      self.assertTrue(np.all(pw_rows <= dc_constants.PW_MAX))
+      self.assertTrue(np.all(ip_rows <= params.IP_MAX))
+      self.assertTrue(np.all(pw_rows <= params.PW_MAX))
     self.assertTrue(check_not_empty)  # Used to fail on empty dataset.
 
   @parameterized.named_parameters(

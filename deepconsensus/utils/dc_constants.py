@@ -80,11 +80,6 @@ PYSAM_CHARD_CLIP = int(pysam.CHARD_CLIP)
 TF_DATA_TYPE = tf.float32
 NP_DATA_TYPE = np.float32
 
-PW_MAX = 9
-IP_MAX = 9
-SN_MAX = 15
-STRAND_MAX = 2
-
 # E. Coli eval region is first 10% of the genome,
 # Test region is last 10% of the genome
 # Total genome length is 4642522.

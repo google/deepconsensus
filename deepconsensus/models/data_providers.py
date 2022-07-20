@@ -104,16 +104,12 @@ def remove_internal_gaps_and_shift(label: tf.Tensor) -> tf.Tensor:
 
 
 def format_rows(
-    subreads: tf.Tensor,
-    max_passes: int,
-    max_length: int,
-    cap_pw: bool = True,
-    cap_ip: bool = True,
-    cap_sn: bool = True,
+    subreads: tf.Tensor, params: Union[config_dict.ConfigDict,
+                                       config_dict.FrozenConfigDict]
 ) -> tf.Tensor:
   """Returns model input matrix formatted based on input args."""
   base_indices, pw_indices, ip_indices, strand_indices, ccs_indices, sn_indices = get_indices(
-      max_passes)
+      params.max_passes)
   base_rows = subreads[slice(*base_indices)]
   pw_rows = subreads[slice(*pw_indices)]
   ip_rows = subreads[slice(*ip_indices)]
@@ -121,37 +117,31 @@ def format_rows(
   ccs_rows = subreads[slice(*ccs_indices)]
   sn_rows = subreads[slice(*sn_indices)]
 
-  if cap_pw:
+  if params.PW_MAX:
     pw_rows = tf.clip_by_value(
-        pw_rows, clip_value_min=0, clip_value_max=dc_constants.PW_MAX)
-  if cap_ip:
+        pw_rows, clip_value_min=0, clip_value_max=params.PW_MAX)
+  if params.IP_MAX:
     ip_rows = tf.clip_by_value(
-        ip_rows, clip_value_min=0, clip_value_max=dc_constants.IP_MAX)
-  if cap_sn:
+        ip_rows, clip_value_min=0, clip_value_max=params.IP_MAX)
+  if params.SN_MAX:
     sn_rows = tf.clip_by_value(
-        sn_rows, clip_value_min=0, clip_value_max=dc_constants.SN_MAX)
+        sn_rows, clip_value_min=0, clip_value_max=params.SN_MAX)
   rows = tf.concat(
       [base_rows, pw_rows, ip_rows, strand_rows, ccs_rows, sn_rows], axis=0)
-  num_rows = get_total_rows(max_passes)
-  rows.set_shape((num_rows, max_length, 1))
+  num_rows = get_total_rows(params.max_passes)
+  rows.set_shape((num_rows, params.max_length, 1))
   return rows
 
 
 def process_feature_dict(
     features: Dict[str, Union[np.ndarray, int, bytes]],
-    params: Union[config_dict.ConfigDict, config_dict.FrozenConfigDict],
-    cap_pw: bool = True,
-    cap_ip: bool = True,
-    cap_sn: bool = True,
+    params: Union[config_dict.ConfigDict, config_dict.FrozenConfigDict]
 ) -> Dict[str, Union[np.ndarray, int, bytes]]:
   """Parses a serialized tf.Example to return an input, label, and metadata.
 
   Args:
     features: Dictionary of features to process for the model.
     params: A config dictionary containing desired hyperparameters.
-    cap_pw: If True, pulse width values are capped.
-    cap_ip: If True, interpulse distance values are capped.
-    cap_sn: If True, signal to noise ratio values are capped.
 
   Returns:
     rows: Input matrix that will be fed into neural networks for training.
@@ -164,13 +154,7 @@ def process_feature_dict(
   label = tf.convert_to_tensor(np.array([]))
   subreads = features['subreads']
   num_passes = features['subreads/num_passes']
-  rows = format_rows(
-      subreads=subreads,
-      max_passes=params.max_passes,
-      max_length=params.max_length,
-      cap_pw=cap_pw,
-      cap_ip=cap_ip,
-      cap_sn=cap_sn)
+  rows = format_rows(subreads=subreads, params=params)
   # Don't forget to update DC_FEATURES in dc_constants.py if new features are
   # added/removed.
   features = {
@@ -199,23 +183,15 @@ def parse_example(proto_string: Dict[str, tf.Tensor],
   return parsed_features
 
 
-def process_input(
-    proto_string: Union[tf.Tensor, bytes],
-    params: ml_collections.FrozenConfigDict,
-    inference: bool,
-    cap_pw: bool = True,
-    cap_ip: bool = True,
-    cap_sn: bool = True,
-) -> Dict[str, tf.Tensor]:
+def process_input(proto_string: Union[tf.Tensor, bytes],
+                  params: ml_collections.FrozenConfigDict,
+                  inference: bool) -> Dict[str, tf.Tensor]:
   """Parses a serialized tf.Example to return an input, label, and metadata.
 
   Args:
     proto_string: A tensor containing the serialized tf.Example string.
     params: A config dictionary containing desired hyperparameters.
     inference: Whether to parse tf.Examples for inference or training.
-    cap_pw: If True, pulse width values are capped.
-    cap_ip: If True, interpulse distance values are capped.
-    cap_sn: If True, signal to noise ratio values are capped.
 
   Returns:
     rows: Input matrix that will be fed into neural networks for training.
@@ -241,13 +217,7 @@ def process_input(
     label.set_shape((params.max_length))
   else:
     label = tf.convert_to_tensor(np.array([]))
-  rows = format_rows(
-      subreads=subreads,
-      max_passes=params.max_passes,
-      max_length=params.max_length,
-      cap_pw=cap_pw,
-      cap_ip=cap_ip,
-      cap_sn=cap_sn)
+  rows = format_rows(subreads=subreads, params=params)
   rows = {
       'rows': rows,
       'label': label,
@@ -281,8 +251,6 @@ def get_dataset(file_pattern: str,
                 params: Union[ml_collections.ConfigDict,
                               ml_collections.FrozenConfigDict],
                 inference: bool,
-                cap_pw: bool = True,
-                cap_ip: bool = True,
                 limit: int = -1,
                 drop_remainder: bool = True,
                 example_label_tuple: bool = False) -> tf.data.Dataset:
@@ -294,8 +262,6 @@ def get_dataset(file_pattern: str,
     batch_size: How many examples should be in each batch.
     params: Hyperparameters used to format the subreads into rows.
     inference: Whether to parse tf.Examples for inference or training.
-    cap_pw: If True, pulse width values are capped.
-    cap_ip: If True, interpulse distance values are capped.
     limit: Max number of examples to get. Set to -1 for no limit.
     drop_remainder: Passed to TFRecordDataset.batch
     example_label_tuple: If True, output simplified format for training/eval
@@ -315,8 +281,6 @@ def get_dataset(file_pattern: str,
     return process_input(
         proto_string=proto_string,
         params=params,
-        cap_pw=cap_pw,
-        cap_ip=cap_ip,
         inference=inference)
 
   def _filter_q_helper(tf_example: Dict[str, tf.Tensor]) -> bool:
@@ -363,11 +327,7 @@ def create_input_fn(params, mode, limit: int = -1, drop_remainder: bool = True):
     # Set inference to False here because we only use this function with
     # tf.Examples that have labels present.
     return process_input(
-        proto_string=proto_string,
-        params=params,
-        inference=False,
-        cap_pw=True,
-        cap_ip=True)
+        proto_string=proto_string, params=params, inference=False)
 
   def _filter_q_helper(tf_example: Dict[str, tf.Tensor]) -> bool:
     return filter_ccs_q_score(tf_example, params.skip_windows_above)

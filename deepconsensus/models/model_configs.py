@@ -33,6 +33,9 @@ from typing import Optional
 import ml_collections
 from deepconsensus.utils import dc_constants
 
+# Do not add any additional imports to the config.
+# It can lead to circular dependencies easily and should not be necessary
+# for setting parameters.
 
 ############### Base params for different model architectures ###############
 
@@ -105,10 +108,6 @@ def _set_transformer_learned_embeddings_hparams(params):
   # adjust the params below. For now just making a copy of the previous params.
   _set_base_transformer_hparams(params)
   params.model_name = 'transformer_learn_values'
-  params.PW_MAX = dc_constants.PW_MAX
-  params.IP_MAX = dc_constants.IP_MAX
-  params.STRAND_MAX = dc_constants.STRAND_MAX
-  params.SN_MAX = dc_constants.SN_MAX
   params.per_base_hidden_size = 8
   params.pw_hidden_size = 8
   params.ip_hidden_size = 8
@@ -209,6 +208,13 @@ def get_config(config_name: Optional[str] = None) -> ml_collections.ConfigDict:
     specified.
   """
   params = ml_collections.ConfigDict()
+
+  # Base config
+  params.PW_MAX = 9
+  params.IP_MAX = 9
+  params.SN_MAX = 15
+  params.STRAND_MAX = 2
+
   # Specify common configs here.
   params.vocab_size = len(dc_constants.VOCAB)
   params.tensorboard_update_freq = 'batch'
@@ -217,10 +223,17 @@ def get_config(config_name: Optional[str] = None) -> ml_collections.ConfigDict:
   params.remove_label_gaps = False
   params.loss_function = 'alignment_loss'
 
-  # AlignmentLoss-specific parameters here.
+  # AlignmentLoss parameters
   params.del_cost = 10.0
   params.loss_reg = 0.1
   params.band_width = None
+
+  # Default model and dataset
+  params.model_config_name = 'transformer_learn_values'
+  params.dataset_config_name = 'ccs'
+
+  # CNN-specific
+  params.conv_model = 'resnet50'
 
   # Avg CCS Quality Filter; When set to 0 no examples will be filtered.
   params.skip_windows_above = 0

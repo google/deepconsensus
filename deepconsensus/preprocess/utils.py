@@ -40,6 +40,7 @@ import pysam
 import tensorflow as tf
 
 from deepconsensus.models import data_providers
+from deepconsensus.models import model_configs
 from deepconsensus.utils import dc_constants
 from deepconsensus.utils import utils
 
@@ -782,10 +783,13 @@ def tf_example_to_features_dict(tf_example_proto_str, inference=False):
   features['subreads'] = set_feature(features['subreads/encoded'],
                                      features['subreads/shape'])
   dc_config = DcConfig.from_shape(features['subreads/shape'])
+  # Get a default config and overwrite with specified values
+  params = model_configs.get_config()
+  params.example_width = dc_config.example_width
+  params.max_passes = dc_config.max_passes
+  params.max_length = dc_config.example_width
   features['subreads'] = data_providers.format_rows(
-      features['subreads'],
-      max_passes=dc_config.max_passes,
-      max_length=dc_config.max_length)
+      features['subreads'], params=params)
   del features['subreads/encoded']
   if not inference:
     features['label'] = set_feature(features['label/encoded'],
