@@ -130,6 +130,52 @@ def get_model(params: ml_collections.ConfigDict) -> tf.keras.Model:
   return model
 
 
+def set_dataset(params):
+  """Sets dataset paths and loads example counts."""
+  # Individual specifications:
+  manual_spec = hasattr(params, 'train_path') and hasattr(
+      params, 'eval_path') and hasattr(params, 'test_path')
+  if hasattr(params, 'tf_dataset') and manual_spec:
+    msg = 'Cannot specify tf_dataset and individual paths (e.g. train_path)'
+    raise Exception(msg)
+  if hasattr(params, 'tf_dataset'):
+    params.train_path = []
+    params.eval_path = []
+    params.test_path = []
+    params.inference_path = []
+    params.subsample_examples = []
+    # If the user has not set the number of examples,
+    # extract from summary.training.json files.
+    n_examples_train_not_set = not hasattr(params, 'n_examples_train')
+    n_examples_eval_not_set = not hasattr(params, 'n_examples_eval')
+    if n_examples_train_not_set ^ n_examples_eval_not_set:
+      raise Exception(
+          'You only have one of n_examples_{train,eval} set. '
+          'Set both in model_configs.py to manually set these values, '
+          'or set neither to load the counts from summary.training.json.')
+    load_example_counts = n_examples_train_not_set and n_examples_eval_not_set
+    if load_example_counts:
+      params.n_examples_train = 0
+      params.n_examples_eval = 0
+    for dataset in params.tf_dataset:
+      params.train_path.append(f'{dataset}/train/*')
+      params.eval_path.append(f'{dataset}/eval/*')
+      params.test_path.append(f'{dataset}/test/*')
+      dataset_summary_path = os.path.join(dataset, 'summary.training.json')
+      with tf.io.gfile.GFile(dataset_summary_path, 'r') as ds:
+        dataset_summary = json.load(ds)
+        n_examples_train = dataset_summary.get('n_examples_train', None)
+        n_examples_eval = dataset_summary.get('n_examples_eval', None)
+        if not n_examples_train or not n_examples_eval:
+          raise Exception(
+              f'No example count specified. Review {dataset_summary_path}')
+        if load_example_counts:
+          params.n_examples_train += n_examples_train
+          params.n_examples_eval += n_examples_eval
+        # Check for compatibility of dataset and model config
+        dataset_max_passes = int(dataset_summary.get('max_passes'))
+        if params.max_passes != dataset_max_passes:
+          raise Exception('dataset and model max_passes do not match.')
 
 
 def del_param(params, name):
@@ -174,6 +220,8 @@ def modify_params(params: ml_collections.ConfigDict,
       del_param(params, 'eval_path')
       del_param(params, 'test_path')
       del_param(params, 'inference_path')
+    if 'tf_dataset' in params and params.tf_dataset:
+      set_dataset(params)
     # For all models, scale batch size by number of GPUs when using GPUs. If no
     # GPUs are being used, keep the original batch size.
     num_gpus = len(tf.config.experimental.list_physical_devices('GPU'))
