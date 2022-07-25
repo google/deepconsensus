@@ -218,10 +218,14 @@ def train_model(teacher_model: tf.keras.Model, out_dir: str,
     """Training StepFn."""
     features, labels = inputs
     # Get logits from the teacher model.
-    teacher_logits = teacher_model.get_logits(features, training=False)
+    teacher_intermediate_outputs_dict = teacher_model.get_intermediate_outputs(
+        features, training=False)
+    teacher_logits = teacher_intermediate_outputs_dict['logits']
 
     with tf.GradientTape() as tape:
-      student_logits = model.get_logits(features, training=True)
+      student_intermediate_outputs_dict = model.get_intermediate_outputs(
+          features, training=True)
+      student_logits = student_intermediate_outputs_dict['logits']
       student_preds = tf.nn.softmax(student_logits)
       train_losses_dict = compute_loss(labels, student_preds, student_logits,
                                        teacher_logits)
@@ -240,9 +244,13 @@ def train_model(teacher_model: tf.keras.Model, out_dir: str,
     """Eval StepFn."""
     features, labels = inputs
     # Get logits from the teacher model.
-    teacher_logits = teacher_model.get_logits(features, training=False)
+    teacher_intermediate_outputs_dict = teacher_model.get_intermediate_outputs(
+        features, training=False)
+    teacher_logits = teacher_intermediate_outputs_dict['logits']
 
-    student_logits = model.get_logits(features, training=False)
+    student_intermediate_outputs_dict = model.get_intermediate_outputs(
+        features, training=False)
+    student_logits = student_intermediate_outputs_dict['logits']
     student_preds = tf.nn.softmax(student_logits)
     eval_losses_dict = compute_loss(labels, student_preds, student_logits,
                                     teacher_logits)
