@@ -282,47 +282,57 @@ def train_model(teacher_model: tf.keras.Model, out_dir: str,
           axis=None)
     return reduced_eval_losses_dict
 
-  log_steps = 100
+  log_train_steps = 100
+  log_eval_steps = 3000
   if FLAGS.eval_and_log_every_step:
-    log_steps = 1
+    log_train_steps = 1
   train_iterator = iter(train_dataset)
   eval_iterator = iter(eval_dataset)
   min_eval_loss = 1e6
+  total_train_steps = steps_per_epoch * params['num_epochs']
+  logging.info('Total training steps = %s', total_train_steps)
+
   for epoch in range(initial_epoch, params['num_epochs']):
     logging.info('Starting to run epoch: %s', epoch)
-    with train_writer.as_default():
-      for step in range(steps_per_epoch):
-        reduced_train_losses = distributed_train_step(train_iterator)
-        if step % log_steps == 0:
+    for step_train in range(steps_per_epoch):
+      distributed_train_step(train_iterator)
+      # Log and reset train metrics.
+      if optimizer.iterations % log_train_steps == 0:
+        with train_writer.as_default():
           model_utils.log_and_save_metrics(
               epoch=epoch,
-              step=step,
+              step=step_train,
               total_steps=steps_per_epoch,
               optimizer=optimizer,
-              losses_dict=reduced_train_losses,
-              metrics=train_metrics,
+              metrics=[train_loss] + train_metrics,
               training=True)
-    with eval_writer.as_default():
-      for step in range(steps_per_eval):
-        reduced_eval_losses = distributed_eval_step(eval_iterator)
-      model_utils.log_and_save_metrics(
-          epoch=epoch,
-          step=step,
-          total_steps=steps_per_eval,
-          optimizer=optimizer,
-          losses_dict=reduced_eval_losses,
-          metrics=eval_metrics,
-          training=False)
-    checkpoint_name = model_utils.save_checkpoint(checkpoint, out_dir,
-                                                  train_metrics, eval_metrics,
-                                                  write_checkpoint_metrics)
-    if min_eval_loss > float(eval_loss.result()):
-      min_eval_loss = float(eval_loss.result())
-      with tf.io.gfile.GFile(os.path.join(out_dir, 'best_checkpoint.txt'),
-                             'w') as f:
-        f.write(os.path.basename(checkpoint_name))
-    model_utils.reset_all_metrics([train_loss, eval_loss] + train_metrics +
-                                  eval_metrics)
+      # Log eval metrics, save checkpoint, and reset eval metrics every
+      # log_eval_steps and at the end of training.
+      if (optimizer.iterations % log_eval_steps == 0) or (optimizer.iterations
+                                                          == total_train_steps):
+        # Run evalution on the whole eval dataset and collect metrics.
+        for step_eval in range(steps_per_eval):
+          distributed_eval_step(eval_iterator)
+        # Save checkpoint.
+        checkpoint_name = model_utils.save_checkpoint(
+            checkpoint, out_dir, [eval_loss] + eval_metrics,
+            write_checkpoint_metrics)
+        # Record the best checkpoint.
+        if min_eval_loss > float(eval_loss.result()):
+          min_eval_loss = float(eval_loss.result())
+          with tf.io.gfile.GFile(
+              os.path.join(out_dir, 'best_checkpoint.txt'), 'w') as f:
+            f.write(os.path.basename(checkpoint_name))
+        # Log metrics on the eval set, this must be done at the end since
+        # log_and_save_metrics will reset the eval metrics values.
+        with eval_writer.as_default():
+          model_utils.log_and_save_metrics(
+              epoch=epoch,
+              step=step_eval,
+              total_steps=steps_per_eval,
+              optimizer=optimizer,
+              metrics=[eval_loss] + eval_metrics,
+              training=False)
 
 
 def train(teacher_model_dir: str,

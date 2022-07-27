@@ -31,7 +31,7 @@ import io
 import json
 import logging
 import os
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, List, Optional, Tuple, Union
 
 import ml_collections
 import numpy as np
@@ -395,22 +395,18 @@ def reset_all_metrics(metrics: List[tf.keras.metrics.Metric]) -> None:
 
 def log_and_save_metrics(epoch: int, step: int, total_steps: int,
                          optimizer: tf.keras.optimizers.Optimizer,
-                         losses_dict: Dict[str, float],
                          metrics: List[tf.keras.metrics.Metric],
                          training: bool) -> None:
   """Logs metrics and saves them for TensorBoard."""
   logging.info(
       'epoch: %d  step: %d of %d metrics: %s', epoch, step, total_steps,
-      ' '.join(f'{loss_name}= {losses_dict[loss_name]}'
-               for loss_name in losses_dict.keys()))
+      ' '.join(f'{metric.name}= {metric.result()}' for metric in metrics))
 
   if training:
     tf.summary.scalar('learning_rate', optimizer.lr, step=optimizer.iterations)
-  for loss_name in losses_dict.keys():
-    tf.summary.scalar(
-        loss_name, losses_dict[loss_name], step=optimizer.iterations)
   for metric in metrics:
     tf.summary.scalar(metric.name, metric.result(), step=optimizer.iterations)
+    metric.reset_states()
 
 
 def write_row(handle: Union[io.TextIOWrapper], row: List[Any]) -> None:
@@ -419,7 +415,6 @@ def write_row(handle: Union[io.TextIOWrapper], row: List[Any]) -> None:
 
 
 def save_checkpoint(checkpoint: tf.train.Checkpoint, out_dir: str,
-                    train_metrics: List[tf.keras.metrics.Metric],
                     eval_metrics: List[tf.keras.metrics.Metric],
                     write_checkpoint_metrics: bool) -> str:
   """Save checkpoint and return its name."""
@@ -434,8 +429,7 @@ def save_checkpoint(checkpoint: tf.train.Checkpoint, out_dir: str,
         write_row(f, row)
 
     with tf.io.gfile.GFile(metrics_file, 'a') as f:
-      for group_name, metrics in [('train', train_metrics),
-                                  ('eval', eval_metrics)]:
+      for group_name, metrics in [('eval', eval_metrics)]:
         for metric in metrics:
           row = [
               checkpoint_name, group_name, metric.name,
