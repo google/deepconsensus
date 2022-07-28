@@ -52,7 +52,9 @@ import ml_collections
 from ml_collections.config_flags import config_flags
 import tensorflow as tf
 
+from deepconsensus.models import convert_to_saved_model
 from deepconsensus.models import model_utils
+
 # pylint: disable=unused-import g-import-not-at-top
 
 FLAGS = flags.FLAGS
@@ -86,7 +88,13 @@ def train_model(out_dir: str, params: ml_collections.ConfigDict,
 
   with strategy.scope():
     logging.info('Building model.')
-    model = model_utils.get_model(params)
+    if FLAGS.checkpoint:
+      model = convert_to_saved_model.initialize_model(FLAGS.checkpoint)
+      if model is None:
+        raise Exception('Could not load model from checkpoint ',
+                        FLAGS.checkpoint)
+    else:
+      model = model_utils.get_model(params)
     logging.info('Done building model.')
     optimizer = tf.keras.optimizers.Adam(learning_rate=params.learning_rate)
     train_loss = tf.keras.metrics.Mean(name='train/loss')

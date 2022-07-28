@@ -50,10 +50,8 @@ flags.DEFINE_string('output', None, 'Output SavedModel name.')
 
 # Model checkpoint:
 flags.DEFINE_string(
-    'checkpoint',
-    None, 'Path to checkpoint directory + prefix. '
-    'For example: <path/to/model>/checkpoint-50.',
-    required=True)
+    'checkpoint', None, 'Path to checkpoint directory + prefix. '
+    'For example: <path/to/model>/checkpoint-50.')
 
 
 def register_required_flags():
