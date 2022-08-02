@@ -210,9 +210,9 @@ def get_config(config_name: Optional[str] = None) -> ml_collections.ConfigDict:
   params = ml_collections.ConfigDict()
 
   # Base config
-  params.PW_MAX = 9
-  params.IP_MAX = 9
-  params.SN_MAX = 15
+  params.PW_MAX = 255
+  params.IP_MAX = 255
+  params.SN_MAX = 500
   params.STRAND_MAX = 2
 
   # Specify common configs here.
