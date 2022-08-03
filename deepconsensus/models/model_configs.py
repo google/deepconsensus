@@ -97,7 +97,7 @@ def _set_base_transformer_hparams(params):
 
   # Training
   params.batch_size = 256
-  params.num_epochs = 7
+  params.num_epochs = 4
   params.learning_rate = 1e-4
   params.buffer_size = 1000
 
