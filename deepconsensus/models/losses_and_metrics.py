@@ -98,10 +98,10 @@ class StepsPerSecond(tf.keras.metrics.Metric):
 
   def update_state(self):
     """Registers one evaluation step."""
+    stamp = tf.timestamp()
     if tf.equal(self.steps, 0):
-      self.start.assign(tf.timestamp())
-    else:
-      self.last_update.assign(tf.timestamp())
+      self.start.assign(stamp)
+    self.last_update.assign(stamp)
     self.steps.assign_add(1)
 
   def result(self):
