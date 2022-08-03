@@ -27,6 +27,7 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """Tests for losses_and_metrics."""
 
+import time
 from typing import Sequence, Tuple
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -174,6 +175,29 @@ class PerClassAccuracyTest(parameterized.TestCase):
     accuracy_obj = losses_and_metrics.PerClassAccuracy(class_value=class_value)
     accuracy_obj.update_state(y_true, y_pred_scores)
     self.assertAlmostEqual(accuracy_obj.result().numpy(), exp_accuracy)
+
+
+class SpeedTest(parameterized.TestCase):
+
+  def test_StepsPerSecond(self):
+    steps_per_second = losses_and_metrics.StepsPerSecond(name='test')
+    steps = 10
+    pause = 0.2
+    for _ in range(steps):
+      steps_per_second.update_state()
+      time.sleep(pause)
+    result = steps_per_second.result().numpy()
+    expected = 1 / 0.2
+    self.assertAlmostEqual(result, expected, places=0)
+    # Reset and check that the counter forgot previous results
+    steps_per_second.reset_state()
+    pause = 0.1
+    for _ in range(steps):
+      steps_per_second.update_state()
+      time.sleep(pause)
+    result = steps_per_second.result().numpy()
+    expected = 1 / 0.1
+    self.assertAlmostEqual(result, expected, places=0)
 
 
 class LeftShiftTrueLabels(parameterized.TestCase):

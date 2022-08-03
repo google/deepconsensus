@@ -53,6 +53,7 @@ from ml_collections.config_flags import config_flags
 import tensorflow as tf
 
 from deepconsensus.models import convert_to_saved_model
+from deepconsensus.models import losses_and_metrics
 from deepconsensus.models import model_utils
 
 # pylint: disable=unused-import g-import-not-at-top
@@ -104,6 +105,12 @@ def train_model(out_dir: str, params: ml_collections.ConfigDict,
     loss_object = model_utils.get_deepconsensus_loss(
         params, reduction=tf.keras.losses.Reduction.NONE)
 
+    # Steps per second
+    train_steps_per_second = losses_and_metrics.StepsPerSecond(
+        name='train/steps_per_second')
+    eval_steps_per_second = losses_and_metrics.StepsPerSecond(
+        name='eval/steps_per_second')
+
     def compute_loss(labels, predictions):
       per_example_loss = loss_object(labels, predictions)
       # We divide per-replica losses by global batch size and sum this value
@@ -128,6 +135,7 @@ def train_model(out_dir: str, params: ml_collections.ConfigDict,
     grads = tape.gradient(loss, model.trainable_variables)
     optimizer.apply_gradients(zip(grads, model.trainable_variables))
     train_loss.update_state(loss)
+    train_steps_per_second.update_state()
     for metric in train_metrics:
       metric.update_state(labels, predictions)
     return loss
@@ -138,6 +146,7 @@ def train_model(out_dir: str, params: ml_collections.ConfigDict,
     predictions = model(features)
     loss = compute_loss(labels, predictions)
     eval_loss.update_state(loss)
+    eval_steps_per_second.update_state()
     for metric in eval_metrics:
       metric.update_state(labels, predictions)
     return loss
@@ -176,7 +185,7 @@ def train_model(out_dir: str, params: ml_collections.ConfigDict,
               step=step_train,
               total_steps=steps_per_epoch,
               optimizer=optimizer,
-              metrics=[train_loss] + train_metrics,
+              metrics=[train_loss, train_steps_per_second] + train_metrics,
               training=True)
       # Log eval metrics, save checkpoint, and reset eval metrics every
       # log_eval_steps and at the end of training.
@@ -203,7 +212,7 @@ def train_model(out_dir: str, params: ml_collections.ConfigDict,
               step=step_eval,
               total_steps=steps_per_eval,
               optimizer=optimizer,
-              metrics=[eval_loss] + eval_metrics,
+              metrics=[eval_loss, eval_steps_per_second] + eval_metrics,
               training=False)
 
 
