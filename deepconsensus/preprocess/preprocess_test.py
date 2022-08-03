@@ -34,9 +34,8 @@ from absl import flags
 from absl.testing import absltest
 from absl.testing import parameterized
 import tensorflow as tf
-
+from deepconsensus.preprocess import pre_lib
 from deepconsensus.preprocess import preprocess
-from deepconsensus.preprocess import utils
 from deepconsensus.utils.test_utils import deepconsensus_testdata
 from absl import app
 
@@ -62,7 +61,7 @@ def load_dataset(output, dataset):
 def get_unique_zmws(examples):
   zmws = []
   for example in examples:
-    features = utils.tf_example_to_features_dict(example)
+    features = pre_lib.tf_example_to_features_dict(example)
     zmws.append(int(features['name'].split('/')[1]))
   return len(set(zmws))
 
@@ -82,13 +81,13 @@ class PreprocessE2E(parameterized.TestCase):
     FLAGS.output = output
     preprocess.main([])
     examples = load_dataset(output, 'inference')
-    features = utils.tf_example_to_features_dict(examples[0], inference=True)
+    features = pre_lib.tf_example_to_features_dict(examples[0], inference=True)
 
     # Check that window_pos incr. monotonically for each ZMW.
     last_pos = -1
     last_zmw = -1
     for example in examples:
-      features = utils.tf_example_to_features_dict(example, inference=True)
+      features = pre_lib.tf_example_to_features_dict(example, inference=True)
       zmw = int(features['name'].split('/')[1])
       if zmw != last_zmw:
         last_zmw = zmw
@@ -129,7 +128,7 @@ class PreprocessE2E(parameterized.TestCase):
     last_pos = -1
     last_zmw = -1
     for example in all_examples:
-      features = utils.tf_example_to_features_dict(example, inference=False)
+      features = pre_lib.tf_example_to_features_dict(example, inference=False)
       zmw = int(features['name'].split('/')[1])
       if zmw != last_zmw:
         last_zmw = zmw
@@ -160,7 +159,7 @@ class PreprocessE2E(parameterized.TestCase):
     self.assertLen(eval_examples, summary['n_examples_eval'])
     self.assertLen(test_examples, summary['n_examples_test'])
 
-    features = utils.tf_example_to_features_dict(train_examples[0])
+    features = pre_lib.tf_example_to_features_dict(train_examples[0])
     self.assertIn('label', features)
     self.assertIn('label/shape', features)
     self.assertSameElements(features['subreads'].shape,

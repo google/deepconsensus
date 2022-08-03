@@ -37,7 +37,7 @@ import numpy as np
 import pysam
 
 from deepconsensus.models import data_providers
-from deepconsensus.preprocess import utils
+from deepconsensus.preprocess import pre_lib
 from deepconsensus.utils import dc_constants
 from deepconsensus.utils import test_utils
 from deepconsensus.utils.test_utils import deepconsensus_testdata
@@ -90,7 +90,7 @@ class TestSubreadGrouper(absltest.TestCase):
   def test_read_bam(self):
     subread_to_ccs = test_utils.deepconsensus_testdata(
         'human_1m/subreads_to_ccs.bam')
-    zmw_subread_sets = utils.SubreadGrouper(subread_to_ccs, 1)
+    zmw_subread_sets = pre_lib.SubreadGrouper(subread_to_ccs, 1)
     subread_count = 0
     zmw_count = 0
     for zmw_subreads in zmw_subread_sets:
@@ -106,8 +106,8 @@ class TestProcFeeder(absltest.TestCase):
     subread_to_ccs = test_utils.deepconsensus_testdata(
         'human_1m/subreads_to_ccs.bam')
     ccs_bam = test_utils.deepconsensus_testdata('human_1m/ccs.bam')
-    dc_config = utils.DcConfig(max_passes=20, example_width=100, padding=20)
-    proc_feeder, main_counter = utils.create_proc_feeder(
+    dc_config = pre_lib.DcConfig(max_passes=20, example_width=100, padding=20)
+    proc_feeder, main_counter = pre_lib.create_proc_feeder(
         subreads_to_ccs=subread_to_ccs, ccs_bam=ccs_bam, dc_config=dc_config)
     ccs_seqnames = []
     n_subreads = 0
@@ -131,8 +131,8 @@ class TestProcFeeder(absltest.TestCase):
     truth_bed = test_utils.deepconsensus_testdata('human_1m/truth.bed')
     truth_split = test_utils.deepconsensus_testdata('human_1m/truth_split.tsv')
 
-    dc_config = utils.DcConfig(max_passes=20, example_width=100, padding=20)
-    proc_feeder, main_counter = utils.create_proc_feeder(
+    dc_config = pre_lib.DcConfig(max_passes=20, example_width=100, padding=20)
+    proc_feeder, main_counter = pre_lib.create_proc_feeder(
         subreads_to_ccs=subreads_to_ccs,
         ccs_bam=ccs_bam,
         dc_config=dc_config,
@@ -155,7 +155,7 @@ class TestRightPad(parameterized.TestCase):
 
   def test_right_pad(self):
     x = np.repeat(1, 10)
-    padded = utils.right_pad(x, 20, 0)
+    padded = pre_lib.right_pad(x, 20, 0)
     expected = np.concatenate([np.repeat(1, 10), np.repeat(0, 10)])
     self.assertTrue(np.array_equal(padded, expected))
 
@@ -390,7 +390,7 @@ class TestExpandClipIndent(parameterized.TestCase):
                               expected_pw=None,
                               expected_strand=None):
     segment = create_segment(**segment_args)
-    subread = utils.expand_clip_indent(segment)
+    subread = pre_lib.expand_clip_indent(segment)
     self.assertEqual(''.join(subread.bases[subread.cigar != 5]), expected_bases)
     # Compare cigars, removing hard-clipped ops.
     self.assertTrue((subread.cigar == expected_cigar).all())
@@ -412,7 +412,7 @@ class TestCcsRead(absltest.TestCase):
     ccs_bam_h = pysam.AlignmentFile(test_bam, check_sq=False)
     ccs_bam_read = next(ccs_bam_h)
     seq_name = 'm54238_180901_011437/4194375/ccs'
-    read = utils.construct_ccs_read(ccs_bam_read)
+    read = pre_lib.construct_ccs_read(ccs_bam_read)
     self.assertEqual(seq_name, read.name)
     self.assertGreater(read.avg_base_quality_score, 0)
     self.assertTrue((read.base_quality_scores > 0).any())
@@ -433,14 +433,14 @@ class TestFetchLabelBases(parameterized.TestCase):
   def test_fetch_bases(self, ccs_name, expected_label_name):
     test_truth_to_ccs = deepconsensus_testdata('preprocess/truth_to_ccs.bam')
     tests_bam = pysam.AlignmentFile(test_truth_to_ccs)
-    label = utils.fetch_label_alignment(ccs_name, tests_bam, {
+    label = pre_lib.fetch_label_alignment(ccs_name, tests_bam, {
         'contig': 'fake_chr',
         'begin': 0,
         'end': 0
     })
     label_name = label.name
     self.assertEqual(label_name, expected_label_name)
-    if isinstance(label, utils.Read):
+    if isinstance(label, pre_lib.Read):
       self.assertEqual(label.zmw, int(label.name.split('/')[1]))
       self.assertTrue(label.is_label)
 
@@ -615,7 +615,7 @@ class TestSpaceOutSubreads(parameterized.TestCase):
         read_ccs_idx = np.arange(len(bases))
       # The truth range is only passed in for the label read
       # (which should always be the last read)
-      read = utils.Read(
+      read = pre_lib.Read(
           name='',
           bases=np.array(list(bases)),
           cigar=cigar,
@@ -628,7 +628,7 @@ class TestSpaceOutSubreads(parameterized.TestCase):
           truth_range=truth_range if i == len(read_set) - 1 else None)
       subreads.append(read)
     # Run space out subreads
-    spaced_subreads = utils.space_out_subreads(subreads)
+    spaced_subreads = pre_lib.space_out_subreads(subreads)
     spaced_subreads = list(
         map(lambda x: ''.join(x.bases).rstrip(), spaced_subreads))
     self.assertEqual(spaced_subreads, split_alignment(expected))
@@ -742,9 +742,9 @@ class TestBounds(parameterized.TestCase):
                       expected_label_slice_bounds=None):
     segment = create_segment(
         bases=bases, cigar=cigar, reference_start=reference_start)
-    read = utils.expand_clip_indent(segment, truth_range)
+    read = pre_lib.expand_clip_indent(segment, truth_range)
     # run space_out_subreads to generate truth_idx
-    read = utils.space_out_subreads([read])[0]
+    read = pre_lib.space_out_subreads([read])[0]
     # Bound test
     self.assertEqual(read.ccs_bounds, slice(*expected_ccs_bounds))
     # Slice test
@@ -765,10 +765,10 @@ class TestEncodeDecodeBases(absltest.TestCase):
     bases = 'TTGTGGAGAT'
     cigar = '5M1D5M'
     segment = create_segment(bases=bases, cigar=cigar, reference_start=0)
-    read = utils.expand_clip_indent(segment)
+    read = pre_lib.expand_clip_indent(segment)
     encoded_bases = np.array([2, 2, 4, 2, 4, 0, 4, 1, 4, 1, 2])
     self.assertTrue((read.bases_encoded == encoded_bases).all())
-    decoded_bases = utils.decode_bases(np.expand_dims(encoded_bases, 0))
+    decoded_bases = pre_lib.decode_bases(np.expand_dims(encoded_bases, 0))
     decoded_bases = ''.join(decoded_bases[0]).replace(' ', '')
     self.assertTrue(bases, decoded_bases)
 
@@ -792,7 +792,7 @@ class TestDcConfig(parameterized.TestCase):
           expected_total_rows=85))
   def test_dc_config(self, max_passes, example_width, padding,
                      expected_ip_slice, expected_total_rows):
-    dc_config = utils.DcConfig(
+    dc_config = pre_lib.DcConfig(
         max_passes=max_passes, example_width=example_width, padding=padding)
     ip_start = dc_config.indices('ip', 3).start
     self.assertEqual(dc_config.indices('ip', 3), expected_ip_slice)
@@ -820,7 +820,7 @@ class TestDcConfigFromShape(parameterized.TestCase):
       ))
   def test_dc_config_from_shape(self, shape, expected_max_passes,
                                 expected_strand_row):
-    dc_config = utils.DcConfig.from_shape(shape)
+    dc_config = pre_lib.DcConfig.from_shape(shape)
     self.assertEqual(dc_config.max_passes, expected_max_passes)
     self.assertEqual(dc_config.strand, expected_strand_row)
 
@@ -828,20 +828,20 @@ class TestDcConfigFromShape(parameterized.TestCase):
 class TestDcExampleFunctionality(absltest.TestCase):
 
   def test_dc_example_functions(self):
-    dc_config = utils.DcConfig(max_passes=20, example_width=9, padding=10)
+    dc_config = pre_lib.DcConfig(max_passes=20, example_width=9, padding=10)
     # First, generate a bunch of reads
     read_set = []
     for i in range(0, 10):
       segment = create_segment(
           name=f'm0/1/{i}', bases='A' * 10, cigar='10M', reference_start=0)
-      read = utils.expand_clip_indent(segment)
+      read = pre_lib.expand_clip_indent(segment)
       read_set.append(read)
     label_segment = create_segment(
         name='m0/1/truth', bases='A' * 10, cigar='10M', reference_start=0)
     truth_range = {'contig': 'chr1', 'begin': 0, 'end': 10}
-    label = utils.expand_clip_indent(label_segment, truth_range)
+    label = pre_lib.expand_clip_indent(label_segment, truth_range)
     read_set += [label]
-    dc_example = utils.subreads_to_dc_example(read_set, 'm0/1/ccs', dc_config)
+    dc_example = pre_lib.subreads_to_dc_example(read_set, 'm0/1/ccs', dc_config)
 
     # contig
     self.assertEqual(
@@ -921,16 +921,16 @@ class TestDcExampleFunctionality(absltest.TestCase):
 
   def test_inference_setup(self):
     # Test DcExample functionality under inference conditions.
-    dc_config = utils.DcConfig(max_passes=3, example_width=3, padding=2)
+    dc_config = pre_lib.DcConfig(max_passes=3, example_width=3, padding=2)
     # First, generate a bunch of reads
     read_set = []
     for i in range(0, 10):
       segment = create_segment(
           name=f'm0/1/{i}', bases='A' * 10, cigar='10M', reference_start=0)
-      read = utils.expand_clip_indent(segment)
+      read = pre_lib.expand_clip_indent(segment)
       read_set.append(read)
-    aln_reads = utils.space_out_subreads(read_set)
-    dc_example = utils.DcExample('test_read_set', aln_reads, dc_config)
+    aln_reads = pre_lib.space_out_subreads(read_set)
+    dc_example = pre_lib.DcExample('test_read_set', aln_reads, dc_config)
 
     self.assertEqual(dc_example.ccs.name, read_set[-1].name)
     self.assertIsNone(dc_example.label)
@@ -947,7 +947,8 @@ class TestDcExampleFunctionality(absltest.TestCase):
 
   def test_tf_example_train(self):
     padding = 10
-    dc_config = utils.DcConfig(max_passes=20, example_width=10, padding=padding)
+    dc_config = pre_lib.DcConfig(
+        max_passes=20, example_width=10, padding=padding)
     read_set = []
     for i in range(0, 10):
       segment = create_segment(
@@ -957,14 +958,14 @@ class TestDcExampleFunctionality(absltest.TestCase):
           ip=[1, 2, 3, 4] * 25,
           pw=[5, 6, 7, 8] * 25,
           reference_start=0)
-      read = utils.expand_clip_indent(segment)
+      read = pre_lib.expand_clip_indent(segment)
       read_set.append(read)
     label_segment = create_segment(
         name='m0/1/truth', bases='ATCG' * 25, cigar='100M', reference_start=0)
     truth_range = {'contig': 'chr1', 'begin': 0, 'end': 100}
-    label = utils.expand_clip_indent(label_segment, truth_range)
+    label = pre_lib.expand_clip_indent(label_segment, truth_range)
     read_set += [label]
-    dc_example = utils.subreads_to_dc_example(read_set, 'm0/1/ccs', dc_config)
+    dc_example = pre_lib.subreads_to_dc_example(read_set, 'm0/1/ccs', dc_config)
 
     # Fetch the second iter example.
     iter_examples = dc_example.iter_examples()
@@ -983,8 +984,8 @@ class TestDcExampleFunctionality(absltest.TestCase):
         set(data_providers.PROTO_FEATURES_TRAIN.keys()))
 
     # Compare tf example converted back to DcExample
-    features = utils.tf_example_to_features_dict(tf_example_str)
-    window_2_rev = utils.from_features_dict(features, padding=padding)
+    features = pre_lib.tf_example_to_features_dict(tf_example_str)
+    window_2_rev = pre_lib.from_features_dict(features, padding=padding)
 
     # Compare reversed values.
     self.assertTrue(
@@ -998,13 +999,13 @@ class TestDcExampleFunctionality(absltest.TestCase):
                     'ccs_idx does not match')
 
   def test_large_label_insertion(self):
-    dc_config = utils.DcConfig(max_passes=20, example_width=8, padding=1)
+    dc_config = pre_lib.DcConfig(max_passes=20, example_width=8, padding=1)
     # Test case where label contains large insertions.
     read_set = []
     for i in range(0, 3):
       segment = create_segment(
           name=f'm0/1/{i}', bases='A' * 15, cigar='15M', reference_start=0)
-      read = utils.expand_clip_indent(segment)
+      read = pre_lib.expand_clip_indent(segment)
       read_set.append(read)
     label_segment = create_segment(
         name='m0/1/truth',
@@ -1012,10 +1013,10 @@ class TestDcExampleFunctionality(absltest.TestCase):
         cigar='5M8I21M',
         reference_start=0)
     truth_range = {'contig': 'chr1', 'begin': 0, 'end': 34}
-    label = utils.expand_clip_indent(label_segment, truth_range)
+    label = pre_lib.expand_clip_indent(label_segment, truth_range)
     read_set += [label]
-    aln_reads = utils.space_out_subreads(read_set)
-    dc_example = utils.DcExample('test_read_set', aln_reads, dc_config)
+    aln_reads = pre_lib.space_out_subreads(read_set)
+    dc_example = pre_lib.DcExample('test_read_set', aln_reads, dc_config)
     # The first window is skipped because the large
     # label insertion causes it to exceed the padded size (9).
     # So we get a single output.
@@ -1025,7 +1026,7 @@ class TestDcExampleFunctionality(absltest.TestCase):
     self.assertEqual(dc_example.counter['n_examples_label_overflow'], 1)
 
   def test_remove_gaps_and_pad(self):
-    dc_config = utils.DcConfig(max_passes=20, example_width=100, padding=20)
+    dc_config = pre_lib.DcConfig(max_passes=20, example_width=100, padding=20)
     read_set = []
     for i in range(0, 3):
       segment = create_segment(
@@ -1033,7 +1034,7 @@ class TestDcExampleFunctionality(absltest.TestCase):
           bases=('A' * 5) + ('G' * 8) + ('A' * 5),
           cigar='18M',
           reference_start=0)
-      read = utils.expand_clip_indent(segment)
+      read = pre_lib.expand_clip_indent(segment)
       read_set.append(read)
     label_segment = create_segment(
         name='m0/1/truth',
@@ -1041,10 +1042,10 @@ class TestDcExampleFunctionality(absltest.TestCase):
         cigar='5M8D5M',
         reference_start=0)
     truth_range = {'contig': 'chr1', 'begin': 0, 'end': 10}
-    label = utils.expand_clip_indent(label_segment, truth_range)
+    label = pre_lib.expand_clip_indent(label_segment, truth_range)
     read_set += [label]
-    aln_reads = utils.space_out_subreads(read_set)
-    dc_example = utils.DcExample('test_read_set', aln_reads, dc_config)
+    aln_reads = pre_lib.space_out_subreads(read_set)
+    dc_example = pre_lib.DcExample('test_read_set', aln_reads, dc_config)
     self.assertEqual(
         str(dc_example.label.remove_gaps_and_pad(100)),
         'A' * 10 + dc_constants.GAP_OR_PAD * 90)

@@ -46,13 +46,13 @@ import multiprocessing
 import multiprocessing.pool
 import os
 import time
-from typing import Dict, List
+from typing import Dict, List, Tuple, Union, Counter
 
 from absl import flags
 from absl import logging
 import tensorflow as tf
 
-from deepconsensus.preprocess import utils
+from deepconsensus.preprocess import pre_lib
 from deepconsensus.utils import dc_constants
 from absl import app
 
@@ -164,15 +164,17 @@ def tf_record_writer(output_fname: str, splits: List[str],
 
 
 @trace_exception
-def process_subreads(subreads: List[utils.Read],
-                     ccs_seqname: str,
-                     dc_config: utils.DcConfig,
-                     split: str,
-                     queue: Queue,
-                     local=False):
+def process_subreads(
+    subreads: List[pre_lib.Read],
+    ccs_seqname: str,
+    dc_config: pre_lib.DcConfig,
+    split: str,
+    queue: Queue,
+    local: bool = False
+) -> Union[Counter[str], Tuple[List[str], str, Counter[str]]]:
   """Subread processing worker."""
   tf_out = []
-  dc_example = utils.subreads_to_dc_example(subreads, ccs_seqname, dc_config)
+  dc_example = pre_lib.subreads_to_dc_example(subreads, ccs_seqname, dc_config)
   for example in dc_example.iter_examples():
     tf_out.append(example.tf_example().SerializeToString())
   dc_example.counter[f'n_examples_{split}'] += len(tf_out)
@@ -216,7 +218,7 @@ def main(unused_argv) -> None:
 
   if is_training:
     logging.info('Generating tf.Examples in training mode.')
-    contig_split = utils.read_truth_split(FLAGS.truth_split)
+    contig_split = pre_lib.read_truth_split(FLAGS.truth_split)
     splits = set(contig_split.values())
     for split in splits:
       if '@split' not in FLAGS.output:
@@ -238,14 +240,14 @@ def main(unused_argv) -> None:
   manager = multiprocessing.Manager()
   queue = manager.Queue()
 
-  dc_config = utils.DcConfig(
+  dc_config = pre_lib.DcConfig(
       max_passes=20,
       example_width=100,
       padding=20,
       skip_windows_above=FLAGS.skip_windows_above,
       prop_ccs_label_matches=FLAGS.prop_ccs_label_matches)
 
-  proc_feeder, main_counter = utils.create_proc_feeder(
+  proc_feeder, main_counter = pre_lib.create_proc_feeder(
       subreads_to_ccs=FLAGS.subreads_to_ccs,
       ccs_bam=FLAGS.ccs_bam,
       dc_config=dc_config,

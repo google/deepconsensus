@@ -56,7 +56,7 @@ import tensorflow as tf
 from deepconsensus.models import data_providers
 from deepconsensus.models import model_utils
 from deepconsensus.postprocess import stitch_utils
-from deepconsensus.preprocess import utils as preprocess_utils
+from deepconsensus.preprocess import pre_lib
 from deepconsensus.utils import dc_constants
 from deepconsensus.utils import utils
 from tensorflow.python.platform import gfile
@@ -414,14 +414,14 @@ def stream_bam(
     For every ZMW, (ZMW name, template sequence, list of subreads).
   """
 
-  dc_config = preprocess_utils.DcConfig(
+  dc_config = pre_lib.DcConfig(
       max_passes=options.max_passes,
       example_width=options.example_width,
       padding=options.padding)
 
   # Temporarily disable unused-variable.
   # pylint: disable=unused-variable
-  proc_feeder, main_counter = preprocess_utils.create_proc_feeder(
+  proc_feeder, main_counter = pre_lib.create_proc_feeder(
       subreads_to_ccs=subreads_to_ccs, ccs_bam=ccs_bam, dc_config=dc_config)
   # pylint: enable=unused_variable
 
@@ -486,7 +486,7 @@ def initialize_model(
 
 
 def preprocess(
-    one_zmw: Tuple[str, List[preprocess_utils.Read], preprocess_utils.DcConfig]
+    one_zmw: Tuple[str, List[pre_lib.Read], pre_lib.DcConfig]
 ) -> List[Dict[str, Any]]:
   """Preprocess input data for one ZMW into windows of features.
 
@@ -503,7 +503,7 @@ def preprocess(
   """
   zmw, subreads, dc_config = one_zmw
 
-  dc_whole_zmw = preprocess_utils.subreads_to_dc_example(
+  dc_whole_zmw = pre_lib.subreads_to_dc_example(
       subreads=subreads, ccs_seqname=zmw, dc_config=dc_config)
   if dc_whole_zmw is None or FLAGS.end_after_stage == DebugStage.DC_INPUT:
     return []
@@ -694,8 +694,8 @@ def parse_calibration_string(
 
 def run() -> stitch_utils.OutcomeCounter:
   """Called by main."""
-  dc_config = preprocess_utils.DcConfig(FLAGS.max_passes, FLAGS.example_width,
-                                        FLAGS.padding)
+  dc_config = pre_lib.DcConfig(FLAGS.max_passes, FLAGS.example_width,
+                               FLAGS.padding)
   # Determine if --checkpoint is a saved model.
   use_saved_model = (
       tf.io.gfile.exists(FLAGS.checkpoint) and

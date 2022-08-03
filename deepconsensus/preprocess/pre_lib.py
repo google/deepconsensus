@@ -32,7 +32,7 @@ from collections import abc
 import dataclasses
 import itertools
 import random
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Counter, Dict, List, Optional, Union
 
 from absl import logging
 import numpy as np
@@ -435,8 +435,7 @@ class DcExample:
   name: str
   reads: List[Read]
   config: DcConfig
-  counter: collections.Counter = dataclasses.field(
-      default_factory=collections.Counter)
+  counter: Counter[str] = dataclasses.field(default_factory=collections.Counter)
 
   # Define cached variables.
   _width: Optional[int] = None
