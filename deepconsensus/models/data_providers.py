@@ -36,7 +36,6 @@ import numpy as np
 import tensorflow.compat.v2 as tf
 
 from deepconsensus.utils import dc_constants
-from deepconsensus.utils import utils
 
 
 # Define base fields for TFRecords.
@@ -235,16 +234,6 @@ def tf_example_to_training_tuple(
   return (tf_example['rows'], tf_example['label'])
 
 
-def filter_ccs_q_score(tf_example: Dict[str, tf.Tensor],
-                       skip_windows_above: int = 0) -> bool:
-  """Returns True if phred is less than skip_windows_above."""
-  # When skip_windows_above is 0, do not filter.
-  if skip_windows_above == 0:
-    return True
-  phred = utils.tf_avg_phred(tf_example['ccs_base_quality_scores'])
-  return phred <= skip_windows_above
-
-
 def get_dataset(file_pattern: str,
                 num_epochs: Optional[int],
                 batch_size: int,
@@ -283,15 +272,9 @@ def get_dataset(file_pattern: str,
         params=params,
         inference=inference)
 
-  def _filter_q_helper(tf_example: Dict[str, tf.Tensor]) -> bool:
-    return filter_ccs_q_score(tf_example, params.skip_windows_above)
-
   file_patterns = create_glob_list(file_pattern)
   ds = tf.data.TFRecordDataset(file_patterns, compression_type='GZIP')
   ds = ds.map(map_func=_process_input_helper)
-
-  if params.skip_windows_above:
-    ds = ds.filter(_filter_q_helper)
 
   ds = ds.shuffle(buffer_size=params.buffer_size, reshuffle_each_iteration=True)
 
@@ -329,9 +312,6 @@ def create_input_fn(params, mode, limit: int = -1, drop_remainder: bool = True):
     return process_input(
         proto_string=proto_string, params=params, inference=False)
 
-  def _filter_q_helper(tf_example: Dict[str, tf.Tensor]) -> bool:
-    return filter_ccs_q_score(tf_example, params.skip_windows_above)
-
   def input_fn() -> tf.data.Dataset:
     """Prepares a dataset for training or evaluation."""
     is_training = (mode == 'train')
@@ -351,8 +331,6 @@ def create_input_fn(params, mode, limit: int = -1, drop_remainder: bool = True):
         _process_input_helper,
         num_parallel_calls=tf.data.experimental.AUTOTUNE,
         deterministic=False)
-
-    ds = ds.filter(_filter_q_helper, 'ccs_quality_filter')
 
     if is_training:
       ds = ds.shuffle(

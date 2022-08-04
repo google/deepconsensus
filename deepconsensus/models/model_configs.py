@@ -235,9 +235,6 @@ def get_config(config_name: Optional[str] = None) -> ml_collections.ConfigDict:
   # CNN-specific
   params.conv_model = 'resnet50'
 
-  # Avg CCS Quality Filter; When set to 0 no examples will be filtered.
-  params.skip_windows_above = 0
-
 
   # Scaling factor to multiply the batch_size when using TPUs since they have
   # more memory than GPUs.
