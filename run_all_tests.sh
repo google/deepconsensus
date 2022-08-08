@@ -33,6 +33,13 @@
 
 set -euo pipefail
 
+test_mode=${1:-none}
+
+if [[ "${test_mode}" == "simple" ]]; then
+  python3 -m deepconsensus.inference.quick_inference_test
+  exit 0
+fi;
+
 python3 -m deepconsensus.inference.quick_inference_test
 python3 -m deepconsensus.models.data_providers_test
 python3 -m deepconsensus.models.losses_and_metrics_test
