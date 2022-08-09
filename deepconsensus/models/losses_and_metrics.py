@@ -82,40 +82,6 @@ class PerClassAccuracy(tf.keras.metrics.Accuracy):
     super().update_state(y_true, y_pred, sample_weight=mask)
 
 
-class StepsPerSecond(tf.keras.metrics.Metric):
-  """Measures steps per second."""
-
-  def __init__(self, name: str = 'steps_per_second'):
-    """Initialisation method.
-
-    Args:
-      name: Of this metric that will appear in TensorBoard.
-    """
-    super(StepsPerSecond, self).__init__(name=name)
-    self.steps = self.add_weight('steps', initializer='zeros', dtype=tf.float64)
-    self.last_update = self.add_weight('last_update', dtype=tf.float64)
-    self.start = self.add_weight('start', dtype=tf.float64)
-
-  def update_state(self):
-    """Registers one evaluation step."""
-    stamp = tf.timestamp()
-    if tf.equal(self.steps, 0):
-      self.start.assign(stamp)
-    self.last_update.assign(stamp)
-    self.steps.assign_add(1)
-
-  def result(self):
-    """Computes steps per second."""
-    time_elapsed = self.last_update - self.start
-    return tf.math.divide_no_nan(self.steps - 1, time_elapsed)
-
-  def reset_state(self):
-    """Resets step counter and the start time."""
-    self.steps.assign(0)
-    self.start.assign(0)
-    self.last_update.assign(0)  # Prevent division by zero.
-
-
 @tf.function
 def left_shift_sequence(y_true: tf.Tensor) -> tf.int32:
   """Removes internal gaps and shifts labels to the left.

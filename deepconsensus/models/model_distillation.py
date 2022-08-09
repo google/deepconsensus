@@ -48,6 +48,7 @@ time blaze run -c opt \
   --alsologtostderr
 """
 
+import datetime
 import logging
 import os
 import random
@@ -294,10 +295,14 @@ def train_model(teacher_model: tf.keras.Model, out_dir: str,
 
   for epoch in range(initial_epoch, params['num_epochs']):
     logging.info('Starting to run epoch: %s', epoch)
+    train_time_start = datetime.datetime.now()
     for step_train in range(steps_per_epoch):
       distributed_train_step(train_iterator)
       # Log and reset train metrics.
       if optimizer.iterations % log_train_steps == 0:
+        train_time_end = datetime.datetime.now()
+        train_steps_per_second = log_train_steps / (
+            train_time_end - train_time_start).total_seconds()
         with train_writer.as_default():
           model_utils.log_and_save_metrics(
               epoch=epoch,
@@ -305,14 +310,20 @@ def train_model(teacher_model: tf.keras.Model, out_dir: str,
               total_steps=steps_per_epoch,
               optimizer=optimizer,
               metrics=[train_loss] + train_metrics,
-              training=True)
+              training=True,
+              steps_per_second=train_steps_per_second)
+          train_time_start = datetime.datetime.now()
       # Log eval metrics, save checkpoint, and reset eval metrics every
       # log_eval_steps and at the end of training.
       if (optimizer.iterations % log_eval_steps == 0) or (optimizer.iterations
                                                           == total_train_steps):
         # Run evalution on the whole eval dataset and collect metrics.
+        eval_time_start = datetime.datetime.now()
         for step_eval in range(steps_per_eval):
           distributed_eval_step(eval_iterator)
+        eval_time_end = datetime.datetime.now()
+        eval_steps_per_second = steps_per_eval / (
+            eval_time_end - eval_time_start).total_seconds()
         # Save checkpoint.
         checkpoint_name = model_utils.save_checkpoint(
             checkpoint, out_dir, [eval_loss] + eval_metrics,
@@ -332,7 +343,10 @@ def train_model(teacher_model: tf.keras.Model, out_dir: str,
               total_steps=steps_per_eval,
               optimizer=optimizer,
               metrics=[eval_loss] + eval_metrics,
-              training=False)
+              training=False,
+              steps_per_second=eval_steps_per_second)
+        # Reset timer
+        train_time_start = datetime.datetime.now()
 
 
 def train(teacher_model_dir: str,

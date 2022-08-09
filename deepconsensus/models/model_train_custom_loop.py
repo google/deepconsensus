@@ -41,6 +41,7 @@ time blaze run -c opt \
   --alsologtostderr
 """
 
+import datetime
 import logging
 import os
 import random
@@ -53,7 +54,6 @@ from ml_collections.config_flags import config_flags
 import tensorflow as tf
 
 from deepconsensus.models import convert_to_saved_model
-from deepconsensus.models import losses_and_metrics
 from deepconsensus.models import model_utils
 
 # pylint: disable=unused-import g-import-not-at-top
@@ -105,12 +105,6 @@ def train_model(out_dir: str, params: ml_collections.ConfigDict,
     loss_object = model_utils.get_deepconsensus_loss(
         params, reduction=tf.keras.losses.Reduction.NONE)
 
-    # Steps per second
-    train_steps_per_second = losses_and_metrics.StepsPerSecond(
-        name='train/steps_per_second')
-    eval_steps_per_second = losses_and_metrics.StepsPerSecond(
-        name='eval/steps_per_second')
-
     def compute_loss(labels, predictions):
       per_example_loss = loss_object(labels, predictions)
       # We divide per-replica losses by global batch size and sum this value
@@ -135,7 +129,6 @@ def train_model(out_dir: str, params: ml_collections.ConfigDict,
     grads = tape.gradient(loss, model.trainable_variables)
     optimizer.apply_gradients(zip(grads, model.trainable_variables))
     train_loss.update_state(loss)
-    train_steps_per_second.update_state()
     for metric in train_metrics:
       metric.update_state(labels, predictions)
     return loss
@@ -146,7 +139,6 @@ def train_model(out_dir: str, params: ml_collections.ConfigDict,
     predictions = model(features)
     loss = compute_loss(labels, predictions)
     eval_loss.update_state(loss)
-    eval_steps_per_second.update_state()
     for metric in eval_metrics:
       metric.update_state(labels, predictions)
     return loss
@@ -175,25 +167,35 @@ def train_model(out_dir: str, params: ml_collections.ConfigDict,
 
   for epoch in range(initial_epoch, params['num_epochs']):
     logging.info('Starting to run epoch: %s', epoch)
+    train_time_start = datetime.datetime.now()
     for step_train in range(1, steps_per_epoch + 1):
       distributed_train_step(train_iterator)
       # Log and reset train metrics.
       if optimizer.iterations % log_train_steps == 0:
+        train_time_end = datetime.datetime.now()
+        train_steps_per_second = log_train_steps / (
+            train_time_end - train_time_start).total_seconds()
         with train_writer.as_default():
           model_utils.log_and_save_metrics(
               epoch=epoch,
               step=step_train,
               total_steps=steps_per_epoch,
               optimizer=optimizer,
-              metrics=[train_loss, train_steps_per_second] + train_metrics,
-              training=True)
+              metrics=[train_loss] + train_metrics,
+              training=True,
+              steps_per_second=train_steps_per_second)
+          train_time_start = datetime.datetime.now()
       # Log eval metrics, save checkpoint, and reset eval metrics every
       # log_eval_steps and at the end of training.
       if (optimizer.iterations % log_eval_steps == 0) or (optimizer.iterations
                                                           == total_train_steps):
         # Run evalution on the whole eval dataset and collect metrics.
+        eval_time_start = datetime.datetime.now()
         for step_eval in range(1, steps_per_eval + 1):
           distributed_eval_step(eval_iterator)
+        eval_time_end = datetime.datetime.now()
+        eval_steps_per_second = steps_per_eval / (
+            eval_time_end - eval_time_start).total_seconds()
         # Save checkpoint.
         checkpoint_name = model_utils.save_checkpoint(
             checkpoint, out_dir, [eval_loss] + eval_metrics,
@@ -212,8 +214,11 @@ def train_model(out_dir: str, params: ml_collections.ConfigDict,
               step=step_eval,
               total_steps=steps_per_eval,
               optimizer=optimizer,
-              metrics=[eval_loss, eval_steps_per_second] + eval_metrics,
-              training=False)
+              metrics=[eval_loss] + eval_metrics,
+              training=False,
+              steps_per_second=eval_steps_per_second)
+        # Reset timer
+        train_time_start = datetime.datetime.now()
 
 
 def train(out_dir: str,

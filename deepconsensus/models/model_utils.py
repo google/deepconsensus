@@ -45,6 +45,7 @@ from deepconsensus.models import transformer_basic_params
 from deepconsensus.utils import dc_constants
 
 
+
 def get_deepconsensus_loss(
     params: ml_collections.ConfigDict,
     reduction: tf.keras.losses.Reduction = tf.keras.losses.Reduction.AUTO
@@ -395,8 +396,8 @@ def reset_all_metrics(metrics: List[tf.keras.metrics.Metric]) -> None:
 
 def log_and_save_metrics(epoch: int, step: int, total_steps: int,
                          optimizer: tf.keras.optimizers.Optimizer,
-                         metrics: List[tf.keras.metrics.Metric],
-                         training: bool) -> None:
+                         metrics: List[tf.keras.metrics.Metric], training: bool,
+                         steps_per_second: float) -> None:
   """Logs metrics and saves them for TensorBoard."""
   logging.info(
       'epoch: %d  step: %d of %d metrics: %s', epoch, step, total_steps,
