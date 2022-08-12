@@ -104,3 +104,6 @@ DC_FEATURES = [
 
 MAX_QUAL = 40
 EMPTY_QUAL = 0
+
+# The name of the eval metric to optimize (choosing checkpoints and vizier).
+MAIN_EVAL_METRIC_NAME = 'eval/per_example_accuracy'

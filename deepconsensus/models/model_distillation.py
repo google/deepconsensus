@@ -63,6 +63,7 @@ import tensorflow as tf
 from deepconsensus.models import data_providers
 from deepconsensus.models import losses_and_metrics
 from deepconsensus.models import model_utils
+from deepconsensus.utils import dc_constants
 
 
 # pylint: disable=unused-import
@@ -289,7 +290,16 @@ def train_model(teacher_model: tf.keras.Model, out_dir: str,
     log_train_steps = 1
   train_iterator = iter(train_dataset)
   eval_iterator = iter(eval_dataset)
-  min_eval_loss = 1e6
+
+  # Decide the best checkpoiht using main eval metric.
+  max_main_eval_metric = 0.0
+  # From a list of eval metrics get the main eval metric.
+  main_eval_metric = next(
+      (metric for metric in eval_metrics
+       if metric.name == dc_constants.MAIN_EVAL_METRIC_NAME), None)
+  if not main_eval_metric:
+    raise ValueError('No eval metric found.')
+
   total_train_steps = steps_per_epoch * params['num_epochs']
   logging.info('Total training steps = %s', total_train_steps)
 
@@ -328,9 +338,10 @@ def train_model(teacher_model: tf.keras.Model, out_dir: str,
         checkpoint_name = model_utils.save_checkpoint(
             checkpoint, out_dir, [eval_loss] + eval_metrics,
             write_checkpoint_metrics)
-        # Record the best checkpoint.
-        if min_eval_loss > float(eval_loss.result()):
-          min_eval_loss = float(eval_loss.result())
+        # Record the best checkpoint based on the main eval metric.
+        main_eval_metric_val = float(main_eval_metric.result())
+        if main_eval_metric_val >= max_main_eval_metric:
+          max_main_eval_metric = main_eval_metric_val
           with tf.io.gfile.GFile(
               os.path.join(out_dir, 'best_checkpoint.txt'), 'w') as f:
             f.write(os.path.basename(checkpoint_name))
