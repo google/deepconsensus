@@ -88,6 +88,15 @@ flags.DEFINE_integer('bam_reader_threads', 8,
                      'Number of decompression threads to use.')
 flags.DEFINE_integer('limit', 0, 'Limit processing to n ZMWs.')
 
+# The following just need to match the training parameters.
+_MAX_PASSES = flags.DEFINE_integer('max_passes', 20,
+                                   'Maximum subreads in each input.')
+_EXAMPLE_WIDTH = flags.DEFINE_integer('example_width', 100,
+                                      'Number of bases in each input.')
+_PADDING = flags.DEFINE_integer(
+    'padding', 20, 'Number of bases of padding to add to example_width to '
+    'allow for insertions.')
+
 
 def register_required_flags():
   flags.mark_flags_as_required([
@@ -108,7 +117,6 @@ def trace_exception(f):
     except:  # pylint: disable=bare-except
       logging.exception('Error in function %s.', f.__name__)
       raise Exception('Error in worker process')
-
   return wrap
 
 
@@ -224,7 +232,10 @@ def main(unused_argv) -> None:
   manager = multiprocessing.Manager()
   queue = manager.Queue()
 
-  dc_config = pre_lib.DcConfig(max_passes=20, example_width=100, padding=20)
+  dc_config = pre_lib.DcConfig(
+      max_passes=_MAX_PASSES.value,
+      example_width=_EXAMPLE_WIDTH.value,
+      padding=_PADDING.value)
 
   proc_feeder, main_counter = pre_lib.create_proc_feeder(
       subreads_to_ccs=FLAGS.subreads_to_ccs,
@@ -283,7 +294,8 @@ def main(unused_argv) -> None:
     summary = dict(main_counter.items())
     summary.update(dc_config.to_dict())
     flag_list = [
-        'subreads_to_ccs', 'ccs_bam', 'truth_to_ccs', 'truth_bed', 'truth_split'
+        'subreads_to_ccs', 'ccs_bam', 'truth_to_ccs', 'truth_bed',
+        'truth_split', 'max_passes', 'example_width', 'padding'
     ]
     for flag in flag_list:
       # Encode these as strings to ensure aggregation does not add values.

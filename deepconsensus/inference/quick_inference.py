@@ -94,13 +94,6 @@ config_flags.DEFINE_config_file(
     'params', None, 'params.json configuration file. By default, '
     '/path/to/model_directory/params.json is used.')
 
-# The following just need to match the training parameters.
-flags.DEFINE_integer('max_passes', 20, 'Maximum subreads in each input.')
-flags.DEFINE_integer('example_width', 100, 'Number of bases in each input.')
-flags.DEFINE_integer(
-    'padding', 20, 'Number of bases of padding to add to example_width to '
-    'allow for insertions.')
-
 # The following parameters are used at the end for filtering the final output.
 flags.DEFINE_integer('min_length', 0, 'Minimum length for reads output.')
 flags.DEFINE_integer('min_quality', 20, 'Minimum quality for reads output.')
@@ -200,7 +193,7 @@ class InferenceOptions:
     example_height: Height of examples, which depends on max_passes.
     padding: Number of bases of padding to add to example_width to allow for
       insertions.
-    padded_len: Length of window after padding is added. This should be equal to
+    max_length: Length of window after padding is added. This should be equal to
       example_width + padding.
     max_passes: Max number of subreads to include in input shown to model.
     min_quality: Quality threshold to filter final reads.
@@ -220,7 +213,7 @@ class InferenceOptions:
   example_width: int
   example_height: int
   padding: int
-  padded_len: int
+  max_length: int
   max_passes: int
   min_quality: int
   min_length: int
@@ -448,14 +441,6 @@ def initialize_model(
   if FLAGS.end_after_stage in [DebugStage.TF_EXAMPLES, DebugStage.DC_INPUT]:
     return None, None
 
-  # Figure out model parameters.
-  if not FLAGS.params:
-    params = model_utils.read_params_from_json(checkpoint_path=checkpoint_path)
-  else:
-    params = FLAGS.params
-
-  with params.unlocked():
-    params.max_passes = options.max_passes
   logging.info('Loading %s', checkpoint_path)
   if options.use_saved_model:
     model = tf.saved_model.load(checkpoint_path)
@@ -479,7 +464,7 @@ def initialize_model(
   model_utils.modify_params(
       params=params,
       speedy=True,
-      max_length=options.padded_len,
+      max_length=options.max_length,
       is_training=False)
   logging.info('Finished initialize_model.')
   return model, params
@@ -694,22 +679,30 @@ def parse_calibration_string(
 
 def run() -> stitch_utils.OutcomeCounter:
   """Called by main."""
-  dc_config = pre_lib.DcConfig(FLAGS.max_passes, FLAGS.example_width,
-                               FLAGS.padding)
+
   # Determine if --checkpoint is a saved model.
   use_saved_model = (
       tf.io.gfile.exists(FLAGS.checkpoint) and
       tf.io.gfile.exists(f'{FLAGS.checkpoint}/saved_model.pb'))
 
+  # Load model parameters
+  if not FLAGS.params:
+    params = model_utils.read_params_from_json(checkpoint_path=FLAGS.checkpoint)
+  else:
+    params = FLAGS.params
+
+  dc_config = pre_lib.DcConfig(params.max_passes, params.example_width,
+                               params.padding)
+
   dc_calibration_values = parse_calibration_string(FLAGS.dc_calibration)
   ccs_calibration_values = parse_calibration_string(FLAGS.ccs_calibration)
 
   options = InferenceOptions(
-      example_width=FLAGS.example_width,
+      example_width=params.example_width,
       example_height=dc_config.tensor_height,
-      padding=FLAGS.padding,
-      padded_len=FLAGS.example_width + FLAGS.padding,
-      max_passes=FLAGS.max_passes,
+      padding=params.padding,
+      max_length=params.max_length,
+      max_passes=params.max_passes,
       min_quality=FLAGS.min_quality,
       min_length=FLAGS.min_length,
       batch_size=FLAGS.batch_size,
@@ -732,9 +725,7 @@ def run() -> stitch_utils.OutcomeCounter:
   # Set up model.
   before_model_setup = time.time()
   loaded_model, model_params = initialize_model(
-      checkpoint_path=FLAGS.checkpoint,
-      params=FLAGS.params,
-      options=options)
+      checkpoint_path=FLAGS.checkpoint, params=params, options=options)
   logging.info('Model setup took %s seconds.', time.time() - before_model_setup)
 
   # Initialize output fastq writer.

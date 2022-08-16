@@ -228,6 +228,11 @@ def get_config(config_name: Optional[str] = None) -> ml_collections.ConfigDict:
   params.loss_reg = 0.1
   params.band_width = None
 
+  # Window
+  params.example_width = 100
+  params.padding = 20
+  params.max_length = params.example_width + params.padding
+
   # Default model and dataset
   params.model_config_name = 'transformer_learn_values'
   params.dataset_config_name = 'ccs'

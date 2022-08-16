@@ -158,7 +158,7 @@ def modify_params(params: ml_collections.ConfigDict,
     dataset_path: Optional. Path to dataset from which to extract max_length.
     speedy: Bool. Skip time-consuming steps that only add nice-to-have
         information.
-    max_length: Equivalent to padded_len in preprocess. If given, use this to
+    max_length: Equivalent to max_length in preprocess. If given, use this to
         set params.max_length instead of inspecting the examples.
     is_training: When not in training mode, do not run set_dataset
 
@@ -203,11 +203,23 @@ def modify_params(params: ml_collections.ConfigDict,
     # Otherwise, we can expect params.train_path to exist.
     if max_length is not None:
       params.max_length = max_length
-    elif dataset_path:
-      params.max_length = extract_max_length(
+
+    if dataset_path:
+      dataset_max_length = extract_max_length(
           os.path.join(dataset_path, os.path.basename(dataset_path)))
+    elif hasattr(params, 'train_path'):
+      dataset_max_length = extract_max_length(params.train_path)
     else:
-      params.max_length = extract_max_length(params.train_path)
+      dataset_max_length = None
+
+    if hasattr(params, 'max_length') and dataset_path:
+      assert params.max_length == dataset_max_length
+
+    if not hasattr(params, 'max_length') and dataset_max_length:
+      params.max_length = dataset_max_length
+
+    if not hasattr(params, 'max_length'):
+      raise ValueError('No params.max_length provided.')
 
     if 'transformer_learn_values' in params.model_name:
       dim = ((params.use_bases * params.per_base_hidden_size) +

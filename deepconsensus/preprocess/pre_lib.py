@@ -749,9 +749,9 @@ def tf_example_to_features_dict(tf_example_proto_str, inference=False):
   dc_config = DcConfig.from_shape(features['subreads/shape'])
   # Get a default config and overwrite with specified values
   params = model_configs.get_config()
-  params.example_width = dc_config.example_width
-  params.max_passes = dc_config.max_passes
-  params.max_length = dc_config.example_width
+  params.example_width = int(dc_config.example_width)
+  params.max_passes = int(dc_config.max_passes)
+  params.max_length = int(dc_config.example_width)
   features['subreads'] = data_providers.format_rows(
       features['subreads'], params=params)
   del features['subreads/encoded']
