@@ -108,11 +108,6 @@ def get_record_shape(dataset_path: str) -> List[int]:
   return list(map(int, features['subreads/shape'].numpy()))
 
 
-def extract_max_length(dataset_sharded_path: str) -> int:
-  """Extracts the example length based on a single entry within a dataset."""
-  return get_record_shape(dataset_sharded_path)[1]
-
-
 def extract_example_height(dataset_sharded_path: str) -> int:
   """Gets example height based on a single entry within a dataset."""
   return get_record_shape(dataset_sharded_path)[0]
@@ -141,7 +136,6 @@ def del_param(params, name):
 def modify_params(params: ml_collections.ConfigDict,
                   tpu: Optional[str] = None,
                   tpu_topology: Optional[str] = None,
-                  dataset_path: Optional[str] = None,
                   speedy: bool = False,
                   max_length: Optional[int] = None,
                   is_training: bool = True) -> None:
@@ -155,7 +149,6 @@ def modify_params(params: ml_collections.ConfigDict,
     params: Config dictionary of the parameters to use.
     tpu: Name of the TPU being used or None.
     tpu_topology: of the form NxM, where N * M is the number of chips.
-    dataset_path: Optional. Path to dataset from which to extract max_length.
     speedy: Bool. Skip time-consuming steps that only add nice-to-have
         information.
     max_length: Equivalent to max_length in preprocess. If given, use this to
@@ -203,20 +196,6 @@ def modify_params(params: ml_collections.ConfigDict,
     # Otherwise, we can expect params.train_path to exist.
     if max_length is not None:
       params.max_length = max_length
-
-    if dataset_path:
-      dataset_max_length = extract_max_length(
-          os.path.join(dataset_path, os.path.basename(dataset_path)))
-    elif hasattr(params, 'train_path'):
-      dataset_max_length = extract_max_length(params.train_path)
-    else:
-      dataset_max_length = None
-
-    if hasattr(params, 'max_length') and dataset_path:
-      assert params.max_length == dataset_max_length
-
-    if not hasattr(params, 'max_length') and dataset_max_length:
-      params.max_length = dataset_max_length
 
     if not hasattr(params, 'max_length'):
       raise ValueError('No params.max_length provided.')

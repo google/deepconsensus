@@ -230,8 +230,8 @@ def get_config(config_name: Optional[str] = None) -> ml_collections.ConfigDict:
 
   # Window
   params.example_width = 100
-  params.padding = 20
-  params.max_length = params.example_width + params.padding
+  params.padding = 0
+  params.max_length = 100
 
   # Default model and dataset
   params.model_config_name = 'transformer_learn_values'

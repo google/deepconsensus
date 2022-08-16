@@ -94,7 +94,7 @@ _MAX_PASSES = flags.DEFINE_integer('max_passes', 20,
 _EXAMPLE_WIDTH = flags.DEFINE_integer('example_width', 100,
                                       'Number of bases in each input.')
 _PADDING = flags.DEFINE_integer(
-    'padding', 20, 'Number of bases of padding to add to example_width to '
+    'padding', 0, 'Number of bases of padding to add to example_width to '
     'allow for insertions.')
 
 

@@ -169,7 +169,7 @@ def process_feature_dict(
 
 def parse_example(proto_string: Dict[str, tf.Tensor],
                   inference: bool = False,
-                  max_length: int = 120) -> Dict[str, tf.Tensor]:
+                  max_length: int = 100) -> Dict[str, tf.Tensor]:
   """Parses serialized Training or Inference TF.Examples."""
   if inference:
     proto_features = PROTO_FEATURES_INFERENCE
