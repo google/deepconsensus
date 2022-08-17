@@ -36,12 +36,12 @@ import tensorflow as tf
 __version__ = '0.3.1'
 
 # Vocab
-GAP_OR_PAD = ' '
+GAP = ' '
 ALLOWED_BASES = 'ATCG'
-VOCAB = GAP_OR_PAD + ALLOWED_BASES
+VOCAB = GAP + ALLOWED_BASES
 
 # Value used to fill in empty rows in the tf.Examples.
-GAP_OR_PAD_INT = VOCAB.index(GAP_OR_PAD)
+GAP_INT = VOCAB.index(GAP)
 
 PYSAM_READ_ADVANCING_OPS = list(
     map(int, [pysam.CMATCH, pysam.CINS, pysam.CEQUAL, pysam.CDIFF]))

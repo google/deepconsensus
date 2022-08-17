@@ -168,7 +168,7 @@ class ConvertToFastqStrDoFnTest(absltest.TestCase):
     sequence_line = fasta_str_parts[1]
     separator_line = fasta_str_parts[2]
     quality_string_line = fasta_str_parts[3]
-    padding_and_gap = [dc_constants.GAP_OR_PAD, dc_constants.GAP_OR_PAD]
+    padding_and_gap = [dc_constants.GAP, dc_constants.GAP]
     # Check the sequence line contains only valid bases.
     self.assertNoCommonElements(set(sequence_line), padding_and_gap)
     self.assertEqual(separator_line, '+')

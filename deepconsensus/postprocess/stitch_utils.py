@@ -81,7 +81,7 @@ def remove_gaps_and_padding(sequence: str,
   # Remove padding and gaps from the final sequence.
   final_sequence = ''
   final_quality_string = ''
-  bases_to_remove = set([dc_constants.GAP_OR_PAD])
+  bases_to_remove = set([dc_constants.GAP])
   # Only keep bases and quality scores for non padding and non gap positions.
   for base, quality in zip(sequence, quality_string):
     if base not in bases_to_remove:
@@ -89,7 +89,7 @@ def remove_gaps_and_padding(sequence: str,
       final_quality_string += quality
 
   assert len(final_sequence) == len(final_quality_string)
-  assert dc_constants.GAP_OR_PAD not in final_sequence
+  assert dc_constants.GAP not in final_sequence
   return final_sequence, final_quality_string
 
 

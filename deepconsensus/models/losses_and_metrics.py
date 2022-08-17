@@ -93,7 +93,7 @@ def left_shift_sequence(y_true: tf.Tensor) -> tf.int32:
     left shifted y_true
 
   """
-  gap_token = dc_constants.VOCAB.find(dc_constants.GAP_OR_PAD)
+  gap_token = dc_constants.VOCAB.find(dc_constants.GAP)
   shape = tf.shape(y_true)
   seq_length = shape[1]
 
@@ -193,9 +193,9 @@ def xentropy_ins_cost_fn(y_pred: tf.Tensor, eps=1e-7) -> tf.Tensor:
 
   Returns:
     A tf.Tensor<float>[batch, n] such that out[b][l] represents the
-    cross-entropy loss between dc_constants.GAP_OR_PAD and y_pred[b][l].
+    cross-entropy loss between dc_constants.PAD and y_pred[b][l].
   """
-  gap_token = dc_constants.VOCAB.find(dc_constants.GAP_OR_PAD)
+  gap_token = dc_constants.VOCAB.find(dc_constants.GAP)
   ins_scores = tf.clip_by_value(y_pred[..., gap_token], eps, 1 - eps)
   return -tf.math.log(ins_scores)
 
@@ -311,8 +311,8 @@ class AlignmentLoss(tf.keras.losses.Loss):
       A tuple (y_true_oh, seq_lens) such that
         +  y_true_oh is a tf.Tensor<dtype>[batch, m, n_tokens], where n_tokens
            is the number of tokens in dc_constants.VOCAB. It contains a one-hot
-           representation of the input y_true, with dc_constants.GAP_OR_PAD
-           tokens removed and extra dc_constants.GAP_OR_PAD tokens appended if
+           representation of the input y_true, with dc_constants.PAD
+           tokens removed and extra dc_constants.PAD tokens appended if
            necessary.
         +  seq_lens is a tf.Tensor<int>[batch] containing the length of each
            label sequence in y_true, excluding any pad and gap tokens.
@@ -323,7 +323,7 @@ class AlignmentLoss(tf.keras.losses.Loss):
     # necessary.
     y_true = left_shift_sequence(y_true)
     # Computes per-example label sequence length, excluding padding.
-    pad_token = dc_constants.VOCAB.find(dc_constants.GAP_OR_PAD)
+    pad_token = dc_constants.VOCAB.find(dc_constants.GAP)
     seq_lens = tf.reduce_sum(tf.cast(y_true != pad_token, y_true.dtype), -1)
     # Converts y_true to one-hot.
     n_tokens = len(dc_constants.VOCAB)
@@ -592,8 +592,8 @@ def preprocess_y_true_metric(y_true: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
   Returns:
     A tuple (y_true, y_true_lens) such that
       +  y_true is a tf.Tensor<int>[batch, m]. It contains the input y_true,
-          with dc_constants.GAP_OR_PAD tokens removed and extra
-          dc_constants.GAP_OR_PAD tokens appended if necessary.
+          with dc_constants.GAP tokens removed and extra
+          dc_constants.GAP tokens appended if necessary.
       +  y_true_lens is a tf.Tensor<int>[batch] containing the length of each
           label sequence in y_true, excluding any pad and gap tokens.
   """
@@ -603,7 +603,7 @@ def preprocess_y_true_metric(y_true: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
   # necessary.
   y_true = left_shift_sequence(y_true)
   # Computes per-example label sequence length, excluding padding.
-  pad_token = dc_constants.VOCAB.find(dc_constants.GAP_OR_PAD)
+  pad_token = dc_constants.VOCAB.find(dc_constants.GAP)
   y_true_lens = tf.reduce_sum(tf.cast(y_true != pad_token, y_true.dtype), -1)
   return y_true, y_true_lens
 
@@ -619,8 +619,8 @@ def preprocess_y_pred_metric(y_pred: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
     A tuple (y_pred, y_pred_lens) such that
       +  y_pred is a tf.Tensor<int>[batch, m]. It contains the most likely
           token at each position of the input y_pred, with
-          dc_constants.GAP_OR_PAD tokens removed and extra
-          dc_constants.GAP_OR_PAD tokens appended if necessary.
+          dc_constants.PAD tokens removed and extra
+          dc_constants.PAD tokens appended if necessary.
       +  y_pred_lens is a tf.Tensor<int>[batch] containing the length of each
           predicted sequence in y_pred, excluding any pad and gap tokens.
   """
@@ -628,11 +628,10 @@ def preprocess_y_pred_metric(y_pred: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
   y_pred = tf.argmax(y_pred, axis=-1)
   # Ensures y_pred is of integer type.
   y_pred = tf.cast(y_pred, tf.int32)
-  # Removes internal gaps, shifting sequences left and adding padding when
-  # necessary.
+  # Removes internal gaps, shifting sequences left when necessary.
   y_pred = left_shift_sequence(y_pred)
   # Computes per-example label sequence length, excluding padding.
-  pad_token = dc_constants.VOCAB.find(dc_constants.GAP_OR_PAD)
+  pad_token = dc_constants.VOCAB.find(dc_constants.GAP)
   y_pred_lens = tf.reduce_sum(tf.cast(y_pred != pad_token, y_pred.dtype), -1)
   return y_pred, y_pred_lens
 

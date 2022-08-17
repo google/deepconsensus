@@ -47,7 +47,7 @@ KMER_SIZE = 10
 
 def remove_gaps(seq: str) -> str:
   """Removes gaps and padding from sequences."""
-  seq = seq.replace(dc_constants.GAP_OR_PAD, '')
+  seq = seq.replace(dc_constants.GAP, '')
   return seq
 
 

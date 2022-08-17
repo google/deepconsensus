@@ -96,7 +96,7 @@ def remove_internal_gaps_and_shift(label: tf.Tensor) -> tf.Tensor:
   """Filters internal gaps and shifts sequences to the left."""
   label = tf.squeeze(label)
   subset = tf.transpose(
-      tf.gather(label, tf.where(label != dc_constants.GAP_OR_PAD_INT)))
+      tf.gather(label, tf.where(label != dc_constants.GAP_INT)))
   pad_amt = tf.shape(label)[0] - tf.shape(subset)[1]
   padded = tf.pad(subset, [[0, 0], [0, pad_amt]])
   return tf.squeeze(padded)

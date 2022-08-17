@@ -44,13 +44,13 @@ class PerExampleAccuracyTest(parameterized.TestCase):
       dict(
           testcase_name='all padding',
           y_true=np.array([
-              [dc_constants.GAP_OR_PAD_INT, dc_constants.GAP_OR_PAD_INT],
+              [dc_constants.GAP_INT, dc_constants.GAP_INT],
           ]),
 
           # Using one hot inputs to create a 'distribution'. The metric will
           # compute the prediction by taking the argmax of the distribution.
           y_pred_scores=np.array([
-              [test_utils.get_one_hot(dc_constants.GAP_OR_PAD_INT)] * 2,
+              [test_utils.get_one_hot(dc_constants.GAP_INT)] * 2,
           ]),
           # All windows are correct.
           exp_accuracy=1.0,
@@ -254,7 +254,7 @@ class XentropyInsCostFn(parameterized.TestCase):
   def test_xentropy_subs_cost_fn(self, b, n, seed, dtype):
     """Checks that pointwise XEntropy values agree with tf.keras.losses."""
     # Generates random data.
-    gap_token = dc_constants.VOCAB.find(dc_constants.GAP_OR_PAD)
+    gap_token = dc_constants.VOCAB.find(dc_constants.GAP)
     n_tokens = len(dc_constants.VOCAB)
 
     y_pred = tf.random.stateless_uniform([b, n, n_tokens], [seed, 0],

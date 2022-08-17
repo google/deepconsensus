@@ -67,8 +67,8 @@ def get_deepconsensus_metrics(name_prefix='') -> List[tf.keras.metrics.Metric]:
   class_to_name = {
       base: dc_constants.VOCAB.index(base) for base in dc_constants.VOCAB
   }
-  class_to_name['gap_or_pad'] = class_to_name[dc_constants.GAP_OR_PAD]
-  del class_to_name[dc_constants.GAP_OR_PAD]
+  class_to_name['gap'] = class_to_name[dc_constants.GAP]
+  del class_to_name[dc_constants.GAP]
   per_class_accuracy_metrics = []
   for class_name, class_value in class_to_name.items():
     per_class_accuracy_metrics.append(

@@ -176,7 +176,7 @@ class Read(abc.Sequence):
 
   def put_spacing(self, seq_len):
     """Generate spaced sequences and replace the originals."""
-    spaced_seq = np.repeat(dc_constants.GAP_OR_PAD, seq_len)
+    spaced_seq = np.repeat(dc_constants.GAP, seq_len)
     spaced_pw = np.zeros(seq_len, dtype=np.uint8)
     spaced_ip = np.zeros(seq_len, dtype=np.uint8)
     spaced_ccs_idx = np.repeat(-1, seq_len)
@@ -284,7 +284,7 @@ class Read(abc.Sequence):
   def pad(self, pad_width):
     return Read(
         name=self.name,
-        bases=right_pad(self.bases, pad_width, dc_constants.GAP_OR_PAD),
+        bases=right_pad(self.bases, pad_width, dc_constants.GAP),
         cigar=right_pad(self.cigar, pad_width, dc_constants.PYSAM_CHARD_CLIP),
         pw=right_pad(self.pw, pad_width, 0),
         ip=right_pad(self.ip, pad_width, 0),
@@ -298,7 +298,7 @@ class Read(abc.Sequence):
   def remove_gaps_and_pad(self, pad_width: int) -> Union['Read', None]:
     """Removes gaps from sequence and returns padded."""
     # Useful for reducing label width.
-    keep = self.bases != dc_constants.GAP_OR_PAD
+    keep = self.bases != dc_constants.GAP
     if self.base_quality_scores.any():
       base_quality_scores = self.base_quality_scores[keep]
     else:
@@ -649,8 +649,7 @@ class DcExample:
 def decode_bases(bases_encoded: np.ndarray) -> np.ndarray:
   """Reverses DcExample encode_bases."""
   n_subreads, example_width = bases_encoded.shape
-  bases = np.stack([np.repeat(dc_constants.GAP_OR_PAD, example_width)] *
-                   n_subreads)
+  bases = np.stack([np.repeat(dc_constants.GAP, example_width)] * n_subreads)
   for k, base in enumerate(dc_constants.VOCAB):
     bases[bases_encoded == k] = base
   return bases
@@ -823,7 +822,7 @@ def read_truth_split(split_fname: str) -> Dict[str, str]:
 
 def expand_clip_indent(read: pysam.AlignedSegment,
                        truth_range: Union[Dict[str, Any], None] = None) -> Read:
-  """Adds GAP_OR_PAD tokens and clips reads.
+  """Adds PAD tokens and clips reads.
 
   For both subreads and label:
 
@@ -835,7 +834,7 @@ def expand_clip_indent(read: pysam.AlignedSegment,
   Args:
       read: a pysam aligned segment representing a subread, ccs, or label aln.
       truth_range: truth genome alignment coordinates. If supplied, it is
-                   assumed this is the label alignment.
+        assumed this is the label alignment.
 
   Returns:
       ExpandedRead
@@ -847,7 +846,7 @@ def expand_clip_indent(read: pysam.AlignedSegment,
   aln_len = len(read_idx)
 
   # Create empty expanded read objects.
-  new_seq = np.repeat(dc_constants.GAP_OR_PAD, aln_len)
+  new_seq = np.repeat(dc_constants.GAP, aln_len)
   new_pw = np.repeat(np.uint8(0), aln_len)
   new_ip = np.repeat(np.uint8(0), aln_len)
 
@@ -882,8 +881,7 @@ def expand_clip_indent(read: pysam.AlignedSegment,
 
   # Trim sequence if it is soft-padded.
   if np.sum(new_cigar == dc_constants.PYSAM_CSOFT_CLIP) > 0:
-    new_seq[new_cigar ==
-            dc_constants.PYSAM_CSOFT_CLIP] = dc_constants.GAP_OR_PAD
+    new_seq[new_cigar == dc_constants.PYSAM_CSOFT_CLIP] = dc_constants.GAP
     # TODO: binary search ignoring -1 vals here.
     qstart = np.where(read_idx == read.query_alignment_start)[0][0]
     qend = np.where(read_idx == read.query_alignment_end - 1)[0][0] + 1
@@ -904,7 +902,7 @@ def expand_clip_indent(read: pysam.AlignedSegment,
 
   # Indent sequence
   if read.pos:
-    new_seq = np.insert(new_seq, 0, [dc_constants.GAP_OR_PAD] * read.pos)
+    new_seq = np.insert(new_seq, 0, [dc_constants.GAP] * read.pos)
     # Add N cigar op at position 0 to indicate indent.
     new_cigar = np.insert(new_cigar, 0,
                           np.repeat(int(pysam.CREF_SKIP), read.pos))

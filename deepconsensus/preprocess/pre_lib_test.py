@@ -880,8 +880,7 @@ class TestDcExampleFunctionality(absltest.TestCase):
 
     # dc_example test padding
     padded_ex = np.concatenate(
-        [np.repeat('A', 9),
-         np.repeat(dc_constants.GAP_OR_PAD, 10)])
+        [np.repeat('A', 9), np.repeat(dc_constants.GAP, 10)])
     self.assertTrue((example.reads[0].bases == padded_ex).all())
     example = next(examples)
 
@@ -1048,7 +1047,7 @@ class TestDcExampleFunctionality(absltest.TestCase):
     dc_example = pre_lib.DcExample('test_read_set', aln_reads, dc_config)
     self.assertEqual(
         str(dc_example.label.remove_gaps_and_pad(100)),
-        'A' * 10 + dc_constants.GAP_OR_PAD * 90)
+        'A' * 10 + dc_constants.GAP * 90)
 
 
 if __name__ == '__main__':
