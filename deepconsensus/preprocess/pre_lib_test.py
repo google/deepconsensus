@@ -404,6 +404,111 @@ class TestExpandClipIndent(parameterized.TestCase):
       self.assertEqual(expected_strand, subread.strand)
 
 
+class TestTrimInsertions(parameterized.TestCase):
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='insertion',
+          segment_args={
+              'bases': 'AAAATTTTTTAAAA',
+              'cigar': '4M6I4M',
+              'ip': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
+              'pw': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
+              'is_reverse': False,
+          },
+          expected_bases='AAAAAAAA',
+          expected_cigar=[(dc_constants.PYSAM_CMATCH, 4),
+                          (dc_constants.PYSAM_CMATCH, 4)],
+          exptected_idx=[0, 1, 2, 3, 4, 5, 6, 7],
+          # ip=10 is trimmed
+          expected_ip=[1, 2, 3, 4, 11, 12, 13, 14],
+          # pw=10 is trimmed
+          expected_pw=[1, 2, 3, 4, 11, 12, 13, 14],
+          expected_strand=False  # is_reversed
+      ),
+      dict(
+          testcase_name='insertion_reversed',
+          segment_args={
+              'bases': 'ATTTTTTAAAA',
+              'cigar': '1M6I4M',
+              'ip': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+              'pw': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+              'is_reverse': True,
+          },
+          expected_bases='AAAAA',
+          expected_cigar=[(dc_constants.PYSAM_CMATCH, 1),
+                          (dc_constants.PYSAM_CMATCH, 4)],
+          exptected_idx=[0, 1, 2, 3, 4],
+          # ip=5 is trimmed
+          expected_ip=[1, 2, 3, 4, 11],
+          # pw=5 is trimmed
+          expected_pw=[1, 2, 3, 4, 11],
+          expected_strand=True  # is_reversed
+      ),
+      dict(
+          testcase_name='insertion_no_trim',
+          segment_args={
+              'bases': 'AAAATTTTTTAAAA',
+              'cigar': '4M6I4M',
+              'ip': [1] * 14,
+              'pw': [2] * 14,
+              'is_reverse': False,
+          },
+          expected_bases='AAAATTTTTTAAAA',
+          expected_cigar=[(dc_constants.PYSAM_CMATCH, 4),
+                          (dc_constants.PYSAM_CINS, 6),
+                          (dc_constants.PYSAM_CMATCH, 4)],
+          exptected_idx=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13],
+          expected_ip=[1] * 14,
+          expected_pw=[2] * 14,
+          expected_strand=False,  # is_reversed
+          trim_ins=0,
+      ),
+      dict(
+          testcase_name='deletion',
+          segment_args={
+              'bases': 'AAAAAAAA',
+              'cigar': '4M6D4M',
+              'ip': [1] * 8,
+              'pw': [2] * 8,
+              'is_reverse': False,
+          },
+          expected_bases='AAAAAAAA',
+          expected_cigar=[(dc_constants.PYSAM_CMATCH, 4),
+                          (dc_constants.PYSAM_CDEL, 6),
+                          (dc_constants.PYSAM_CMATCH, 4)],
+          exptected_idx=[
+              0, 1, 2, 3, None, None, None, None, None, None, 4, 5, 6, 7
+          ],
+          expected_ip=[1] * 8,
+          expected_pw=[2] * 8,
+          expected_strand=False  # is_reversed
+      ))
+  def test_trim_insertions(self,
+                           segment_args,
+                           expected_bases,
+                           expected_cigar,
+                           exptected_idx=None,
+                           expected_ip=None,
+                           expected_pw=None,
+                           expected_strand=None,
+                           trim_ins=5):
+    segment = create_segment(**segment_args)
+    trimmed_segment = pre_lib.trim_insertions(segment, trim_ins)
+    self.assertEqual(trimmed_segment.query_sequence, expected_bases)
+    aligned_pairs = trimmed_segment.get_aligned_pairs()
+    self.assertListEqual(trimmed_segment.cigartuples, expected_cigar)
+    if exptected_idx:
+      read_idx = [x[0] for x in aligned_pairs]
+      self.assertListEqual(read_idx, exptected_idx)
+    if expected_ip:
+      self.assertEqual(list(trimmed_segment.get_tag('ip')), expected_ip)
+    if expected_pw:
+      self.assertListEqual(list(trimmed_segment.get_tag('pw')), expected_pw)
+    if expected_strand:
+      self.assertEqual(expected_strand, trimmed_segment.is_reverse)
+
+
 class TestCcsRead(absltest.TestCase):
 
   def test_fetch_ccs_read(self):

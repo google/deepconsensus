@@ -820,8 +820,72 @@ def read_truth_split(split_fname: str) -> Dict[str, str]:
   return contig_split
 
 
+def trim_insertions(read: pysam.AlignedSegment,
+                    ins_trim: int) -> pysam.AlignedSegment:
+  """Remove insertions larger than max length.
+
+  This operation effectively
+  modifies aligned sequence, cigar, and pw/ip tags.
+
+  Args:
+    read: pysam.AlignedSegment subread aligned to the ccs.
+    ins_trim: int maximum length of insertions.
+
+  Returns:
+    pysam.AlignedSegment. Modified pysam.AlignedSegment subread.
+  """
+  if ins_trim <= 0:
+    return read
+  # We decided not to make a copy of the read for better performance.
+  new_read = read
+  pw_vals = []
+  ip_vals = []
+  if read.has_tag('pw'):
+    pw_vals = read.get_tag('pw')
+  if read.has_tag('ip'):
+    ip_vals = read.get_tag('ip')
+
+  trimmed_cigar = []
+  trimmed_seq = ''
+  op_start = 0
+  seq_pos = 0
+  mask = [True] * len(read.seq)
+  for cigar_op, op_len in read.cigartuples:
+    if cigar_op == dc_constants.PYSAM_CINS and op_len > ins_trim:
+      # Trim to zero, so this cigar operation is removed completely.
+      mask[seq_pos:seq_pos + op_len] = [False] * op_len
+      seq_pos += op_len
+    else:
+      trimmed_cigar.append((cigar_op, op_len))
+      if cigar_op not in [dc_constants.PYSAM_CDEL]:
+        trimmed_seq += read.query_sequence[seq_pos:seq_pos + op_len]
+        seq_pos += op_len
+
+    op_start += op_len
+
+  if pw_vals:
+    if read.is_reverse:
+      new_read.set_tag('pw', np.array(pw_vals)[mask[::-1]].tolist())
+    else:
+      new_read.set_tag('pw', np.array(pw_vals)[mask].tolist())
+
+  if ip_vals:
+    if read.is_reverse:
+      new_read.set_tag('ip', np.array(ip_vals)[mask[::-1]].tolist())
+    else:
+      new_read.set_tag('ip', np.array(ip_vals)[mask].tolist())
+
+  if read.has_tag('sn'):
+    new_read.set_tag('sn', read.get_tag('sn'))
+
+  new_read.seq = trimmed_seq
+  new_read.cigartuples = trimmed_cigar
+  return new_read
+
+
 def expand_clip_indent(read: pysam.AlignedSegment,
-                       truth_range: Union[Dict[str, Any], None] = None) -> Read:
+                       truth_range: Union[Dict[str, Any], None] = None,
+                       ins_trim: int = 0) -> Read:
   """Adds PAD tokens and clips reads.
 
   For both subreads and label:
@@ -834,11 +898,16 @@ def expand_clip_indent(read: pysam.AlignedSegment,
   Args:
       read: a pysam aligned segment representing a subread, ccs, or label aln.
       truth_range: truth genome alignment coordinates. If supplied, it is
-        assumed this is the label alignment.
+                   assumed this is the label alignment.
+      ins_trim: insertions in the read are trimmed if true.
 
   Returns:
       ExpandedRead
   """
+  # Trim insertions
+  if ins_trim > 0:
+    read = trim_insertions(read, ins_trim)
+
   # Extract read and reference indices.
   aligned_pairs = read.get_aligned_pairs()
   read_idx = np.array([x[0] if x[0] is not None else -1 for x in aligned_pairs])
@@ -962,6 +1031,7 @@ def space_out_subreads(subreads: List[Read]) -> List[Read]:
 def create_proc_feeder(subreads_to_ccs: str,
                        ccs_bam: str,
                        dc_config: DcConfig,
+                       ins_trim: int = 0,
                        truth_bed: Optional[str] = None,
                        truth_to_ccs: Optional[str] = None,
                        truth_split: Optional[str] = None,
@@ -987,7 +1057,9 @@ def create_proc_feeder(subreads_to_ccs: str,
   def proc_feeder():
     for read_set in subread_grouper:
       main_counter['n_zmw_processed'] += 1
-      subreads = list(map(expand_clip_indent, read_set))
+      subreads = list(
+          map(expand_clip_indent, read_set, [None] * len(read_set),
+              [ins_trim] * len(read_set)))
       ccs_seqname = '/'.join(subreads[0].name.split('/')[:2] + ['ccs'])
       # Fetch ccs sequence and append to subread set.
       while True:

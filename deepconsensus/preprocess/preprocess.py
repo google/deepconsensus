@@ -87,6 +87,9 @@ flags.DEFINE_integer(
 flags.DEFINE_integer('bam_reader_threads', 8,
                      'Number of decompression threads to use.')
 flags.DEFINE_integer('limit', 0, 'Limit processing to n ZMWs.')
+flags.DEFINE_integer(
+    'ins_trim', 5, 'Trim insertions in subreads.'
+    'No trimming if flag is set to 0')
 
 # The following just need to match the training parameters.
 _MAX_PASSES = flags.DEFINE_integer('max_passes', 20,
@@ -241,6 +244,7 @@ def main(unused_argv) -> None:
       subreads_to_ccs=FLAGS.subreads_to_ccs,
       ccs_bam=FLAGS.ccs_bam,
       dc_config=dc_config,
+      ins_trim=FLAGS.ins_trim,
       truth_bed=FLAGS.truth_bed,
       truth_to_ccs=FLAGS.truth_to_ccs,
       truth_split=FLAGS.truth_split,

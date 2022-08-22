@@ -72,7 +72,9 @@ CIGAR_OPS = {
 }
 
 # Defining this as ints makes comparison operations faster.
+PYSAM_CMATCH = int(pysam.CMATCH)
 PYSAM_CINS = int(pysam.CINS)
+PYSAM_CDEL = int(pysam.CDEL)
 PYSAM_CSOFT_CLIP = int(pysam.CSOFT_CLIP)
 PYSAM_CHARD_CLIP = int(pysam.CHARD_CLIP)
 
