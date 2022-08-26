@@ -42,8 +42,11 @@ from deepconsensus.models import losses_and_metrics
 from deepconsensus.models import model_configs
 from deepconsensus.models import networks
 from deepconsensus.models import transformer_basic_params
-from deepconsensus.utils import dc_constants
 
+
+
+_YIELD_OVER_CSS_METRIC_NAME = 'yield_over_ccs'
+_BATCH_IDENTITY_METRIC_NAME = 'per_batch_alignment_identity'
 
 
 def get_deepconsensus_loss(
@@ -64,25 +67,26 @@ def get_deepconsensus_loss(
 
 def get_deepconsensus_metrics(name_prefix='') -> List[tf.keras.metrics.Metric]:
   """Returns the metrics to use for training and evaluation."""
-  class_to_name = {
-      base: dc_constants.VOCAB.index(base) for base in dc_constants.VOCAB
-  }
-  class_to_name['gap'] = class_to_name[dc_constants.GAP]
-  del class_to_name[dc_constants.GAP]
-  per_class_accuracy_metrics = []
-  for class_name, class_value in class_to_name.items():
-    per_class_accuracy_metrics.append(
-        losses_and_metrics.PerClassAccuracy(
-            class_value=class_value,
-            name=f'{name_prefix}per_class_accuracy_{class_name}'))
-
   return [
-      tf.keras.metrics.SparseCategoricalAccuracy(name=f'{name_prefix}accuracy'),
       losses_and_metrics.PerExampleAccuracy(
           name=f'{name_prefix}per_example_accuracy'),
-      losses_and_metrics.AlignmentMetric(
-          name=f'{name_prefix}alignment_identity')
-  ] + per_class_accuracy_metrics
+      tf.keras.metrics.Mean(name=f'{name_prefix}{_BATCH_IDENTITY_METRIC_NAME}'),
+      losses_and_metrics.YieldOverCCSMetric(
+          name=f'{name_prefix}{_YIELD_OVER_CSS_METRIC_NAME}')
+  ]
+
+
+def update_metrics(metrics: List[tf.keras.metrics.Metric], labels: tf.Tensor,
+                   predictions: tf.Tensor, identity_pred: tf.Tensor,
+                   identity_ccs: tf.Tensor) -> None:
+  """Updates metrics."""
+  for metric in metrics:
+    if _YIELD_OVER_CSS_METRIC_NAME in metric.name:
+      metric.update_state(identity_ccs, identity_pred)
+    elif _BATCH_IDENTITY_METRIC_NAME in metric.name:
+      metric.update_state(identity_pred)
+    else:
+      metric.update_state(labels, predictions)
 
 
 def get_record_shape(dataset_path: str) -> List[int]:
@@ -111,6 +115,16 @@ def get_record_shape(dataset_path: str) -> List[int]:
 def extract_example_height(dataset_sharded_path: str) -> int:
   """Gets example height based on a single entry within a dataset."""
   return get_record_shape(dataset_sharded_path)[0]
+
+
+def get_ccs_from_example(features: tf.Tensor,
+                         params: ml_collections.ConfigDict) -> tf.Tensor:
+  """Gets CCS sequence from model input features."""
+  _, _, _, _, ccs_index, _ = data_providers.get_indices(params['max_passes'])
+  # CCS tensor with shape [batch_size, 1, max_length, 1].
+  ccs = tf.gather(features, tf.range(*ccs_index), axis=1)
+  # Return CCS tensor with shape [batch_size, max_length].
+  return tf.squeeze(ccs, axis=[1, -1])
 
 
 def get_model(params: ml_collections.ConfigDict) -> tf.keras.Model:

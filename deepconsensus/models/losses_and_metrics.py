@@ -1011,6 +1011,103 @@ class AlignmentMetric(tf.keras.metrics.Metric):
     self._pid.reset_states()
 
 
+def get_batch_identity_ccs_pred(
+    ccs: tf.Tensor, y_pred: tf.Tensor, y_true: tf.Tensor,
+    alignment_metric: AlignmentMetric) -> Tuple[tf.Tensor, tf.Tensor]:
+  """Calculate identity for CCS and sequence predicted by DeepConsensus.
+
+  Args:
+    ccs: A tf.Tensor of size [batch, max_length] representing CCS sequence.
+    y_pred: A tf.Tensor of size [batch, max_length, vocab_size] representing the
+      predicted tokens.
+    y_true: A tf.Tensor of size [batch, max_length] representing the true
+      sequence.
+    alignment_metric: AlignmentMetric object for computing alignment to the true
+      sequence for identity calculation.
+
+  Returns:
+    A tuple (identity_ccs, identity_pred) such that
+      + identity_ccs is a tf.Tensor of size [] that contains proportion
+          identity (between 0 and 1) for the CCS sequence over the batch.
+      + identity_pred is a tf.Tensor of size [] that contains proportion
+          identity (between 0 and 1) of predicted sequence over batch.
+  """
+  # Calculate identity for the predicted sequence.
+  _, _, metric_values_pred = alignment_metric.alignment(y_true, y_pred)
+  identity_pred = per_batch_identity(metric_values_pred)
+
+  # Calculate identity for CCS sequence.
+  ccs = tf.cast(ccs, tf.int32)
+  # Convert CCS to one-hot to match the shape of expected alignment inputs.
+  ccs_one_hot = tf.one_hot(
+      ccs, depth=len(dc_constants.VOCAB), dtype=dc_constants.TF_DATA_TYPE)
+
+  _, _, metric_values_ccs = alignment_metric.alignment(y_true, ccs_one_hot)
+  identity_ccs = per_batch_identity(metric_values_ccs)
+  return identity_ccs, identity_pred
+
+
+def per_batch_identity(metric_values: Mapping[str, tf.Tensor]) -> tf.Tensor:
+  """Calculates identity over the whole batch given metrics."""
+  tot_alignment_length = tf.reduce_sum(metric_values['alignment_length'])
+  unsafe_pid = tf.reduce_sum(
+      metric_values['num_correct_matches']) / tot_alignment_length
+  # PID is defined as 1.0 in the particular case in which all the ground-truth
+  # and all predicted sequences are "empty", i.e., consist only of gap tokens.
+  if tf.equal(tot_alignment_length, 0):
+    return tf.convert_to_tensor(1.0, dtype=tf.float32)
+  return tf.cast(unsafe_pid, dtype=tf.float32)
+
+
+class YieldOverCCSMetric(tf.keras.metrics.Metric):
+  """Computes yield over ccs metric for a given quality threshold.
+
+  Attributes:
+    quality_threshold: a float value for thersholding DC and CCS identity.
+    yield_dc: DeepConsensus yield (number of batches that have identity >=
+      quality threshold).
+    yield_ccs: CCS yield.
+  """
+
+  def __init__(self,
+               quality_threshold: float = 0.997,
+               name: str = 'yield_over_ccs',
+               **kwargs):
+    super(YieldOverCCSMetric, self).__init__(name=name, **kwargs)
+    self.quality_threshold = quality_threshold
+    self.yield_dc = self.add_weight(
+        name='yield_dc', shape=[], initializer='zeros')
+    self.yield_ccs = self.add_weight(
+        name='yield_ccs', shape=[], initializer='zeros')
+
+  def update_state(self, identity_ccs: tf.Tensor,
+                   identity_pred: tf.Tensor) -> None:
+    """Updates DeepConsensus and CCS yield based on provided identities.
+
+    Args:
+      identity_ccs: A tf.Tensor of size [] that contains proportion identity
+        (between 0 and 1) for the CCS sequence over the batch.
+      identity_pred: A tf.Tensor of size [] that contains proportion identity
+        (between 0 and 1) of predicted sequence over batch.
+    """
+    yield_dc = tf.cast(
+        identity_pred >= self.quality_threshold, dtype=tf.float32)
+    yield_ccs = tf.cast(
+        identity_ccs >= self.quality_threshold, dtype=tf.float32)
+    self.yield_dc.assign_add(yield_dc)
+    self.yield_ccs.assign_add(yield_ccs)
+
+  def result(self) -> tf.Tensor:
+    """Calculates yield of DeepConsensus over CCS using accumulated yields."""
+    # Avoid division by 0.
+    return tf.math.divide_no_nan(self.yield_dc, self.yield_ccs)
+
+  def reset_state(self) -> None:
+    """Resets DeepConsensus and CCS yield back to 0."""
+    self.yield_dc.assign(0.0)
+    self.yield_ccs.assign(0.0)
+
+
 class DistillationLoss(tf.keras.losses.Loss):
   """Computes the distillation loss between the student and teacher logits.
 

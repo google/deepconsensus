@@ -54,6 +54,7 @@ from ml_collections.config_flags import config_flags
 import tensorflow as tf
 
 from deepconsensus.models import convert_to_saved_model
+from deepconsensus.models import losses_and_metrics
 from deepconsensus.models import model_utils
 from deepconsensus.utils import dc_constants
 
@@ -103,6 +104,9 @@ def train_model(out_dir: str, params: ml_collections.ConfigDict,
     train_metrics = model_utils.get_deepconsensus_metrics(name_prefix='train/')
     eval_loss = tf.keras.metrics.Mean(name='eval/loss')
     eval_metrics = model_utils.get_deepconsensus_metrics(name_prefix='eval/')
+    # Create an alignment metric object that will be used in yield calculation.
+    alignment_metric_yield_obj = losses_and_metrics.AlignmentMetric(
+        name='alignment_metric_yield')
     loss_object = model_utils.get_deepconsensus_loss(
         params, reduction=tf.keras.losses.Reduction.NONE)
 
@@ -130,8 +134,15 @@ def train_model(out_dir: str, params: ml_collections.ConfigDict,
     grads = tape.gradient(loss, model.trainable_variables)
     optimizer.apply_gradients(zip(grads, model.trainable_variables))
     train_loss.update_state(loss)
-    for metric in train_metrics:
-      metric.update_state(labels, predictions)
+
+    # Calculate identity for CCS and the DC prediction.
+    ccs = model_utils.get_ccs_from_example(features, params)
+    (identity_ccs,
+     identity_pred) = losses_and_metrics.get_batch_identity_ccs_pred(
+         ccs, predictions, labels, alignment_metric_yield_obj)
+    # Update metrics.
+    model_utils.update_metrics(train_metrics, labels, predictions,
+                               identity_pred, identity_ccs)
     return loss
 
   def eval_step(inputs):
@@ -140,8 +151,15 @@ def train_model(out_dir: str, params: ml_collections.ConfigDict,
     predictions = model(features)
     loss = compute_loss(labels, predictions)
     eval_loss.update_state(loss)
-    for metric in eval_metrics:
-      metric.update_state(labels, predictions)
+
+    # Calculate identity for CCS and the DC prediction.
+    ccs = model_utils.get_ccs_from_example(features, params)
+    (identity_ccs,
+     identity_pred) = losses_and_metrics.get_batch_identity_ccs_pred(
+         ccs, predictions, labels, alignment_metric_yield_obj)
+    # Update metrics.
+    model_utils.update_metrics(eval_metrics, labels, predictions, identity_pred,
+                               identity_ccs)
     return loss
 
   @tf.function

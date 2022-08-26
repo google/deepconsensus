@@ -27,7 +27,7 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """Tests for losses_and_metrics."""
 
-from typing import Sequence, Tuple
+from typing import Sequence, Tuple, List
 from absl.testing import absltest
 from absl.testing import parameterized
 import numpy as np
@@ -542,6 +542,136 @@ class AlignmentMetricTest(parameterized.TestCase):
     pid = alignment_metric_obj.alignment(y_true, y_pred_scores)[2]['pid']
     for i, _ in enumerate(sequences):
       self.assertAlmostEqual(float(pid[i]), expected_pid[i], places=2)
+
+
+class AlignmentIdentityBatchMetricTest(parameterized.TestCase):
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='Identical sequences.',
+          pred_seqs=['TTAGGC', 'AGCTGG'],
+          ccs_seqs=['TTAGGC', 'AGCTGG'],
+          label_seqs=['TTAGGC', 'AGCTGG'],
+          alignment_metric_obj=losses_and_metrics.AlignmentMetric(),
+          expected_pid_pred=1.0,
+          expected_pid_ccs=1.0),
+      dict(
+          testcase_name='3 mismatches in CCS, 6 in DC over multiple examples.',
+          pred_seqs=['CCCCCC', 'TGCTGG'],
+          ccs_seqs=['CCAGGC', 'TGCTGG'],
+          label_seqs=['TTAGGC', 'AGCTGG'],
+          alignment_metric_obj=losses_and_metrics.AlignmentMetric(),
+          expected_pid_pred=0.5,
+          expected_pid_ccs=0.75),
+      dict(
+          testcase_name='Empty CCS, DC, and label.',
+          pred_seqs=['     ', '     '],
+          ccs_seqs=['     ', '     '],
+          label_seqs=['     ', '     '],
+          alignment_metric_obj=losses_and_metrics.AlignmentMetric(),
+          expected_pid_pred=1.0,
+          expected_pid_ccs=1.0),  # Expected PID defined as special case.
+  )
+  def test_get_batch_identity_ccs_pred(
+      self, pred_seqs: Sequence[str], ccs_seqs: Sequence[str],
+      label_seqs: Sequence[str],
+      alignment_metric_obj: losses_and_metrics.AlignmentMetric,
+      expected_pid_pred: float, expected_pid_ccs: float):
+    """Checks per batch identity for DeepConsensus and CCS."""
+
+    sequences = tuple((label_seqs, pred_seqs))
+    labels, predictions = test_utils.convert_seqs(sequences)
+    ccs = test_utils.multiseq_to_array(ccs_seqs).astype(
+        dc_constants.NP_DATA_TYPE)
+
+    # Calculate identity per batch for CCS and DC.
+    (identity_ccs,
+     identity_pred) = losses_and_metrics.get_batch_identity_ccs_pred(
+         ccs, predictions, labels, alignment_metric_obj)
+    self.assertAlmostEqual(identity_pred.numpy(), expected_pid_pred, places=2)
+    self.assertAlmostEqual(identity_ccs.numpy(), expected_pid_ccs, places=2)
+
+
+class YieldOverCCSMetricTest(parameterized.TestCase):
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='CCS and DC have the same yield.',
+          quality_threshold=0.99,
+          identities_dc=[1.0, 1.0],
+          identities_ccs=[1.0, 1.0],
+          exp_yields_dc=[1.0, 2.0],
+          exp_yields_ccs=[1.0, 2.0],
+          exp_yields_over_ccs=[1.0, 1.0]),
+      dict(
+          testcase_name='DC yield < CCS yield.',
+          quality_threshold=0.99,
+          identities_dc=[0.9, 1.0],
+          identities_ccs=[1.0, 1.0],
+          exp_yields_dc=[0.0, 1.0],
+          exp_yields_ccs=[1.0, 2.0],
+          exp_yields_over_ccs=[0.0, 0.5]),
+      dict(
+          testcase_name='DC yield > CCS yield.',
+          quality_threshold=0.99,
+          identities_dc=[1.0, 1.0],
+          identities_ccs=[0.9, 1.0],
+          exp_yields_dc=[1.0, 2.0],
+          exp_yields_ccs=[0.0, 1.0],
+          exp_yields_over_ccs=[0.0, 2.0]),
+      dict(
+          testcase_name='DC yield >= CCS yield, low CCS identity in 2nd batch.',
+          quality_threshold=0.99,
+          identities_dc=[1.0, 1.0],
+          identities_ccs=[1.0, 0.9],
+          exp_yields_dc=[1.0, 2.0],
+          exp_yields_ccs=[1.0, 1.0],
+          exp_yields_over_ccs=[1.0, 2.0]),
+      dict(
+          testcase_name='Lower identity quality threshold.',
+          quality_threshold=0.9,
+          identities_dc=[0.9, 1.0],
+          identities_ccs=[1.0, 1.0],
+          exp_yields_dc=[1.0, 2.0],
+          exp_yields_ccs=[1.0, 2.0],
+          exp_yields_over_ccs=[1.0, 1.0]),
+  )
+  def test_yield_over_ccs_metric_multiple_updates(
+      self, quality_threshold: float, identities_dc: List[Sequence[str]],
+      identities_ccs: List[Sequence[str]], exp_yields_dc: List[float],
+      exp_yields_ccs: List[float], exp_yields_over_ccs: List[float]):
+    """Checks that yield over ccs metrics and attributes match expected values.
+
+    Since during trainig metric values are continually updated, this function
+    checks the expected values over multiple updates (after seeing a new batch).
+
+    Args:
+      quality_threshold: a float value for thersholding DC and CCS identities.
+      identities_dc: List of DC identities for each batch.
+      identities_ccs: List of CCS identities for each batch.
+      exp_yields_dc: Expected cumulative (over batches) yield for DeepConsensus
+        sequences after each update.
+      exp_yields_ccs: Expected cumulative (over batches) yield for CCS sequences
+        after each update.
+      exp_yields_over_ccs: Expected yield over CCS for each metric update.
+    """
+    yield_over_ccs_obj = losses_and_metrics.YieldOverCCSMetric(
+        quality_threshold=quality_threshold, name='yield_over_ccs_metric')
+
+    for (identity_ccs, identity_pred, exp_yield_dc, exp_yield_ccs,
+         exp_yield_over_ccs) in zip(identities_ccs, identities_dc,
+                                    exp_yields_dc, exp_yields_ccs,
+                                    exp_yields_over_ccs):
+
+      # Update metric.
+      yield_over_ccs_obj.update_state(identity_ccs, identity_pred)
+      # Test accumulated CCS and DC yield.
+      self.assertAlmostEqual(yield_over_ccs_obj.yield_ccs.numpy(),
+                             exp_yield_ccs)
+      self.assertAlmostEqual(yield_over_ccs_obj.yield_dc.numpy(), exp_yield_dc)
+      # Test accumulated yield of DC over CCS.
+      self.assertAlmostEqual(yield_over_ccs_obj.result().numpy(),
+                             exp_yield_over_ccs)
 
 
 def softmax(x):

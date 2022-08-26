@@ -50,6 +50,7 @@ from ml_collections.config_flags import config_flags
 import tensorflow as tf
 
 from deepconsensus.models import data_providers
+from deepconsensus.models import losses_and_metrics
 from deepconsensus.models import model_utils
 
 FLAGS = flags.FLAGS
@@ -93,10 +94,12 @@ def run_inference(out_dir: str, params: ml_collections.ConfigDict,
     # wrong checkpoint is used. Some context here: b/148023980
     checkpoint.restore(checkpoint_path).assert_existing_objects_matched()
 
+    # Only metrics that are updated based on y and y_pred can be used.
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=params.learning_rate),
         loss=model_utils.get_deepconsensus_loss(params),
-        metrics=model_utils.get_deepconsensus_metrics())
+        metrics=losses_and_metrics.PerExampleAccuracy(
+            name='eval/per_example_accuracy'))
 
     model_utils.run_inference_and_write_results(
         model=model, out_dir=out_dir, params=params, limit=limit)
