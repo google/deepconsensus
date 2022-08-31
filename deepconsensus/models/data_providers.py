@@ -28,7 +28,7 @@
 """Functions for yielding input arrays for models."""
 
 import itertools
-from typing import Dict, Iterable, List, Optional, Tuple, Union
+from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union
 
 import ml_collections
 from ml_collections.config_dict import config_dict
@@ -303,14 +303,20 @@ def create_glob_list(paths: Union[str, List[str]]) -> List[str]:
   return list(itertools.chain(*file_patterns))
 
 
-def create_input_fn(params, mode, limit: int = -1, drop_remainder: bool = True):
+def create_input_fn(
+    params: Union[config_dict.ConfigDict, config_dict.FrozenConfigDict],
+    mode: str,
+    limit: int = -1,
+    drop_remainder: bool = True) -> Callable[..., tf.data.Dataset]:
   """Returns an input function that will return a tfrecord based dataset."""
 
-  def _process_input_helper(proto_string: tf.Tensor) -> Dict[str, tf.Tensor]:
+  def _process_input_helper(
+      proto_string: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
     # Set inference to False here because we only use this function with
     # tf.Examples that have labels present.
-    return process_input(
+    tf_example = process_input(
         proto_string=proto_string, params=params, inference=False)
+    return tf_example_to_training_tuple(tf_example)
 
   def input_fn() -> tf.data.Dataset:
     """Prepares a dataset for training or evaluation."""
@@ -318,15 +324,12 @@ def create_input_fn(params, mode, limit: int = -1, drop_remainder: bool = True):
     batch_size = params.batch_size
     assert mode in ['train', 'eval']
     file_patterns = create_glob_list(params[f'{mode}_path'])
-    ds = tf.data.Dataset.list_files(file_patterns, shuffle=is_training)
-    ds = ds.repeat()
+    ds = tf.data.Dataset.list_files(file_patterns)
     ds = ds.interleave(
         lambda x: tf.data.TFRecordDataset(x, compression_type='GZIP'),
         num_parallel_calls=tf.data.AUTOTUNE,
         deterministic=False)
 
-    # Best practices suggest batching first, but this map errors out when we
-    # batch first, so do this before mapping.
     ds = ds.map(
         _process_input_helper,
         num_parallel_calls=tf.data.experimental.AUTOTUNE,
@@ -336,12 +339,8 @@ def create_input_fn(params, mode, limit: int = -1, drop_remainder: bool = True):
       ds = ds.shuffle(
           buffer_size=params['buffer_size'], reshuffle_each_iteration=True)
 
-    # Best practices suggest batching before mapping.
     ds = ds.batch(batch_size, drop_remainder=drop_remainder)
-    ds = ds.map(
-        tf_example_to_training_tuple,
-        num_parallel_calls=tf.data.AUTOTUNE,
-        deterministic=False)
+    ds = ds.repeat()
     ds = ds.prefetch(tf.data.experimental.AUTOTUNE)
     ds = ds.take(limit)
     return ds

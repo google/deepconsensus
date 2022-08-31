@@ -66,7 +66,7 @@ def _set_base_fc_hparams(params):
   params.batch_size = 256
   params.num_epochs = 15
   params.learning_rate = 0.004
-  params.buffer_size = 1000
+  params.buffer_size = 1_000_000
 
 
 def _set_base_transformer_hparams(params):
@@ -99,7 +99,7 @@ def _set_base_transformer_hparams(params):
   params.batch_size = 256
   params.num_epochs = 4
   params.learning_rate = 1e-4
-  params.buffer_size = 1000
+  params.buffer_size = 1_000_000
 
 
 def _set_transformer_learned_embeddings_hparams(params):
