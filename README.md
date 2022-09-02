@@ -55,7 +55,8 @@ contiguity and accuracy. See the
 
 If you are using DeepConsensus in your work, please cite:
 
-[DeepConsensus: Gap-Aware Sequence Transformers for Sequence Correction](https://www.biorxiv.org/content/10.1101/2021.08.31.458403v1)
+[DeepConsensus improves the accuracy of sequences with a gap-aware sequence
+transformer](https://www.nature.com/articles/s41587-022-01435-7)
 
 ## How DeepConsensus works
 
