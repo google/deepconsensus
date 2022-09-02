@@ -110,6 +110,9 @@ flags.DEFINE_integer(
     'Average CCS Base Quality used to skip individual windows from being '
     'processed by the neural network. This can help speed up DeepConsensus. '
     'Use 0 for no skipping.')
+flags.DEFINE_integer(
+    'ins_trim', 5, 'Trim insertions in subreads.'
+    'No trimming if flag is set to 0')
 
 # The following parameters are for debugging.
 flags.DEFINE_integer('limit', None, 'Only process this many ZMWs. ')
@@ -415,7 +418,10 @@ def stream_bam(
   # Temporarily disable unused-variable.
   # pylint: disable=unused-variable
   proc_feeder, main_counter = pre_lib.create_proc_feeder(
-      subreads_to_ccs=subreads_to_ccs, ccs_bam=ccs_bam, dc_config=dc_config)
+      subreads_to_ccs=subreads_to_ccs,
+      ccs_bam=ccs_bam,
+      dc_config=dc_config,
+      ins_trim=FLAGS.ins_trim)
   # pylint: enable=unused_variable
 
   for input_data in proc_feeder():
