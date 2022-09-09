@@ -282,6 +282,9 @@ class Read(abc.Sequence):
         truth_range=self.truth_range)
 
   def pad(self, pad_width):
+    # Skip padding when not necessary.
+    if len(self) == pad_width:
+      return self
     return Read(
         name=self.name,
         bases=right_pad(self.bases, pad_width, dc_constants.GAP),
