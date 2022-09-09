@@ -88,7 +88,8 @@ flags.DEFINE_integer('bam_reader_threads', 8,
                      'Number of decompression threads to use.')
 flags.DEFINE_integer('limit', 0, 'Limit processing to n ZMWs.')
 flags.DEFINE_integer(
-    'ins_trim', 5, 'Trim insertions in subreads.'
+    'ins_trim', 5,
+    'Trim insertions greater than ins_trim bp in subreads to 0bp.'
     'No trimming if flag is set to 0')
 
 # The following just need to match the training parameters.
@@ -299,7 +300,7 @@ def main(unused_argv) -> None:
     summary.update(dc_config.to_dict())
     flag_list = [
         'subreads_to_ccs', 'ccs_bam', 'truth_to_ccs', 'truth_bed',
-        'truth_split', 'max_passes', 'example_width', 'padding'
+        'truth_split', 'max_passes', 'example_width', 'padding', 'ins_trim'
     ]
     for flag in flag_list:
       # Encode these as strings to ensure aggregation does not add values.
