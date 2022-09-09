@@ -381,15 +381,20 @@ def get_step_counts(params: ml_collections.ConfigDict,
 
 def get_checkpoint_and_initial_epoch(
     model: tf.keras.models.Model, optimizer: tf.keras.optimizers.Optimizer,
-    out_dir: str, steps_per_epoch: int) -> Tuple[tf.train.Checkpoint, int]:
+    epoch_checkpoint: str) -> Tuple[tf.train.Checkpoint, int]:
   """Loads a checkpoint if available and sets epoch to start training."""
-  checkpoint = tf.train.Checkpoint(model=model, optimizer=optimizer)
-  latest_checkpoint = tf.train.latest_checkpoint(out_dir)
   initial_epoch = 0
-  if latest_checkpoint:
-    checkpoint.restore(latest_checkpoint)
-    logging.info('Loaded checkpoint %s', latest_checkpoint)
-    initial_epoch = optimizer.iterations.numpy() // steps_per_epoch
+  checkpoint = tf.train.Checkpoint(model=model, optimizer=optimizer)
+  if tf.io.gfile.exists(epoch_checkpoint):
+    with tf.io.gfile.GFile(epoch_checkpoint, 'r') as f:
+      epoch_checkpoint, initial_epoch = f.readline().split('\t')
+      initial_epoch = int(initial_epoch)
+      checkpoint.restore(epoch_checkpoint)
+      logging.info('Loading checkpoint %s for epoch %s', epoch_checkpoint,
+                   initial_epoch)
+  else:
+    logging.info('No Epoch checkpoint. Starting from epoch %s', initial_epoch)
+    initial_epoch = 0
   return checkpoint, initial_epoch
 
 
@@ -399,7 +404,8 @@ def reset_all_metrics(metrics: List[tf.keras.metrics.Metric]) -> None:
     metric.reset_states()
 
 
-def log_and_save_metrics(epoch: int, step: int, total_steps: int,
+def log_and_save_metrics(epoch: int, num_epochs: int, step: int,
+                         total_steps: int,
                          optimizer: tf.keras.optimizers.Optimizer,
                          metrics: List[tf.keras.metrics.Metric], training: bool,
                          steps_per_second: float) -> None:
@@ -408,8 +414,16 @@ def log_and_save_metrics(epoch: int, step: int, total_steps: int,
       'epoch: %d  step: %d of %d metrics: %s', epoch, step, total_steps,
       ' '.join(f'{metric.name}= {metric.result()}' for metric in metrics))
 
+  overall_progress = optimizer.iterations.numpy() / (total_steps * num_epochs)
+
+
   if training:
     tf.summary.scalar('learning_rate', optimizer.lr, step=optimizer.iterations)
+    tf.summary.scalar('progress/epoch', epoch, step=optimizer.iterations)
+    tf.summary.scalar(
+        'progress/overall_progress',
+        overall_progress,
+        step=optimizer.iterations)
   for metric in metrics:
     tf.summary.scalar(metric.name, metric.result(), step=optimizer.iterations)
     metric.reset_states()

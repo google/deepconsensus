@@ -67,13 +67,20 @@ class ModelTrainTest(parameterized.TestCase):
     eval_event_file = glob.glob(os.path.join(out_dir, 'eval/*event*'))
     self.assertLen(train_event_file, 1)
     self.assertLen(eval_event_file, 1)
-    checkpoint_files = glob.glob(os.path.join(out_dir, 'checkpoint*'))
-    # +2 here for checkpoint and checkpoint_metrics.tsv
-    self.assertLen(checkpoint_files, params.num_epochs * 2 + 2)
+    checkpoint_metrics = glob.glob(
+        os.path.join(out_dir, 'checkpoint_metrics.tsv'))
+    self.assertLen(checkpoint_metrics, 1)
+    checkpoint_files = glob.glob(os.path.join(out_dir, 'checkpoint*index'))
+    self.assertNotEmpty(checkpoint_files)
+    checkpoint_metrics = glob.glob(
+        os.path.join(out_dir, 'checkpoint_metrics.tsv'))
+    self.assertNotEmpty(checkpoint_metrics)
     json_params = glob.glob(os.path.join(out_dir, 'params.json'))
-    self.assertLen(json_params, 1)
+    self.assertNotEmpty(json_params)
     best_checkpoint = glob.glob(os.path.join(out_dir, 'best_checkpoint.txt'))
-    self.assertLen(best_checkpoint, 1)
+    self.assertNotEmpty(best_checkpoint)
+    epoch_checkpoint = glob.glob(os.path.join(out_dir, 'epoch_checkpoint.txt'))
+    self.assertNotEmpty(epoch_checkpoint)
 
 
 if __name__ == '__main__':

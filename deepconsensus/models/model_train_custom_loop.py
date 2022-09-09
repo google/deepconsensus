@@ -99,6 +99,7 @@ def train_model(out_dir: str, params: ml_collections.ConfigDict,
     else:
       model = model_utils.get_model(params)
     logging.info('Done building model.')
+    epoch_checkpoint = os.path.join(out_dir, 'epoch_checkpoint.txt')
     optimizer = tf.keras.optimizers.Adam(learning_rate=params.learning_rate)
     train_loss = tf.keras.metrics.Mean(name='train/loss')
     train_metrics = model_utils.get_deepconsensus_metrics(name_prefix='train/')
@@ -119,7 +120,7 @@ def train_model(out_dir: str, params: ml_collections.ConfigDict,
 
     # model, optimizer, and checkpoint must be created under `strategy.scope`.
     checkpoint, initial_epoch = model_utils.get_checkpoint_and_initial_epoch(
-        model, optimizer, out_dir, steps_per_epoch)  # pytype: disable=wrong-arg-types  # typed-keras
+        model, optimizer, epoch_checkpoint)  # pytype: disable=wrong-arg-types  # typed-keras
 
   # Create summary writers
   train_writer = tf.summary.create_file_writer(os.path.join(out_dir, 'train'))
@@ -206,6 +207,7 @@ def train_model(out_dir: str, params: ml_collections.ConfigDict,
         with train_writer.as_default():
           model_utils.log_and_save_metrics(
               epoch=epoch,
+              num_epochs=params['num_epochs'],
               step=step_train,
               total_steps=steps_per_epoch,
               optimizer=optimizer,
@@ -240,6 +242,7 @@ def train_model(out_dir: str, params: ml_collections.ConfigDict,
         with eval_writer.as_default():
           model_utils.log_and_save_metrics(
               epoch=epoch,
+              num_epochs=params['num_epochs'],
               step=step_eval,
               total_steps=steps_per_eval,
               optimizer=optimizer,
@@ -248,6 +251,16 @@ def train_model(out_dir: str, params: ml_collections.ConfigDict,
               steps_per_second=eval_steps_per_second)
         # Reset timer
         train_time_start = datetime.datetime.now()
+    # At the end of an epoch, create a savepoint checkpoint
+    # which will be used to resume training in the event of preemption or
+    # crashes. Intermediate checkpoints can still be used to
+    # select the best checkpoint.
+    epoch_checkpoint_name = model_utils.save_checkpoint(
+        checkpoint, out_dir, [eval_loss] + eval_metrics,
+        write_checkpoint_metrics)
+    with tf.io.gfile.GFile(epoch_checkpoint, 'w') as f:
+      logging.info('Epoch checkpoint: %s %s', epoch_checkpoint_name, epoch + 1)
+      f.write(f'{epoch_checkpoint_name}\t{epoch}')
 
 
 def train(out_dir: str,
