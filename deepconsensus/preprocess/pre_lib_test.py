@@ -535,6 +535,9 @@ class TestCcsRead(absltest.TestCase):
     self.assertEqual(seq_name, read.name)
     self.assertGreater(read.avg_base_quality_score, 0)
     self.assertTrue((read.base_quality_scores > 0).any())
+    self.assertIsNotNone(read.ec)
+    self.assertIsNotNone(read.np_num_passes)
+    self.assertIsNotNone(read.rq)
 
 
 class TestFetchLabelBases(parameterized.TestCase):

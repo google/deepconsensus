@@ -118,6 +118,12 @@ class Read(abc.Sequence):
   ip: np.ndarray
   sn: np.ndarray
   strand: dc_constants.Strand
+
+  # aux tags; from ccs read only.
+  ec: Optional[float] = None  # effective coverage
+  np_num_passes: Optional[int] = None
+  rq: Optional[float] = None  # predicted concordance
+
   # base_quality_scores are only used for the ccs read.
   base_quality_scores: np.ndarray = np.empty(0, dtype=np.uint8)
   ccs_idx: np.ndarray = np.empty(0, dtype=np.int)
@@ -278,6 +284,9 @@ class Read(abc.Sequence):
         sn=self.sn,
         strand=self.strand,
         base_quality_scores=self.base_quality_scores[ccs_slice],
+        ec=self.ec,
+        np_num_passes=self.np_num_passes,
+        rq=self.rq,
         ccs_idx=self.ccs_idx[ccs_slice],
         truth_idx=self.truth_idx[ccs_slice],
         truth_range=self.truth_range)
@@ -295,6 +304,9 @@ class Read(abc.Sequence):
         sn=self.sn,
         strand=self.strand,
         base_quality_scores=right_pad(self.base_quality_scores, pad_width, -1),
+        ec=self.ec,
+        np_num_passes=self.np_num_passes,
+        rq=self.rq,
         ccs_idx=right_pad(self.ccs_idx, pad_width, -1),
         truth_idx=right_pad(self.truth_idx, pad_width, -1),
         truth_range=self.truth_range)
@@ -318,6 +330,9 @@ class Read(abc.Sequence):
         sn=self.sn,
         strand=self.strand,
         base_quality_scores=base_quality_scores,
+        ec=self.ec,
+        np_num_passes=self.np_num_passes,
+        rq=self.rq,
         ccs_idx=self.ccs_idx[keep],
         truth_idx=self.truth_idx[keep],
         truth_range=self.truth_range).pad(pad_width)
@@ -339,6 +354,9 @@ class Read(abc.Sequence):
         sn=self.sn,
         strand=self.strand,
         base_quality_scores=self.base_quality_scores[r_slice],
+        ec=self.ec,
+        np_num_passes=self.np_num_passes,
+        rq=self.rq,
         ccs_idx=self.ccs_idx[r_slice],
         truth_idx=self.truth_idx[r_slice])
 
@@ -595,7 +613,11 @@ class DcExample:
         'subreads/num_passes': self.keep_subreads,
         'name': self.name,
         'window_pos': self.ccs.ccs_bounds.start,
-        'ccs_base_quality_scores': self.ccs.base_quality_scores
+        'ccs_base_quality_scores': self.ccs.base_quality_scores,
+        # CCS read aux tags.
+        'ec': self.ccs.ec,
+        'np_num_passes': self.ccs.np_num_passes,
+        'rq': self.ccs.rq
     }
     return features
 
@@ -769,6 +791,18 @@ def construct_ccs_read(
     ccs_bam_read: pysam.libcalignedsegment.AlignedSegment) -> Read:
   """Constructs a Read with quality scores using a ccs bam read."""
   ccs_seq = np.array(ccs_bam_read.seq, 'c')
+
+  def get_tag(read: pysam.AlignedSegment, tag_name: str) -> Any:
+    try:
+      return read.get_tag(tag_name)
+    except KeyError:
+      return None
+
+  # Get aux variables from CCS read.
+  ec = get_tag(ccs_bam_read, 'ec')
+  np_num_passes = get_tag(ccs_bam_read, 'np')
+  rq = get_tag(ccs_bam_read, 'rq')
+
   return Read(
       name=ccs_bam_read.qname,
       bases=ccs_seq,
@@ -776,6 +810,9 @@ def construct_ccs_read(
       pw=np.repeat(np.uint8(0), len(ccs_seq)),
       ip=np.repeat(np.uint8(0), len(ccs_seq)),
       sn=np.repeat(0, 4),
+      ec=ec,
+      np_num_passes=np_num_passes,
+      rq=rq,
       strand=dc_constants.Strand.UNKNOWN,
       base_quality_scores=np.array(ccs_bam_read.query_qualities),
       ccs_idx=np.arange(len(ccs_seq)))
