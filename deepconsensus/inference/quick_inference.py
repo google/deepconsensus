@@ -342,8 +342,6 @@ def run_model_on_examples(
       softmax_output = model.predict(rows)
 
     softmax_output = softmax_output.numpy()
-    window_pos_arr = np.array(window_pos_arr)
-    molecule_name_arr = np.array(molecule_name_arr)
     y_preds = np.argmax(softmax_output, -1)
     error_prob = 1 - np.max(softmax_output, axis=-1)
     quality_scores = -10 * np.log10(error_prob)
