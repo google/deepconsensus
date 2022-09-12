@@ -30,6 +30,7 @@
 import collections
 from collections import abc
 import dataclasses
+import functools
 import itertools
 from typing import Any, Counter, Dict, List, Optional, Union
 
@@ -823,8 +824,10 @@ def read_truth_split(split_fname: str) -> Dict[str, str]:
   return contig_split
 
 
-def trim_insertions(read: pysam.AlignedSegment,
-                    ins_trim: int) -> pysam.AlignedSegment:
+def trim_insertions(
+    read: pysam.AlignedSegment,
+    ins_trim: int,
+    counter: Optional[Counter[str]] = None) -> pysam.AlignedSegment:
   """Remove insertions larger than max length.
 
   This operation effectively
@@ -833,6 +836,7 @@ def trim_insertions(read: pysam.AlignedSegment,
   Args:
     read: pysam.AlignedSegment subread aligned to the ccs.
     ins_trim: int maximum length of insertions.
+    counter: A counter object used to track information about processing data.
 
   Returns:
     pysam.AlignedSegment. Modified pysam.AlignedSegment subread.
@@ -858,12 +862,17 @@ def trim_insertions(read: pysam.AlignedSegment,
       # Trim to zero, so this cigar operation is removed completely.
       mask[seq_pos:seq_pos + op_len] = [False] * op_len
       seq_pos += op_len
+      if counter is not None:
+        counter['zmw_trimmed_insertions'] += 1
+        counter['zmw_trimmed_insertions_bp'] += op_len
     else:
       trimmed_cigar.append((cigar_op, op_len))
       if cigar_op not in [dc_constants.PYSAM_CDEL]:
         trimmed_seq += read.query_sequence[seq_pos:seq_pos + op_len]
         seq_pos += op_len
 
+    if counter is not None:
+      counter['zmw_total_bp'] += op_len
     op_start += op_len
 
   if pw_vals:
@@ -888,7 +897,8 @@ def trim_insertions(read: pysam.AlignedSegment,
 
 def expand_clip_indent(read: pysam.AlignedSegment,
                        truth_range: Union[Dict[str, Any], None] = None,
-                       ins_trim: int = 0) -> Read:
+                       ins_trim: int = 0,
+                       counter: Optional[Counter[str]] = None) -> Read:
   """Adds PAD tokens and clips reads.
 
   For both subreads and label:
@@ -903,13 +913,14 @@ def expand_clip_indent(read: pysam.AlignedSegment,
       truth_range: truth genome alignment coordinates. If supplied, it is
                    assumed this is the label alignment.
       ins_trim: insertions in the read are trimmed if true.
+      counter: A counter object for tracking processing metrics.
 
   Returns:
       ExpandedRead
   """
   # Trim insertions
   if ins_trim > 0:
-    read = trim_insertions(read, ins_trim)
+    read = trim_insertions(read, ins_trim, counter)
 
   # Extract read and reference indices.
   aligned_pairs = read.get_aligned_pairs()
@@ -1060,9 +1071,12 @@ def create_proc_feeder(subreads_to_ccs: str,
   def proc_feeder():
     for read_set in subread_grouper:
       main_counter['n_zmw_processed'] += 1
-      subreads = list(
-          map(expand_clip_indent, read_set, [None] * len(read_set),
-              [ins_trim] * len(read_set)))
+      expand_clip_indent_count = functools.partial(
+          expand_clip_indent,
+          truth_range=None,
+          ins_trim=ins_trim,
+          counter=main_counter)
+      subreads = list(map(expand_clip_indent_count, read_set))
       ccs_seqname = '/'.join(subreads[0].name.split('/')[:2] + ['ccs'])
       # Fetch ccs sequence and append to subread set.
       while True:

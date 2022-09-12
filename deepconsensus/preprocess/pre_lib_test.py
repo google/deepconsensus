@@ -424,8 +424,9 @@ class TestTrimInsertions(parameterized.TestCase):
           expected_ip=[1, 2, 3, 4, 11, 12, 13, 14],
           # pw=10 is trimmed
           expected_pw=[1, 2, 3, 4, 11, 12, 13, 14],
-          expected_strand=False  # is_reversed
-      ),
+          expected_strand=False,  # is_reversed
+          expected_zmw_trimmed_insertions=1,
+          expected_zmw_trimmed_insertions_bp=6),
       dict(
           testcase_name='insertion_reversed',
           segment_args={
@@ -443,8 +444,9 @@ class TestTrimInsertions(parameterized.TestCase):
           expected_ip=[1, 2, 3, 4, 11],
           # pw=5 is trimmed
           expected_pw=[1, 2, 3, 4, 11],
-          expected_strand=True  # is_reversed
-      ),
+          expected_strand=True,  # is_reversed
+          expected_zmw_trimmed_insertions=1,
+          expected_zmw_trimmed_insertions_bp=6),
       dict(
           testcase_name='insertion_no_trim',
           segment_args={
@@ -462,8 +464,9 @@ class TestTrimInsertions(parameterized.TestCase):
           expected_ip=[1] * 14,
           expected_pw=[2] * 14,
           expected_strand=False,  # is_reversed
-          trim_ins=0,
-      ),
+          ins_trim=0,
+          expected_zmw_trimmed_insertions=0,
+          expected_zmw_trimmed_insertions_bp=0),
       dict(
           testcase_name='deletion',
           segment_args={
@@ -482,8 +485,9 @@ class TestTrimInsertions(parameterized.TestCase):
           ],
           expected_ip=[1] * 8,
           expected_pw=[2] * 8,
-          expected_strand=False  # is_reversed
-      ))
+          expected_strand=False,  # is_reversed
+          expected_zmw_trimmed_insertions=0,
+          expected_zmw_trimmed_insertions_bp=0))
   def test_trim_insertions(self,
                            segment_args,
                            expected_bases,
@@ -492,9 +496,13 @@ class TestTrimInsertions(parameterized.TestCase):
                            expected_ip=None,
                            expected_pw=None,
                            expected_strand=None,
-                           trim_ins=5):
+                           expected_zmw_trimmed_insertions=None,
+                           expected_zmw_trimmed_insertions_bp=None,
+                           ins_trim=5):
     segment = create_segment(**segment_args)
-    trimmed_segment = pre_lib.trim_insertions(segment, trim_ins)
+    counter = collections.Counter()
+    trimmed_segment = pre_lib.trim_insertions(
+        read=segment, ins_trim=ins_trim, counter=counter)
     self.assertEqual(trimmed_segment.query_sequence, expected_bases)
     aligned_pairs = trimmed_segment.get_aligned_pairs()
     self.assertListEqual(trimmed_segment.cigartuples, expected_cigar)
@@ -507,6 +515,12 @@ class TestTrimInsertions(parameterized.TestCase):
       self.assertListEqual(list(trimmed_segment.get_tag('pw')), expected_pw)
     if expected_strand:
       self.assertEqual(expected_strand, trimmed_segment.is_reverse)
+    if expected_zmw_trimmed_insertions:
+      self.assertEqual(counter['zmw_trimmed_insertions'],
+                       expected_zmw_trimmed_insertions)
+    if expected_zmw_trimmed_insertions_bp:
+      self.assertEqual(counter['zmw_trimmed_insertions_bp'],
+                       expected_zmw_trimmed_insertions_bp)
 
 
 class TestCcsRead(absltest.TestCase):
