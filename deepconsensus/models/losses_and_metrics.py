@@ -319,10 +319,9 @@ class AlignmentLoss(tf.keras.losses.Loss):
     """
     # Ensures y_true is of integer type.
     y_true = tf.cast(y_true, tf.int32)
-    # Removes internal gaps, shifting sequences left and adding padding when
-    # necessary.
+    # Removes internal gaps, shifting sequences left.
     y_true = left_shift_sequence(y_true)
-    # Computes per-example label sequence length, excluding padding.
+    # Computes per-example label sequence length.
     pad_token = dc_constants.VOCAB.find(dc_constants.GAP)
     seq_lens = tf.reduce_sum(tf.cast(y_true != pad_token, y_true.dtype), -1)
     # Converts y_true to one-hot.

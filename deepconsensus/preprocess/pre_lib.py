@@ -311,7 +311,7 @@ class Read(abc.Sequence):
         truth_idx=right_pad(self.truth_idx, pad_width, -1),
         truth_range=self.truth_range)
 
-  def remove_gaps_and_pad(self, pad_width: int) -> Union['Read', None]:
+  def remove_gaps(self, pad_width: int) -> Union['Read', None]:
     """Removes gaps from sequence and returns padded."""
     # Useful for reducing label width.
     keep = self.bases != dc_constants.GAP
@@ -380,10 +380,9 @@ class DcConfig:
   n_subread_features = ['bases', 'pw', 'ip', 'strand']
   fixed_height = 5  # ccs + sn
 
-  def __init__(self, max_passes: int, example_width: int, padding: int):
+  def __init__(self, max_passes: int, max_length: int):
     self.max_passes = max_passes
-    self.example_width = example_width
-    self.padding = padding
+    self.max_length = max_length
     self.feature_rows = {
         'bases': max_passes,
         'pw': max_passes,
@@ -401,13 +400,11 @@ class DcConfig:
       i_rows += v
 
   @classmethod
-  def from_shape(cls, subreads_shape, padding=0):
+  def from_shape(cls, subreads_shape):
     """Construct DcConfig from subreads shape."""
     height, width, _ = subreads_shape
     max_passes = (height - cls.fixed_height) // len(DcConfig.n_subread_features)
-    if padding:
-      width = width - padding
-    return DcConfig(max_passes, width, padding)
+    return DcConfig(max_passes, width)
 
   def indices(self, feature: str, n_subreads: int = 0) -> slice:
     """Returns rows for a given feature."""
@@ -426,18 +423,12 @@ class DcConfig:
     """Returns total rows for tf.Example input."""
     return sum(self.feature_rows.values())
 
-  @property
-  def max_length(self) -> int:
-    """Returns total rows for tf.Example input."""
-    return self.example_width + self.padding
-
   def to_dict(self):
     """Output configuration properties as dict."""
     return {
         # Encode values as strings to prevent downstream aggregation.
         'max_passes': str(self.max_passes),
-        'example_width': str(self.example_width),
-        'padding': str(self.padding),
+        'max_length': str(self.max_length),
         'tensor_height': str(self.tensor_height),
         'tensor_width': str(self.max_length)
     }
@@ -538,23 +529,21 @@ class DcExample:
     """Generates partitions from a given window."""
     # Initiate counter
     self.counter = collections.Counter()
-    example_width = self.config.example_width
-    padding = self.config.padding
-    total_width = example_width + padding
-    for start_pos in range(0, self.ccs_width, example_width):
-      window = self[start_pos:start_pos + example_width]
+    max_length = self.config.max_length
+    for start_pos in range(0, self.ccs_width, max_length):
+      window = self[start_pos:start_pos + max_length]
       if start_pos > self.ccs_width:
         break
       if window.is_empty:
         self.counter['n_examples_no_ccs_idx'] += 1
         continue
 
-      # If the label extends beyond width + padding,
+      # If the label extends beyond max_length (width),
       # remove gaps and right pad.
       # Gaps are helpful for visualizing alignments, but are
       # used during training.
-      if self.is_training and len(window.label.bases) > total_width:
-        adjusted_label = window.label.remove_gaps_and_pad(total_width)
+      if self.is_training and len(window.label.bases) > max_length:
+        adjusted_label = window.label.remove_gaps(max_length)
         # Even with this adjustment it is still possible for the label to
         # be longer than the padded length. This is rare. Discard when training.
         if not adjusted_label:
@@ -563,8 +552,8 @@ class DcExample:
           continue
         self.counter['n_examples_adjusted_label'] += 1
         window.reads[-1] = adjusted_label
-      # Apply padding:
-      reads = [x.pad(total_width) for x in window.reads]
+      # Pad all reads so they have the same length.
+      reads = [x.pad(max_length) for x in window.reads]
       yield DcExample(self.name, reads, self.config)
 
   def stack_subread_feature(self, name):
@@ -674,18 +663,16 @@ class DcExample:
 
 def decode_bases(bases_encoded: np.ndarray) -> np.ndarray:
   """Reverses DcExample encode_bases."""
-  n_subreads, example_width = bases_encoded.shape
-  bases = np.stack([np.repeat(dc_constants.GAP, example_width)] * n_subreads)
+  n_subreads, max_length = bases_encoded.shape
+  bases = np.stack([np.repeat(dc_constants.GAP, max_length)] * n_subreads)
   for k, base in enumerate(dc_constants.VOCAB):
     bases[bases_encoded == k] = base
   return bases
 
 
-def from_features_dict(features_dict: Dict[str, Any],
-                       padding: int = 0) -> DcExample:
+def from_features_dict(features_dict: Dict[str, Any]) -> DcExample:
   """Converts features_dict partially back to a DcExample object for tests."""
-  dc_config = DcConfig.from_shape(
-      features_dict['subreads/shape'], padding=padding)
+  dc_config = DcConfig.from_shape(features_dict['subreads/shape'])
   data = np.squeeze(features_dict['subreads'])
   name = features_dict['name']
   n_subreads = features_dict['subreads/num_passes']
@@ -710,8 +697,8 @@ def from_features_dict(features_dict: Dict[str, Any],
   sn = data[sn_idx][:, 1]
 
   ccs_idx = np.repeat(-1, dc_config.max_length)
-  ccs_end_pos = ccs_start_pos + dc_config.example_width
-  ccs_idx[0:dc_config.example_width] = np.arange(ccs_start_pos, ccs_end_pos)
+  ccs_end_pos = ccs_start_pos + dc_config.max_length
+  ccs_idx[0:dc_config.max_length] = np.arange(ccs_start_pos, ccs_end_pos)
 
   movie, zmw, _ = name.split('/')
 
@@ -721,7 +708,7 @@ def from_features_dict(features_dict: Dict[str, Any],
     read = Read(
         f'{movie}/{zmw}/{i}',
         bases=bases[i],
-        cigar=np.repeat(np.uint8(pysam.CMATCH), dc_config.example_width),
+        cigar=np.repeat(np.uint8(pysam.CMATCH), dc_config.max_length),
         pw=pw[i],
         ip=ip[i],
         sn=sn,
@@ -731,9 +718,9 @@ def from_features_dict(features_dict: Dict[str, Any],
   ccs_read = Read(
       name=name,
       bases=ccs,
-      cigar=np.repeat(np.uint8(pysam.CMATCH), dc_config.example_width),
-      pw=np.repeat(np.uint8(0), dc_config.example_width),
-      ip=np.repeat(np.uint8(0), dc_config.example_width),
+      cigar=np.repeat(np.uint8(pysam.CMATCH), dc_config.max_length),
+      pw=np.repeat(np.uint8(0), dc_config.max_length),
+      ip=np.repeat(np.uint8(0), dc_config.max_length),
       sn=np.repeat(0, 4),
       strand=dc_constants.Strand.UNKNOWN,
       ccs_idx=ccs_idx)
@@ -774,9 +761,8 @@ def tf_example_to_features_dict(tf_example_proto_str, inference=False):
   dc_config = DcConfig.from_shape(features['subreads/shape'])
   # Get a default config and overwrite with specified values
   params = model_configs.get_config()
-  params.example_width = int(dc_config.example_width)
+  params.max_length = int(dc_config.max_length)
   params.max_passes = int(dc_config.max_passes)
-  params.max_length = int(dc_config.example_width)
   features['subreads'] = data_providers.format_rows(
       features['subreads'], params=params)
   del features['subreads/encoded']

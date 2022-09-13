@@ -292,7 +292,7 @@ def get_quality_calibration_stats(reads: List[pysam.AlignedSegment],
       # we have skipped past the window, no need to process this read anymore
       if current_ref_pos > region_interval.stop:
         break
-      # if it's a match then only move forward, matches don't need padding
+      # if it's a match then only move forward.
       if cigar_op in [pysam.CMATCH, pysam.CDIFF, pysam.CEQUAL]:
         for _ in range(0, cigar_len):
           # the base is within the window

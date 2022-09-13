@@ -229,8 +229,6 @@ def get_config(config_name: Optional[str] = None) -> ml_collections.ConfigDict:
   params.band_width = None
 
   # Window
-  params.example_width = 100
-  params.padding = 0
   params.max_length = 100
 
   # Default model and dataset

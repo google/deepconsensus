@@ -76,7 +76,6 @@ class PreprocessE2E(parameterized.TestCase):
     FLAGS.ccs_bam = testdata('human_1m/ccs.bam')
     FLAGS.cpus = n_cpus
     FLAGS.limit = n_zmws
-    FLAGS.padding = 0
     tmp_dir = self.create_tempdir()
     output = os.path.join(tmp_dir, 'tf-@split.tfrecord.gz')
     FLAGS.output = output
@@ -114,7 +113,6 @@ class PreprocessE2E(parameterized.TestCase):
     FLAGS.truth_split = testdata('human_1m/truth_split.tsv')
     FLAGS.cpus = n_cpus
     FLAGS.limit = n_zmws
-    FLAGS.padding = 0
     tmp_dir = self.create_tempdir()
     output = os.path.join(tmp_dir, 'tf-@split.tfrecord.gz')
     FLAGS.output = output

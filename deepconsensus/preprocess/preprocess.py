@@ -95,11 +95,8 @@ flags.DEFINE_integer(
 # The following just need to match the training parameters.
 _MAX_PASSES = flags.DEFINE_integer('max_passes', 20,
                                    'Maximum subreads in each input.')
-_EXAMPLE_WIDTH = flags.DEFINE_integer('example_width', 100,
+_EXAMPLE_WIDTH = flags.DEFINE_integer('max_length', 100,
                                       'Number of bases in each input.')
-_PADDING = flags.DEFINE_integer(
-    'padding', 0, 'Number of bases of padding to add to example_width to '
-    'allow for insertions.')
 
 
 def register_required_flags():
@@ -237,9 +234,7 @@ def main(unused_argv) -> None:
   queue = manager.Queue()
 
   dc_config = pre_lib.DcConfig(
-      max_passes=_MAX_PASSES.value,
-      example_width=_EXAMPLE_WIDTH.value,
-      padding=_PADDING.value)
+      max_passes=_MAX_PASSES.value, max_length=_EXAMPLE_WIDTH.value)
 
   proc_feeder, main_counter = pre_lib.create_proc_feeder(
       subreads_to_ccs=FLAGS.subreads_to_ccs,
@@ -300,7 +295,7 @@ def main(unused_argv) -> None:
     summary.update(dc_config.to_dict())
     flag_list = [
         'subreads_to_ccs', 'ccs_bam', 'truth_to_ccs', 'truth_bed',
-        'truth_split', 'max_passes', 'example_width', 'padding', 'ins_trim'
+        'truth_split', 'max_passes', 'max_length', 'ins_trim'
     ]
     for flag in flag_list:
       # Encode these as strings to ensure aggregation does not add values.

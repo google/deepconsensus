@@ -192,12 +192,9 @@ class InferenceOptions:
   """A central place to define options used across various stages of inference.
 
   Attributes:
-    example_width: Number of bases for each window/example given to the model.
     example_height: Height of examples, which depends on max_passes.
-    padding: Number of bases of padding to add to example_width to allow for
-      insertions.
-    max_length: Length of window after padding is added. This should be equal to
-      example_width + padding.
+
+    max_length: Length of window.
     max_passes: Max number of subreads to include in input shown to model.
     min_quality: Quality threshold to filter final reads.
     min_length: Length threshold to filter final reads.
@@ -213,10 +210,8 @@ class InferenceOptions:
     ccs_calibration_values: QualityCalibrationValues defining values to be used
       for ccs quality calibration.
   """
-  example_width: int
-  example_height: int
-  padding: int
   max_length: int
+  example_height: int
   max_passes: int
   min_quality: int
   min_length: int
@@ -384,7 +379,7 @@ def stitch_predictions_for_one_zmw(
   fastq_string = stitch_utils.stitch_to_fastq(
       molecule_name=zmw,
       predictions=predictions,
-      example_width=options.example_width,
+      max_length=options.max_length,
       min_quality=options.min_quality,
       min_length=options.min_length,
       outcome_counter=outcome_counter)
@@ -409,9 +404,7 @@ def stream_bam(
   """
 
   dc_config = pre_lib.DcConfig(
-      max_passes=options.max_passes,
-      example_width=options.example_width,
-      padding=options.padding)
+      max_passes=options.max_passes, max_length=options.max_length)
 
   # Temporarily disable unused-variable.
   # pylint: disable=unused-variable
@@ -695,17 +688,14 @@ def run() -> stitch_utils.OutcomeCounter:
   else:
     params = FLAGS.params
 
-  dc_config = pre_lib.DcConfig(params.max_passes, params.example_width,
-                               params.padding)
+  dc_config = pre_lib.DcConfig(params.max_passes, params.max_length)
 
   dc_calibration_values = parse_calibration_string(FLAGS.dc_calibration)
   ccs_calibration_values = parse_calibration_string(FLAGS.ccs_calibration)
 
   options = InferenceOptions(
-      example_width=params.example_width,
-      example_height=dc_config.tensor_height,
-      padding=params.padding,
       max_length=params.max_length,
+      example_height=dc_config.tensor_height,
       max_passes=params.max_passes,
       min_quality=FLAGS.min_quality,
       min_length=FLAGS.min_length,

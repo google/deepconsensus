@@ -45,7 +45,7 @@ class DCModelOutput:
 
 
 def get_full_sequence(deepconsensus_outputs: Iterable[DCModelOutput],
-                      example_width: int,
+                      max_length: int,
                       fill_n: bool = False):
   """Stitch together windows of predictions into a full sequence."""
   # Build up the full sequence from the sorted windows.
@@ -60,29 +60,27 @@ def get_full_sequence(deepconsensus_outputs: Iterable[DCModelOutput],
         return None, ''
       else:
         # Add N-base filler for sequences that were unable to be inferred.
-        full_sequence_parts.append('N' * example_width)
-        empty_quality_scores = np.array([dc_constants.EMPTY_QUAL] *
-                                        example_width)
+        full_sequence_parts.append('N' * max_length)
+        empty_quality_scores = np.array([dc_constants.EMPTY_QUAL] * max_length)
         empty_quality_string = utils.quality_scores_to_string(
             empty_quality_scores)
         quality_string_parts.append(empty_quality_string)
-        start += example_width
+        start += max_length
     full_sequence_parts.append(dc_output.sequence)
     quality_string_parts.append(dc_output.quality_string)
-    start += example_width
+    start += max_length
   full_sequence = ''.join(full_sequence_parts)
   full_quality_string = ''.join(quality_string_parts)
   return full_sequence, full_quality_string
 
 
-def remove_gaps_and_padding(sequence: str,
-                            quality_string: str) -> Tuple[str, str]:
-  """Removes gaps/padding and corresponding quality score from outputs."""
-  # Remove padding and gaps from the final sequence.
+def remove_gaps(sequence: str, quality_string: str) -> Tuple[str, str]:
+  """Removes gaps and corresponding quality score from outputs."""
+  # Remove gaps from the final sequence.
   final_sequence = ''
   final_quality_string = ''
   bases_to_remove = set([dc_constants.GAP])
-  # Only keep bases and quality scores for non padding and non gap positions.
+  # Only keep bases and quality scores for non gap positions.
   for base, quality in zip(sequence, quality_string):
     if base not in bases_to_remove:
       final_sequence += base
@@ -116,18 +114,18 @@ def format_as_fastq(molecule_name: str, sequence: str,
 @dataclasses.dataclass
 class OutcomeCounter:
   empty_sequence: int = 0
-  only_gaps_and_padding: int = 0
+  only_gaps: int = 0
   failed_quality_filter: int = 0
   failed_length_filter: int = 0
   success: int = 0
 
 
 def stitch_to_fastq(molecule_name: str, predictions: Iterable[DCModelOutput],
-                    example_width: int, min_quality: int, min_length: int,
+                    max_length: int, min_quality: int, min_length: int,
                     outcome_counter: OutcomeCounter) -> Optional[str]:
   """Stitch windows of predictions together, filter, and make FASTQ string."""
   full_sequence, full_quality_string = get_full_sequence(
-      deepconsensus_outputs=predictions, example_width=example_width)
+      deepconsensus_outputs=predictions, max_length=max_length)
   # Filter out the read if it is empty after stitching.
   if not full_sequence:
     outcome_counter.empty_sequence += 1
@@ -136,15 +134,14 @@ def stitch_to_fastq(molecule_name: str, predictions: Iterable[DCModelOutput],
 
     return None
 
-  final_sequence, final_quality_string = remove_gaps_and_padding(
+  final_sequence, final_quality_string = remove_gaps(
       sequence=full_sequence, quality_string=full_quality_string)
-  # Filter out the read if it contains only gaps or padding and no bases.
+  # Filter out the read if it contains only gaps and no bases.
   if not final_sequence:
-    outcome_counter.only_gaps_and_padding += 1
-    logging.vlog(
-        1,
-        'Filtered out read that contained only gaps/padding and no bases: %s',
-        molecule_name)
+    outcome_counter.only_gaps += 1
+    logging.vlog(1,
+                 'Filtered out read that contained only gaps and no bases: %s',
+                 molecule_name)
     return None
 
   # Filter out the read if its quality scores are too low.
