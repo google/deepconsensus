@@ -866,8 +866,6 @@ def trim_insertions(
   """
   if ins_trim <= 0:
     return read
-  # We decided not to make a copy of the read for better performance.
-  new_read = read
   pw_vals = []
   ip_vals = []
   if read.has_tag('pw'):
@@ -900,22 +898,19 @@ def trim_insertions(
 
   if pw_vals:
     if read.is_reverse:
-      new_read.set_tag('pw', np.array(pw_vals)[mask[::-1]].tolist())
+      read.set_tag('pw', np.array(pw_vals)[mask[::-1]].tolist())
     else:
-      new_read.set_tag('pw', np.array(pw_vals)[mask].tolist())
+      read.set_tag('pw', np.array(pw_vals)[mask].tolist())
 
   if ip_vals:
     if read.is_reverse:
-      new_read.set_tag('ip', np.array(ip_vals)[mask[::-1]].tolist())
+      read.set_tag('ip', np.array(ip_vals)[mask[::-1]].tolist())
     else:
-      new_read.set_tag('ip', np.array(ip_vals)[mask].tolist())
+      read.set_tag('ip', np.array(ip_vals)[mask].tolist())
 
-  if read.has_tag('sn'):
-    new_read.set_tag('sn', read.get_tag('sn'))
-
-  new_read.seq = trimmed_seq
-  new_read.cigartuples = trimmed_cigar
-  return new_read
+  read.seq = trimmed_seq
+  read.cigartuples = trimmed_cigar
+  return read
 
 
 def expand_clip_indent(read: pysam.AlignedSegment,
