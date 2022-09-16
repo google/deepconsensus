@@ -55,15 +55,15 @@ from deepconsensus.models import model_utils
 
 FLAGS = flags.FLAGS
 config_flags.DEFINE_config_file('params', None, 'Training configuration.')
-flags.DEFINE_string('checkpoint', None,
-                    'Path to checkpoint that will be loaded in.')
-flags.DEFINE_string('out_dir', None,
-                    'Output path for logs and model predictions.')
-flags.DEFINE_string(
+_CHECKPOINT = flags.DEFINE_string('checkpoint', None,
+                                  'Path to checkpoint that will be loaded in.')
+_OUT_DIR = flags.DEFINE_string('out_dir', None,
+                               'Output path for logs and model predictions.')
+_TPU = flags.DEFINE_string(
     'tpu', None, 'Name of the TPU to use. This gets '
     'populated automatically when using XManager.')
-flags.DEFINE_string('tpu_topology', None, 'Tpu topology.')
-flags.DEFINE_integer(
+_TPU_TOPOLOGY = flags.DEFINE_string('tpu_topology', None, 'Tpu topology.')
+_LIMIT = flags.DEFINE_integer(
     'limit', -1, 'Limit to N records per train/tune dataset. '
     '-1 will evaluate all examples.')
 
@@ -107,11 +107,12 @@ def run_inference(out_dir: str, params: ml_collections.ConfigDict,
 
 def main(unused_args=None):
   if not FLAGS.params:
-    params = model_utils.read_params_from_json(checkpoint_path=FLAGS.checkpoint)
+    params = model_utils.read_params_from_json(
+        checkpoint_path=_CHECKPOINT.value)
   else:
     params = FLAGS.params
-  run_inference(FLAGS.out_dir, params, FLAGS.checkpoint, FLAGS.tpu,
-                FLAGS.tpu_topology, FLAGS.limit)
+  run_inference(_OUT_DIR.value, params, _CHECKPOINT.value, _TPU.value,
+                _TPU_TOPOLOGY.value, _LIMIT.value)
 
 
 if __name__ == '__main__':

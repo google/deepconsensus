@@ -70,20 +70,20 @@ from deepconsensus.utils import dc_constants
 
 FLAGS = flags.FLAGS
 config_flags.DEFINE_config_file('params', None, 'Training configuration.')
-flags.DEFINE_string('teacher_model_dir', None,
-                    'Path to the teacher model checkpoint.')
-flags.DEFINE_string('out_dir', None,
-                    'Output path for logs and model checkpoints.')
-flags.DEFINE_string(
+_TEACHER_MODEL_DIR = flags.DEFINE_string(
+    'teacher_model_dir', None, 'Path to the teacher model checkpoint.')
+_OUT_DIR = flags.DEFINE_string('out_dir', None,
+                               'Output path for logs and model checkpoints.')
+_TPU = flags.DEFINE_string(
     'tpu', None, 'Name of the TPU to use. This gets '
     'populated automatically when using XManager.')
-flags.DEFINE_string('tpu_topology', None, 'Tpu topology.')
-flags.DEFINE_bool('debug', False,
-                  'Enables dumping debug info for TensorBoard Debugger V2.')
-flags.DEFINE_bool(
+_TPU_TOPOLOGY = flags.DEFINE_string('tpu_topology', None, 'Tpu topology.')
+_DEBUG = flags.DEFINE_bool(
+    'debug', False, 'Enables dumping debug info for TensorBoard Debugger V2.')
+_WRITE_CHECKPOINT_METRICS = flags.DEFINE_bool(
     'write_checkpoint_metrics', False,
     'Whether to write eval metrics for each checkpoint during training.')
-flags.DEFINE_bool(
+_EVAL_AND_LOG_EVERY_STEP = flags.DEFINE_bool(
     'eval_and_log_every_step', False, 'Eval and log after every step. '
     'Use this e.g. for testing training and inspecting metrics locally.')
 
@@ -157,7 +157,7 @@ def train_model(teacher_model: tf.keras.Model, out_dir: str,
   model_utils.save_params_as_json(out_dir, params)
   train_dataset, eval_dataset = model_utils.get_datasets(params, strategy)
   steps_per_epoch, steps_per_eval = model_utils.get_step_counts(
-      params, FLAGS.eval_and_log_every_step)
+      params, _EVAL_AND_LOG_EVERY_STEP.value)
 
   with strategy.scope():
     logging.info('Building model.')
@@ -304,7 +304,7 @@ def train_model(teacher_model: tf.keras.Model, out_dir: str,
 
   log_train_steps = 100
   log_eval_steps = 3000
-  if FLAGS.eval_and_log_every_step:
+  if _EVAL_AND_LOG_EVERY_STEP.value:
     log_train_steps = 1
   train_iterator = iter(train_dataset)
   eval_iterator = iter(eval_dataset)
@@ -422,8 +422,8 @@ def train(teacher_model_dir: str,
 
 
 def main(unused_args=None):
-  train(FLAGS.teacher_model_dir, FLAGS.out_dir, FLAGS.params, FLAGS.tpu,
-        FLAGS.tpu_topology, FLAGS.write_checkpoint_metrics, FLAGS.debug)
+  train(_TEACHER_MODEL_DIR.value, _OUT_DIR.value, FLAGS.params, _TPU.value,
+        _TPU_TOPOLOGY.value, _WRITE_CHECKPOINT_METRICS.value, _DEBUG.value)
 
 
 if __name__ == '__main__':
