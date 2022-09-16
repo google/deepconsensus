@@ -142,11 +142,13 @@ def _set_transformer_learned_embeddings_distill_hparams(params):
 
   # Distillation loss parameters.
   # Weight corresponding to the distillation loss.
-  params.distill_alpha = 500
+  params.distill_alpha = 1.0e+5
   # Weight corresponding to the student loss.
-  params.student_alpha = 1
+  params.student_alpha = 1.0
   # Temperature for softening probability distributions.
-  params.temperature = 1
+  params.temperature = 1.0
+  # Loss type for comparing teacher and student logits (e.g. kl_divergence).
+  params.logit_loss_identifier = 'mean_squared_error'
 
 
 

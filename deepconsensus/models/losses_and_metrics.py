@@ -1125,9 +1125,11 @@ class DistillationLoss(tf.keras.losses.Loss):
   def __init__(
       self,
       temperature: float = 1.0,
+      logit_loss: tf.keras.losses.Loss = tf.keras.losses.get('kl_divergence'),
       reduction: tf.keras.losses.Reduction = tf.keras.losses.Reduction.AUTO):
     super(DistillationLoss, self).__init__(reduction=reduction)
     self.temperature = temperature
+    self.logit_loss = logit_loss
 
   def call(self, teacher_logits: tf.Tensor,
            student_logits: tf.Tensor) -> tf.Tensor:
@@ -1144,6 +1146,6 @@ class DistillationLoss(tf.keras.losses.Loss):
     """
     teacher_probs = tf.nn.softmax(teacher_logits / self.temperature, axis=-1)
     student_probs = tf.nn.softmax(student_logits / self.temperature, axis=-1)
-    kl = tf.keras.losses.kld(teacher_probs, student_probs)
+    loss = self.logit_loss(teacher_probs, student_probs)
     # Take the mean across the positions in the sequence.
-    return tf.math.reduce_mean(kl, axis=-1)
+    return tf.math.reduce_mean(loss, axis=-1)

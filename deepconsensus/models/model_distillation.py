@@ -184,6 +184,7 @@ def train_model(teacher_model: tf.keras.Model, out_dir: str,
         params, reduction=tf.keras.losses.Reduction.NONE)
     distillation_loss_object = losses_and_metrics.DistillationLoss(
         temperature=params.temperature,
+        logit_loss=tf.keras.losses.get(params.logit_loss_identifier),
         reduction=tf.keras.losses.Reduction.NONE)
 
     def compute_all_replica_loss(
