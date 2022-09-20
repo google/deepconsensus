@@ -42,6 +42,7 @@ from deepconsensus.models import losses_and_metrics
 from deepconsensus.models import model_configs
 from deepconsensus.models import networks
 from deepconsensus.models import transformer_basic_params
+from official.modeling import optimization
 
 
 _YIELD_OVER_CSS_METRIC_NAME = 'yield_over_ccs'
@@ -417,7 +418,10 @@ def log_and_save_metrics(epoch: int, num_epochs: int, step: int,
 
 
   if training:
-    tf.summary.scalar('learning_rate', optimizer.lr, step=optimizer.iterations)
+    tf.summary.scalar(
+        'learning_rate',
+        optimizer.lr(optimizer.iterations),
+        step=optimizer.iterations)
     tf.summary.scalar('progress/epoch', epoch, step=optimizer.iterations)
     tf.summary.scalar(
         'progress/overall_progress',
@@ -456,3 +460,43 @@ def save_checkpoint(checkpoint: tf.train.Checkpoint, out_dir: str,
           ]
           write_row(f, row)
   return checkpoint_name
+
+
+def create_optimizer(params: ml_collections.ConfigDict,
+                     decay_steps: int) -> tf.keras.optimizers.Optimizer:
+  """Creates optimizer based on specified model params and decay steps.
+
+  Args:
+    params: Config dictionary of the model parameters.
+    decay_steps: Scalar (must be positive) for decay computation.
+
+  Returns:
+    Optimizer instance.
+  """
+  # Create optimizer.
+  optimization_config = optimization.OptimizationConfig(
+      optimizer=optimization.OptimizerConfig(
+          type='lamb',
+          lamb=optimization.LAMBConfig(
+              weight_decay_rate=params.weight_decay_rate,
+              beta_1=params.beta_1,
+              beta_2=params.beta_2,
+              epsilon=params.epsilon,
+              exclude_from_weight_decay=[
+                  'LayerNorm', 'bias', 'norm', 'BatchNorm',
+                  'batch_normalization'
+              ])),
+      learning_rate=optimization.LrConfig(
+          type='polynomial',
+          polynomial=optimization.PolynomialLrConfig(
+              initial_learning_rate=params.initial_learning_rate,
+              decay_steps=decay_steps,
+              end_learning_rate=params.end_learning_rate)),
+      warmup=optimization.WarmupConfig(
+          type='linear',
+          linear=optimization.LinearWarmupConfig(
+              warmup_steps=params.warmup_steps)))
+
+  opt_factory = optimization.OptimizerFactory(optimization_config)
+  optimizer = opt_factory.build_optimizer(opt_factory.build_learning_rate())
+  return optimizer

@@ -88,6 +88,9 @@ def train_model(out_dir: str, params: ml_collections.ConfigDict,
   train_dataset, eval_dataset = model_utils.get_datasets(params, strategy)
   steps_per_epoch, steps_per_eval = model_utils.get_step_counts(
       params, _EVAL_AND_LOG_EVERY_STEP.value)
+  # Number of steps this model will train for.
+  total_train_steps = steps_per_epoch * params['num_epochs']
+  logging.info('Total training steps = %s', total_train_steps)
 
   with strategy.scope():
     logging.info('Building model.')
@@ -100,7 +103,13 @@ def train_model(out_dir: str, params: ml_collections.ConfigDict,
       model = model_utils.get_model(params)
     logging.info('Done building model.')
     epoch_checkpoint = os.path.join(out_dir, 'epoch_checkpoint.txt')
-    optimizer = tf.keras.optimizers.Adam(learning_rate=params.learning_rate)
+
+    # Calculate the number of steps to decay the learning rate over.
+    # Usually this number is the total training steps. However, since we train
+    # the model for more epochs to obtain the final model, decay_steps is based
+    # on the total training steps taken during final training.
+    decay_steps = steps_per_epoch * params['num_epochs_for_decay']
+    optimizer = model_utils.create_optimizer(params, decay_steps)
     train_loss = tf.keras.metrics.Mean(name='train/loss')
     train_metrics = model_utils.get_deepconsensus_metrics(name_prefix='train/')
     eval_loss = tf.keras.metrics.Mean(name='eval/loss')
@@ -190,9 +199,6 @@ def train_model(out_dir: str, params: ml_collections.ConfigDict,
        if metric.name == dc_constants.MAIN_EVAL_METRIC_NAME), None)
   if not main_eval_metric:
     raise ValueError('No eval metric found.')
-
-  total_train_steps = steps_per_epoch * params['num_epochs']
-  logging.info('Total training steps = %s', total_train_steps)
 
   for epoch in range(initial_epoch, params['num_epochs']):
     logging.info('Starting to run epoch: %s', epoch)

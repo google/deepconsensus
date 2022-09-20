@@ -65,8 +65,17 @@ def _set_base_fc_hparams(params):
   params.l2 = 0.0
   params.batch_size = 256
   params.num_epochs = 15
-  params.learning_rate = 0.004
+  params.num_epochs_for_decay = 15
   params.buffer_size = 1_000_000
+
+  # Optimizer params (optimized for transformer).
+  params.initial_learning_rate = 3.6246e-3
+  params.end_learning_rate = 2.86594e-5
+  params.warmup_steps = 35536
+  params.weight_decay_rate = 6.9868e-3
+  params.beta_1 = 0.9
+  params.beta_2 = 0.999
+  params.epsilon = 1e-6
 
 
 def _set_base_transformer_hparams(params):
@@ -97,9 +106,21 @@ def _set_base_transformer_hparams(params):
 
   # Training
   params.batch_size = 256
+  # We use this number of epochs to obtain fast training results.
   params.num_epochs = 4
-  params.learning_rate = 1e-4
+  # We use this number of epochs to obtain the finalized models. This parameter
+  # keeps the learning rate schedule the same when num_epochs is changed.
+  params.num_epochs_for_decay = 7
   params.buffer_size = 1_000_000
+
+  # Optimizer params (values obtained in b/246369335#comment3).
+  params.initial_learning_rate = 3.6246e-3
+  params.end_learning_rate = 2.86594e-5
+  params.warmup_steps = 35536
+  params.weight_decay_rate = 6.9868e-3
+  params.beta_1 = 0.9
+  params.beta_2 = 0.999
+  params.epsilon = 1e-6
 
 
 def _set_transformer_learned_embeddings_hparams(params):
@@ -139,6 +160,9 @@ def _set_transformer_learned_embeddings_distill_hparams(params):
         params.student_encoder_layers)
     assert len(params.student_encoder_layers) == params.num_hidden_layers
     assert max(params.student_encoder_layers) < params.num_hidden_layers
+
+  # Optimizer parameters.
+  params.warmup_steps = 0
 
   # Distillation loss parameters.
   # Weight corresponding to the distillation loss.
