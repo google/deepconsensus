@@ -783,6 +783,7 @@ def construct_ccs_read(
     except KeyError:
       return None
 
+  # get aux variables
   ec = get_tag(ccs_bam_read, 'ec')
   np_num_passes = get_tag(ccs_bam_read, 'np')
   rq = get_tag(ccs_bam_read, 'rq')

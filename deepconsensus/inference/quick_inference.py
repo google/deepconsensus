@@ -51,6 +51,7 @@ from ml_collections.config_dict import config_dict
 from ml_collections.config_flags import config_flags
 import numpy as np
 import pandas as pd
+import pysam
 import tensorflow as tf
 
 from deepconsensus.models import data_providers
@@ -81,8 +82,9 @@ flags.DEFINE_string('ccs_bam', None, 'Input BAM containing ccs sequences.')
 
 # Outputs:
 flags.DEFINE_string(
-    'output', None, 'Filename of output FASTQ file. If this path '
-    'does not end in ".fastq", the suffix will be added.')
+    'output', None,
+    'Filename of output. Use .fq or .fastq suffix to output FASTQ, '
+    'or use .bam to output bam file.')
 
 # Model checkpoint:
 flags.DEFINE_string(
@@ -271,8 +273,8 @@ def calibrate_quality_scores(
 
 # TODO Add unit test for this function. We need to create unit test
 # infrastructure that allows to easily create input data for unit tests.
-def batch_examples(feature_dicts: List[Tuple[str, Union[np.ndarray, int,
-                                                        bytes]]],
+def batch_examples(feature_dicts: List[Tuple[str, Union[np.ndarray, int, bytes,
+                                                        float]]],
                    model_params: Union[config_dict.ConfigDict,
                                        config_dict.FrozenConfigDict],
                    options: InferenceOptions):
@@ -532,7 +534,7 @@ def inference_on_n_zmws(
     inputs: Sequence[Tuple[str, str, Sequence[Any]]],
     model: tf.keras.Model,
     model_params: Union[config_dict.ConfigDict, config_dict.FrozenConfigDict],
-    fastq_writer: gfile.GFile,
+    output_writer: Union[gfile.GFile, pysam.AlignmentFile],
     options: InferenceOptions,
     batch_name: str,
     outcome_counter: stitch_utils.OutcomeCounter,
@@ -544,7 +546,7 @@ def inference_on_n_zmws(
         three elements: (name of zmw, aligned_subreads, DcConfig).
     model: An initialized model that will be used to make predictions.
     model_params: Parameters for the model.
-    fastq_writer: File writer where fastq output will be written.
+    output_writer: File writer where fastq or bam output will be written.
     options: Some options that apply to various stages of the inference run.
     batch_name: Name of batch used for runtime metrics.
     outcome_counter: Counts outcomes for each ZMW.
@@ -640,13 +642,32 @@ def inference_on_n_zmws(
 
   for zmw, predictions_for_zmw in itertools.groupby(predictions,
                                                     lambda p: p.molecule_name):
-    fastq_string = stitch_predictions_for_one_zmw(
+    predictions_for_zmw = list(predictions_for_zmw)
+    fastq_string = stitch_utils.stitch_to_fastq(
+        molecule_name=zmw,
         predictions=predictions_for_zmw,
-        zmw=zmw,
-        options=options,
+        max_length=options.max_length,
+        min_quality=options.min_quality,
+        min_length=options.min_length,
         outcome_counter=outcome_counter)
+
     if fastq_string:
-      fastq_writer.write(fastq_string)
+      # FASTQs are written with gfile, bams are written with pysam.
+      if isinstance(output_writer, gfile.GFile):
+        output_writer.write(fastq_string)
+      else:
+        name, seq, _, qual = fastq_string.splitlines()
+        record = pysam.AlignedSegment()
+        record.query_name = name
+        record.query_sequence = seq
+        record.query_qualities = pysam.qualitystring_to_array(qual)
+        record.set_tags([
+            ('ec', predictions_for_zmw[0].ec or -1, 'f'),
+            ('np', predictions_for_zmw[0].np_num_passes, 'i'),
+            ('rq', predictions_for_zmw[0].rq, 'f'),
+        ])
+        output_writer.write(record)
+
   timelog(
       stage='stitch_and_write_fastq',
       item=batch_name,
@@ -736,14 +757,21 @@ def run() -> stitch_utils.OutcomeCounter:
   logging.info('Model setup took %s seconds.', time.time() - before_model_setup)
 
   # Initialize output fastq writer.
-  output_filename = FLAGS.output
-  if not output_filename.endswith('.fastq'):
-    output_filename += '.fastq'
+  output_fname = FLAGS.output
+  correct_suffix = output_fname.endswith('.fq') or output_fname.endswith(
+      '.fastq') or output_fname.endswith('.bam')
+  if not correct_suffix:
+    raise NameError('Filename must end in .fq, .fastq, or .bam')
 
-  output_dir = os.path.dirname(output_filename)
+  output_dir = os.path.dirname(output_fname)
   if not tf.io.gfile.exists(output_dir):
     tf.io.gfile.makedirs(output_dir)
-  fastq_writer = gfile.Open(output_filename, 'wb')
+
+  if output_fname.endswith('.fq') or output_fname.endswith('.fastq'):
+    output_writer = gfile.Open(output_fname, 'wb')
+  else:
+    header = {'HD': {'VN': '1.0'}}
+    output_writer = pysam.AlignmentFile(output_fname, 'wb', header=header)
 
   input_file_generator = stream_bam(
       subreads_to_ccs=FLAGS.subreads_to_ccs,
@@ -767,7 +795,7 @@ def run() -> stitch_utils.OutcomeCounter:
           inputs=stored_n_zmws,
           model=loaded_model,
           model_params=model_params,
-          fastq_writer=fastq_writer,
+          output_writer=output_writer,
           options=options,
           batch_name=str(batch_count),
           outcome_counter=outcome_counter,
@@ -782,7 +810,7 @@ def run() -> stitch_utils.OutcomeCounter:
         inputs=stored_n_zmws,
         model=loaded_model,
         model_params=model_params,
-        fastq_writer=fastq_writer,
+        output_writer=output_writer,
         options=options,
         batch_name=str(batch_count),
         outcome_counter=outcome_counter,
@@ -791,12 +819,12 @@ def run() -> stitch_utils.OutcomeCounter:
   if pool:
     pool.shutdown(wait=True)
 
-  fastq_writer.close()
+  output_writer.close()
 
   logging.info('Processed %s ZMWs in %0.3f seconds', zmw_counter,
                time.time() - before_all_zmws)
   logging.info('Outcome counts: %s', outcome_counter)
-  save_runtime(time_points=timing, output_prefix=f'{output_filename}.runtime')
+  save_runtime(time_points=timing, output_prefix=f'{output_fname}.runtime')
   return outcome_counter
 
 
