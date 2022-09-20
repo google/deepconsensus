@@ -147,21 +147,23 @@ flags.DEFINE_integer(
 # The following parameters are for quality score calibration
 
 flags.DEFINE_string(
-    'dc_calibration', '0,1.197654,-0.99781', 'Comma separated values of '
-    'linear transformation model\'s calibration values for deepconsensus base '
-    'qualities. The values are set as \"threshold,w,b\" where threshold is '
-    'minimum base quality threshold after which  the linear transformation '
-    'will be applied, w is the co-efficient value and b is the bias term for '
-    'linear transformation. Default: 0,1.197654,-0.99781. Set to "" '
-    '(empty string) to perform no quality calibration.')
+    'dc_calibration', None, 'If set to None, base quality values will be read '
+    'from model params.json if available. Set to "skip" to perform no quality '
+    'calibration. Otherwise, calibration values can be directly supplied as a '
+    'comma separated set of values of the linear transformation model\'s '
+    'calibration values for deepconsensus base qualities. The values are set as'
+    ' \"threshold,w,b\" where threshold is minimum base quality threshold '
+    'after which  the linear transformation will be applied, w is the '
+    'co-efficient value and b is the bias term for linear transformation. '
+    'Default: None [read from params.json if available].')
 flags.DEFINE_string(
-    'ccs_calibration', '', 'Comma separated values of '
+    'ccs_calibration', 'skip', 'Comma separated values of '
     'linear transformation model\'s calibration values for deepconsensus base '
     'qualities. The values are set as \"threshold,w,b\" where threshold is '
     'minimum base quality threshold after which  the linear transformation '
     'will be applied, w is the co-efficient value and b is the bias term for '
-    'linear transformation. Default: "". Set to "" '
-    '(empty string) to perform no quality calibration.')
+    'linear transformation. Set to "skip" to perform no quality '
+    'calibration. Default: "skip".')
 
 
 def register_required_flags():
@@ -691,14 +693,15 @@ def save_runtime(time_points, output_prefix):
 def parse_calibration_string(
     calibration_string: str) -> QualityCalibrationValues:
   """Parse calibration string and return threshold, w and b values."""
-  # calibration string is empty. So no calibration will be performed.
-  if not calibration_string:
+  # If calibration string is set to skip, no calibration will be performed.
+  if calibration_string == 'skip':
     return QualityCalibrationValues(enabled=False, threshold=0.0, w=1.0, b=0.0)
 
   parsed_list = calibration_string.split(',')
   if len(parsed_list) != 3:
-    raise ValueError('Malformed calibration string. Expected 3 values.',
-                     calibration_string)
+    raise ValueError(
+        'Malformed calibration string. Expected 3 values (or set '
+        'to "skip" to perform no quality calibration).', calibration_string)
 
   calibration_values = QualityCalibrationValues(
       enabled=True,
@@ -724,7 +727,20 @@ def run() -> stitch_utils.OutcomeCounter:
 
   dc_config = pre_lib.DcConfig(params.max_passes, params.max_length)
 
-  dc_calibration_values = parse_calibration_string(FLAGS.dc_calibration)
+  # Attempt to read default calibration values from model params.json.
+  # If not found, set to 'skip'.
+  if FLAGS.dc_calibration is None:
+    dc_calibration_values = params.get('dc_calibration', 'skip')
+    if dc_calibration_values != 'skip':
+      logging.info(
+          'DeepConsensus base calibration values read from '
+          'model params.json: %s', dc_calibration_values)
+  else:
+    dc_calibration_values = FLAGS.dc_calibration
+  dc_calibration_values = parse_calibration_string(dc_calibration_values)
+  if not FLAGS.ccs_calibration:
+    raise ValueError('--ccs_calibration should be set to "skip" '
+                     'or to base calibration scores.')
   ccs_calibration_values = parse_calibration_string(FLAGS.ccs_calibration)
 
   options = InferenceOptions(

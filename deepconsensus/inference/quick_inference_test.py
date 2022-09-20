@@ -45,7 +45,7 @@ class QuickInferenceTest(parameterized.TestCase):
 
   @parameterized.parameters(
       dict(
-          calibration_str='',
+          calibration_str='skip',
           expected=quick_inference.QualityCalibrationValues(
               enabled=False, threshold=0.0, w=1.0, b=0.0),
           message='Test 1: Valid empty calibration string.'),
@@ -82,13 +82,13 @@ class QuickInferenceTest(parameterized.TestCase):
           message='Test 2: Invalid calibration string A,BC,D.'),
       dict(
           calibration_str='10,1.0',
-          message='Test 2: Invalid calibration string 10,1.0.'),
+          message='Test 3: Invalid calibration string 10,1.0.'),
       dict(
           calibration_str='10,AB,1.0',
-          message='Test 2: Invalid calibration string 10,AB,1.0.'),
+          message='Test 4: Invalid calibration string 10,AB,1.0.'),
       dict(
           calibration_str='10,0.1.1,1.0',
-          message='Test 2: Invalid calibration string 10,0.1.1,1.0.'),
+          message='Test 5: Invalid calibration string 10,0.1.1,1.0.'),
   )
   @flagsaver.flagsaver
   def test_parse_calibration_string_exceptions(self, calibration_str, message):

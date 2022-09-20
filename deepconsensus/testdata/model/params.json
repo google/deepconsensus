@@ -66,5 +66,6 @@
   "use_sn": true,
   "use_strand": true,
   "use_tpu": false,
-  "vocab_size": 5
+  "vocab_size": 5,
+  "dc_calibration": "0,1.197654,-0.99781"
 }
