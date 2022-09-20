@@ -121,7 +121,7 @@ class Read(abc.Sequence):
 
   # aux tags; from ccs read only.
   ec: Optional[float] = None  # effective coverage
-  np_num_passes: Optional[int] = None
+  np_num_passes: Optional[int] = None  # number of passes
   rq: Optional[float] = None  # predicted concordance
 
   # base_quality_scores are only used for the ccs read.
@@ -603,7 +603,6 @@ class DcExample:
         'name': self.name,
         'window_pos': self.ccs.ccs_bounds.start,
         'ccs_base_quality_scores': self.ccs.base_quality_scores,
-        # CCS read aux tags.
         'ec': self.ccs.ec,
         'np_num_passes': self.ccs.np_num_passes,
         'rq': self.ccs.rq
@@ -784,7 +783,6 @@ def construct_ccs_read(
     except KeyError:
       return None
 
-  # Get aux variables from CCS read.
   ec = get_tag(ccs_bam_read, 'ec')
   np_num_passes = get_tag(ccs_bam_read, 'np')
   rq = get_tag(ccs_bam_read, 'rq')

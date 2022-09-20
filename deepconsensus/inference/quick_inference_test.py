@@ -28,7 +28,6 @@
 """Tests for quick_inference."""
 
 from absl import flags
-from absl import logging
 from absl.testing import absltest
 from absl.testing import flagsaver
 from absl.testing import parameterized
@@ -39,10 +38,6 @@ from deepconsensus.utils import dc_constants
 from deepconsensus.utils import test_utils
 
 FLAGS = flags.FLAGS
-
-
-def setUpModule():
-  logging.set_verbosity(logging.FATAL)
 
 
 class QuickInferenceTest(parameterized.TestCase):

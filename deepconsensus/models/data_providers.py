@@ -162,7 +162,10 @@ def process_feature_dict(
       'num_passes': num_passes,
       'window_pos': features['window_pos'],
       'name': features['name'],
-      'ccs_base_quality_scores': features['ccs_base_quality_scores']
+      'ccs_base_quality_scores': features['ccs_base_quality_scores'],
+      'ec': features['ec'],
+      'np_num_passes': features['np_num_passes'],
+      'rq': features['rq']
   }
   return features
 

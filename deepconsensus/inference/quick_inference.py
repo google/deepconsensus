@@ -337,6 +337,11 @@ def run_model_on_examples(
       softmax_output = model.predict(rows)
 
     softmax_output = softmax_output.numpy()
+
+    ec_arr = data['ec']
+    np_num_passes_arr = data['np_num_passes']
+    rq_arr = data['rq']
+
     y_preds = np.argmax(softmax_output, -1)
     error_prob = 1 - np.max(softmax_output, axis=-1)
     quality_scores = -10 * np.log10(error_prob)
@@ -346,11 +351,15 @@ def run_model_on_examples(
     quality_scores = np.minimum(quality_scores, dc_constants.MAX_QUAL)
     quality_scores = np.round(quality_scores, decimals=0)
     quality_scores = quality_scores.astype(dtype=np.int32)
-    for y_pred, qs, window_pos, molecule_name in zip(y_preds, quality_scores,
-                                                     window_pos_arr,
-                                                     molecule_name_arr):
+    for y_pred, qs, window_pos, molecule_name, ec, np_, rq in zip(
+        y_preds, quality_scores, window_pos_arr, molecule_name_arr, ec_arr,
+        np_num_passes_arr, rq_arr):
       dc_output = stitch_utils.DCModelOutput(
-          window_pos=window_pos, molecule_name=molecule_name)
+          window_pos=window_pos,
+          molecule_name=molecule_name,
+          ec=ec,
+          np_num_passes=np_,
+          rq=rq)
       y_pred_bases = ''.join(
           np.vectorize(dc_constants.VOCAB.__getitem__)(y_pred))
       quality_string = utils.quality_scores_to_string(qs)
@@ -512,7 +521,10 @@ def process_skipped_window(
       window_pos=feature_dict['window_pos'],
       molecule_name=feature_dict['name'],
       sequence=ccs_seq,
-      quality_string=utils.quality_scores_to_string(ccs_quality_scores))
+      quality_string=utils.quality_scores_to_string(ccs_quality_scores),
+      ec=feature_dict['ec'],
+      np_num_passes=feature_dict['np_num_passes'],
+      rq=feature_dict['rq'])
   return dc_output
 
 
@@ -625,6 +637,7 @@ def inference_on_n_zmws(
   # pylint: disable=g-long-lambda
   predictions = sorted(
       predictions, key=lambda dc: (dc.molecule_name, dc.window_pos))
+
   for zmw, predictions_for_zmw in itertools.groupby(predictions,
                                                     lambda p: p.molecule_name):
     fastq_string = stitch_predictions_for_one_zmw(

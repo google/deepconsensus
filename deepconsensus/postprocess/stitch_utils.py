@@ -40,6 +40,9 @@ from deepconsensus.utils import utils
 class DCModelOutput:
   molecule_name: str
   window_pos: int
+  ec: int
+  np_num_passes: int
+  rq: float
   sequence: Optional[str] = None
   quality_string: Optional[str] = None
 
