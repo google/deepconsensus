@@ -44,7 +44,6 @@ from deepconsensus.models import networks
 from deepconsensus.models import transformer_basic_params
 
 
-
 _YIELD_OVER_CSS_METRIC_NAME = 'yield_over_ccs'
 _BATCH_IDENTITY_METRIC_NAME = 'per_batch_alignment_identity'
 
@@ -164,9 +163,9 @@ def modify_params(params: ml_collections.ConfigDict,
     tpu: Name of the TPU being used or None.
     tpu_topology: of the form NxM, where N * M is the number of chips.
     speedy: Bool. Skip time-consuming steps that only add nice-to-have
-        information.
+      information.
     max_length: Equivalent to max_length in preprocess. If given, use this to
-        set params.max_length instead of inspecting the examples.
+      set params.max_length instead of inspecting the examples.
     is_training: When not in training mode, do not run set_dataset
 
   Returns:
