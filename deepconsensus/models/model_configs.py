@@ -138,6 +138,13 @@ def _set_transformer_learned_embeddings_hparams(params):
   params.transformer_input_size = 280
 
 
+def _set_custom_data_hparams(params):
+  """Updates the given config with values for custom dataset (subreads are aligned to CCS)."""
+  params.tf_dataset = ['/path_to_training_data'
+                      ]  # This needs to point to the actual training examples
+  params.max_passes = 20
+
+
 def _set_transformer_learned_embeddings_distill_hparams(params):
   """Updates given config with values for the distilled transformer."""
   _set_transformer_learned_embeddings_hparams(params)
@@ -299,6 +306,8 @@ def get_config(config_name: Optional[str] = None) -> ml_collections.ConfigDict:
     _set_ecoli_data_hparams(params)
   elif dataset_config_name == 'test':
     _set_test_data_hparams(params)
+  elif dataset_config_name == 'custom':
+    _set_custom_data_hparams(params)
   else:
     raise ValueError('dataset_config_name is %s. Must be one of the following: '
                      'ccs, poa, ecoli, test' % dataset_config_name)
