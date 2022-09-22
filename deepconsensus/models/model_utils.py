@@ -31,7 +31,7 @@ import io
 import json
 import logging
 import os
-from typing import Any, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import ml_collections
 import numpy as np
@@ -188,7 +188,7 @@ def set_dataset(params):
         raise Exception('dataset and model max_passes do not match.')
 
 
-def load_dataset_summary(dataset_path: str) -> tuple[str, dict[str, Any]]:
+def load_dataset_summary(dataset_path: str) -> Tuple[str, Dict[str, Any]]:
   """Loads the dataset summary from the `summary.training.json` file.
 
   If present, load the `n_example_counts.subsample.json` and override
