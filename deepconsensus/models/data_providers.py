@@ -135,7 +135,7 @@ def format_rows(
 def process_feature_dict(
     features: Dict[str, Union[np.ndarray, int, bytes]],
     params: Union[config_dict.ConfigDict, config_dict.FrozenConfigDict]
-) -> Dict[str, Union[np.ndarray, int, bytes]]:
+) -> Dict[str, Union[np.ndarray, int, bytes, str]]:
   """Parses a serialized tf.Example to return an input, label, and metadata.
 
   Args:
@@ -165,7 +165,8 @@ def process_feature_dict(
       'ccs_base_quality_scores': features['ccs_base_quality_scores'],
       'ec': features['ec'],
       'np_num_passes': features['np_num_passes'],
-      'rq': features['rq']
+      'rq': features['rq'],
+      'rg': features['rg']
   }
   return features
 

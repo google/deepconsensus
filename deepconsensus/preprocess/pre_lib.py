@@ -123,6 +123,7 @@ class Read(abc.Sequence):
   ec: Optional[float] = None  # effective coverage
   np_num_passes: Optional[int] = None  # number of passes
   rq: Optional[float] = None  # predicted concordance
+  rg: Optional[str] = None
 
   # base_quality_scores are only used for the ccs read.
   base_quality_scores: np.ndarray = np.empty(0, dtype=np.uint8)
@@ -287,6 +288,7 @@ class Read(abc.Sequence):
         ec=self.ec,
         np_num_passes=self.np_num_passes,
         rq=self.rq,
+        rg=self.rg,
         ccs_idx=self.ccs_idx[ccs_slice],
         truth_idx=self.truth_idx[ccs_slice],
         truth_range=self.truth_range)
@@ -307,6 +309,7 @@ class Read(abc.Sequence):
         ec=self.ec,
         np_num_passes=self.np_num_passes,
         rq=self.rq,
+        rg=self.rg,
         ccs_idx=right_pad(self.ccs_idx, pad_width, -1),
         truth_idx=right_pad(self.truth_idx, pad_width, -1),
         truth_range=self.truth_range)
@@ -333,6 +336,7 @@ class Read(abc.Sequence):
         ec=self.ec,
         np_num_passes=self.np_num_passes,
         rq=self.rq,
+        rg=self.rg,
         ccs_idx=self.ccs_idx[keep],
         truth_idx=self.truth_idx[keep],
         truth_range=self.truth_range).pad(pad_width)
@@ -357,6 +361,7 @@ class Read(abc.Sequence):
         ec=self.ec,
         np_num_passes=self.np_num_passes,
         rq=self.rq,
+        rg=self.rg,
         ccs_idx=self.ccs_idx[r_slice],
         truth_idx=self.truth_idx[r_slice])
 
@@ -605,7 +610,8 @@ class DcExample:
         'ccs_base_quality_scores': self.ccs.base_quality_scores,
         'ec': self.ccs.ec,
         'np_num_passes': self.ccs.np_num_passes,
-        'rq': self.ccs.rq
+        'rq': self.ccs.rq,
+        'rg': self.ccs.rg,
     }
     return features
 
@@ -787,6 +793,7 @@ def construct_ccs_read(
   ec = get_tag(ccs_bam_read, 'ec')
   np_num_passes = get_tag(ccs_bam_read, 'np')
   rq = get_tag(ccs_bam_read, 'rq')
+  rg = get_tag(ccs_bam_read, 'RG')
 
   return Read(
       name=ccs_bam_read.qname,
@@ -798,6 +805,7 @@ def construct_ccs_read(
       ec=ec,
       np_num_passes=np_num_passes,
       rq=rq,
+      rg=rg,
       strand=dc_constants.Strand.UNKNOWN,
       base_quality_scores=np.array(ccs_bam_read.query_qualities),
       ccs_idx=np.arange(len(ccs_seq)))

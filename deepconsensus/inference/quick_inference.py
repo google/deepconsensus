@@ -345,6 +345,7 @@ def run_model_on_examples(
     ec_arr = data['ec']
     np_num_passes_arr = data['np_num_passes']
     rq_arr = data['rq']
+    rg_arr = data['rg']
 
     y_preds = np.argmax(softmax_output, -1)
     error_prob = 1 - np.max(softmax_output, axis=-1)
@@ -355,15 +356,16 @@ def run_model_on_examples(
     quality_scores = np.minimum(quality_scores, dc_constants.MAX_QUAL)
     quality_scores = np.round(quality_scores, decimals=0)
     quality_scores = quality_scores.astype(dtype=np.int32)
-    for y_pred, qs, window_pos, molecule_name, ec, np_, rq in zip(
+    for y_pred, qs, window_pos, molecule_name, ec, np_, rq, rg in zip(
         y_preds, quality_scores, window_pos_arr, molecule_name_arr, ec_arr,
-        np_num_passes_arr, rq_arr):
+        np_num_passes_arr, rq_arr, rg_arr):
       dc_output = stitch_utils.DCModelOutput(
           window_pos=window_pos,
           molecule_name=molecule_name,
           ec=ec,
           np_num_passes=np_,
-          rq=rq)
+          rq=rq,
+          rg=rg)
       y_pred_bases = ''.join(
           np.vectorize(dc_constants.VOCAB.__getitem__)(y_pred))
       quality_string = utils.quality_scores_to_string(qs)
@@ -528,7 +530,8 @@ def process_skipped_window(
       quality_string=utils.quality_scores_to_string(ccs_quality_scores),
       ec=feature_dict['ec'],
       np_num_passes=feature_dict['np_num_passes'],
-      rq=feature_dict['rq'])
+      rq=feature_dict['rq'],
+      rg=feature_dict['rg'])
   return dc_output
 
 
@@ -663,10 +666,15 @@ def inference_on_n_zmws(
         record.query_name = name
         record.query_sequence = seq
         record.query_qualities = pysam.qualitystring_to_array(qual)
+        record.flag = 4  # unmapped.
+        record.mapping_quality = 255
+        zmw = int(name.split('/')[1])
         record.set_tags([
             ('ec', predictions_for_zmw[0].ec or -1, 'f'),
             ('np', predictions_for_zmw[0].np_num_passes, 'i'),
             ('rq', predictions_for_zmw[0].rq, 'f'),
+            ('RG', predictions_for_zmw[0].rg, 'Z'),
+            ('zm', zmw, 'i'),
         ])
         output_writer.write(record)
 
@@ -786,8 +794,9 @@ def run() -> stitch_utils.OutcomeCounter:
   if output_fname.endswith('.fq') or output_fname.endswith('.fastq'):
     output_writer = gfile.Open(output_fname, 'wb')
   else:
-    header = {'HD': {'VN': '1.0'}}
-    output_writer = pysam.AlignmentFile(output_fname, 'wb', header=header)
+    ccs_bam_header = pysam.AlignmentFile(FLAGS.ccs_bam, check_sq=False).header
+    output_writer = pysam.AlignmentFile(
+        output_fname, 'wb', header=ccs_bam_header)
 
   input_file_generator = stream_bam(
       subreads_to_ccs=FLAGS.subreads_to_ccs,

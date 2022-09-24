@@ -51,7 +51,8 @@ def fake_model_output(start: int, window_size: int):
       quality_string='!' * window_size,
       ec=2.5,
       np_num_passes=2,
-      rq=0.98)
+      rq=0.98,
+      rg='test_rg')
 
 
 def fake_model_outputs(window_size: int, num_windows: int):

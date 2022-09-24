@@ -101,7 +101,7 @@ HUMAN_TEST_REGIONS = ['19', '20', 'chr19', 'chr20']
 # List of features in DC examples.
 DC_FEATURES = [
     'rows', 'label', 'num_passes', 'window_pos', 'name',
-    'ccs_base_quality_scores', 'ec', 'np_num_passes', 'rq'
+    'ccs_base_quality_scores', 'ec', 'np_num_passes', 'rq', 'rg'
 ]
 
 MAX_QUAL = 40

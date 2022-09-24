@@ -43,6 +43,7 @@ class DCModelOutput:
   ec: float
   np_num_passes: int
   rq: float
+  rg: str
   sequence: Optional[str] = None
   quality_string: Optional[str] = None
 
