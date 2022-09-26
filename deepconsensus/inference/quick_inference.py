@@ -662,6 +662,8 @@ def inference_on_n_zmws(
         output_writer.write(fastq_string)
       else:
         name, seq, _, qual = fastq_string.splitlines()
+        # Remove the @ prefix from sequence name.
+        name = name[1:]
         record = pysam.AlignedSegment()
         record.query_name = name
         record.query_sequence = seq
