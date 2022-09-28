@@ -1,12 +1,12 @@
 numpy>=1.19
 pandas>=1.1
-tf-models-official>=2.9.0
+tf-models-official>=2.10.0
 ml_collections>=0.1.0
 absl-py>=0.13.0
 protobuf<3.20,>=3.9.2,<4,>=3.13
 flatbuffers<2,>=1.12
-keras<2.10.0,>=2.9.0rc0
-tensorflow-estimator<2.10.0,>=2.9.0rc0
+keras>=2.10.0
+tensorflow-estimator>=2.10.0
 zipp>=3.1.0
 httplib2>=0.15.0
 httplib2<1dev,>=0.15.0
