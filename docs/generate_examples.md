@@ -55,7 +55,7 @@ mkdir "${TF_EXAMPLES_DIR}/eval"
 mkdir "${TF_EXAMPLES_DIR}/test"
 export ccs_shard_to_truth_alignment_unfiltered="${QS_DIR}/${shard_id}.ccs_to_truth_ref.unfiltered.bam"
 export  ccs_shard_to_truth_alignment_filtered="${QS_DIR}/${shard_id}.ccs_to_truth_ref.filtered.bam"
-export truth_shard_bed="${QS_DIR}/${shard_id}.truth.bed
+export truth_shard_bed="${QS_DIR}/${shard_id}.truth.bed"
 export truth_shard_fasta="${QS_DIR}/${shard_id}.truth.fasta
 export truth_to_ccs_shard_bam="${QS_DIR}/${shard_id}.truth_to_ccs.bam
 tf_example_fname_output="tf-@split-${shard_id}.tfrecord.gz"
