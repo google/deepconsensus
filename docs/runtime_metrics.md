@@ -31,7 +31,7 @@ performance further and allow for more predictable runtimes based on
 DeepConsensus settings.
 
 We only show GPU runtimes for `n1-standard-16`. Note that we observe job
-failures when using GPU with larger `batch_size` (>=4096) and with larger values
+failures when using GPU with larger `batch_size` (>=2048) and with larger values
 of `batch_zmws` (500, 1000).
 
 ## Runtime Test Configurations
