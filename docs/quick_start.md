@@ -100,10 +100,10 @@ QS_DIR="${HOME}/deepconsensus_quick_start"
 mkdir -p "${QS_DIR}" "${QS_DIR}/model"
 
 # Download the input PacBio Subread data.
-gsutil cp gs://brain-genomics-public/research/deepconsensus/quickstart/v0.3/n1000.subreads.bam "${QS_DIR}"/
+gsutil cp gs://brain-genomics-public/research/deepconsensus/quickstart/v1.0/n1000.subreads.bam "${QS_DIR}"/
 
 # Download the DeepConsensus model.
-gsutil cp -r gs://brain-genomics-public/research/deepconsensus/models/v0.3/model_checkpoint/* "${QS_DIR}"/model/
+gsutil cp -r gs://brain-genomics-public/research/deepconsensus/models/v1.0/model_checkpoint/* "${QS_DIR}"/model/
 ```
 
 This directory should now contain the following files:
