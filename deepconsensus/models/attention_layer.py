@@ -62,24 +62,26 @@ class Attention(tf.keras.layers.Layer):
       limit = math.sqrt(6.0 / (fan_in + fan_out))
       return tf.keras.initializers.RandomUniform(minval=-limit, maxval=limit)
 
-    attention_initializer = _glorot_initializer(input_shape.as_list()[-1],
-                                                self.hidden_size)
+    input_hidden_size = input_shape.as_list()[-1]
+    query_initializer = _glorot_initializer(input_hidden_size, self.hidden_size)
+    key_initializer = _glorot_initializer(input_hidden_size, self.hidden_size)
+    value_initializer = _glorot_initializer(input_hidden_size, self.hidden_size)
     self.query_dense_layer = tf.keras.layers.experimental.EinsumDense(
         "BTE,ENH->BTNH",
         output_shape=(None, self.num_heads, size_per_head),
-        kernel_initializer=attention_initializer,
+        kernel_initializer=query_initializer,
         bias_axes=None,
         name="query")
     self.key_dense_layer = tf.keras.layers.experimental.EinsumDense(
         "BTE,ENH->BTNH",
         output_shape=(None, self.num_heads, size_per_head),
-        kernel_initializer=attention_initializer,
+        kernel_initializer=key_initializer,
         bias_axes=None,
         name="key")
     self.value_dense_layer = tf.keras.layers.experimental.EinsumDense(
         "BTE,ENH->BTNH",
         output_shape=(None, self.num_heads, size_per_head),
-        kernel_initializer=attention_initializer,
+        kernel_initializer=value_initializer,
         bias_axes=None,
         name="value")
 
