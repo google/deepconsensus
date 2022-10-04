@@ -45,13 +45,16 @@ import functools
 import multiprocessing
 import multiprocessing.pool
 import time
-from typing import Dict, List, Any
+from typing import Any, Dict, List
 
 from absl import flags
 from absl import logging
+import numpy as np
 import pandas as pd
 import pysam
 import tensorflow as tf
+
+from deepconsensus.quality_calibration import calibration_lib
 from absl import app
 
 
@@ -88,6 +91,8 @@ flags.DEFINE_integer(
     default=60,
     help='Minimum mapping quality for read.'
     'Reads below min_mapq will be ignored from calculation.')
+flags.DEFINE_string('dc_calibration', 'skip',
+                    'Apply a calibration before outputting.')
 
 
 def register_required_flags():
@@ -222,9 +227,10 @@ def get_contig_regions(bam_file: str, fasta_file: str, region: str,
   return region_intervals
 
 
-def create_processes(bam_file: str, fasta_file: str,
-                     all_intervals: List[RegionRecord], total_threads: int,
-                     min_mapq: int) ->...:
+def create_processes(
+    bam_file: str, fasta_file: str, all_intervals: List[RegionRecord],
+    total_threads: int, min_mapq: int,
+    dc_calibration: calibration_lib.QualityCalibrationValues) ->...:
   """Argument generator for launching processes in parallel."""
 
   def process_feeder():
@@ -232,7 +238,7 @@ def create_processes(bam_file: str, fasta_file: str,
       process_intervals = [
           r for i, r in enumerate(all_intervals) if i % total_threads == thread
       ]
-      yield (bam_file, fasta_file, process_intervals, min_mapq)
+      yield (bam_file, fasta_file, process_intervals, min_mapq, dc_calibration)
 
   return process_feeder
 
@@ -254,7 +260,7 @@ def trace_exception(f) ->...:
 
 def clear_tasks(tasks: List[Any], global_stats: List[Dict[str,
                                                           int]]) -> List[Any]:
-  """Clear successful tasks and log result."""
+  """Clears successful tasks and log result."""
   for task in tasks:
     if task.ready():
       if task.successful():
@@ -269,11 +275,12 @@ def clear_tasks(tasks: List[Any], global_stats: List[Dict[str,
   return tasks
 
 
-def get_quality_calibration_stats(reads: List[pysam.AlignedSegment],
-                                  ref_sequence: str,
-                                  region_interval: RegionRecord,
-                                  min_mapq: int) -> List[Dict[str, int]]:
-  """Iterate over reads and calculate quality scores."""
+def get_quality_calibration_stats(
+    reads: List[pysam.AlignedSegment], ref_sequence: str,
+    region_interval: RegionRecord, min_mapq: int,
+    dc_calibration: calibration_lib.QualityCalibrationValues
+) -> List[Dict[str, int]]:
+  """Iterates over reads and calculate quality scores."""
   match_mismatch_count = [{'M': 0, 'X': 0} for _ in range(0, MAX_BASEQ)]
 
   for read in reads:
@@ -285,6 +292,14 @@ def get_quality_calibration_stats(reads: List[pysam.AlignedSegment],
 
     current_ref_pos = read.reference_start
     current_read_index = 0
+
+    if dc_calibration.enabled:
+      fit_read_query_qualities = calibration_lib.calibrate_quality_scores(
+          np.array(read.query_qualities, dtype=np.uint8), dc_calibration)
+      fit_read_query_qualities = np.round(fit_read_query_qualities, decimals=0)
+      fit_read_query_qualities = fit_read_query_qualities.astype(dtype=np.int32)
+    else:
+      fit_read_query_qualities = read.query_qualities
 
     # iterate over the read to find the maximum insert size
     # we observe at any position within the window.
@@ -300,7 +315,7 @@ def get_quality_calibration_stats(reads: List[pysam.AlignedSegment],
             region_index = current_ref_pos - region_interval.start
             ref_base = ref_sequence[region_index].upper()
             read_base = read.query_sequence[current_read_index].upper()
-            read_base_quality = read.query_qualities[current_read_index]
+            read_base_quality = fit_read_query_qualities[current_read_index]
             if ref_base.upper() in ['A', 'C', 'G', 'T']:
               if ref_base != read_base:
                 match_mismatch_count[read_base_quality]['X'] += 1
@@ -315,7 +330,7 @@ def get_quality_calibration_stats(reads: List[pysam.AlignedSegment],
           # the base is within the window
           if region_interval.start <= current_ref_pos <= region_interval.stop:
             read_base = read.query_sequence[current_read_index].upper()
-            read_base_quality = read.query_qualities[current_read_index]
+            read_base_quality = fit_read_query_qualities[current_read_index]
             match_mismatch_count[read_base_quality]['X'] += 1
 
           current_read_index += 1
@@ -329,13 +344,19 @@ def get_quality_calibration_stats(reads: List[pysam.AlignedSegment],
 
 def calculate_quality_calibration(bam_file: str, fasta_file: str,
                                   process_intervals: List[RegionRecord],
-                                  min_mapq: int) -> List[Dict[str, int]]:
-  """Calculate quality calibration of reads."""
+                                  min_mapq: int,
+                                  dc_calibration: str) -> List[Dict[str, int]]:
+  """Calculates quality calibration of reads."""
   thread_counter = collections.Counter()
   thread_counter['n_examples'] += len(process_intervals)
   bam_reader = pysam.AlignmentFile(bam_file)
   fasta_reader = pysam.FastaFile(fasta_file)
   main_dict = [{'M': 0, 'X': 0} for _ in range(0, MAX_BASEQ)]
+
+  # Parse calibration values
+  dc_calibration_values = calibration_lib.parse_calibration_string(
+      dc_calibration)
+
   for interval_region in process_intervals:
     # get the sequence from the fasta file
     reference_sequence = fasta_reader.fetch(interval_region.contig,
@@ -346,7 +367,8 @@ def calculate_quality_calibration(bam_file: str, fasta_file: str,
                                 interval_region.stop)
     # create the example of the region
     match_mismatch_count = get_quality_calibration_stats(
-        read_set, reference_sequence, interval_region, min_mapq)
+        read_set, reference_sequence, interval_region, min_mapq,
+        dc_calibration_values)
     for i in range(0, MAX_BASEQ):
       main_dict[i]['M'] += match_mismatch_count[i]['M']
       main_dict[i]['X'] += match_mismatch_count[i]['X']
@@ -372,7 +394,8 @@ def main(unused_argv) -> None:
   manager = multiprocessing.Manager()
 
   proc_feeder = create_processes(FLAGS.bam, FLAGS.ref, all_intervals,
-                                 FLAGS.cpus, FLAGS.min_mapq)
+                                 FLAGS.cpus, FLAGS.min_mapq,
+                                 FLAGS.dc_calibration)
   global_match_mismatch_stat = [{'M': 0, 'X': 0} for _ in range(0, MAX_BASEQ)]
 
   logging.info('Processing in parallel using %s cores', FLAGS.cpus)

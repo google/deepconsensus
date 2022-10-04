@@ -58,6 +58,7 @@ from deepconsensus.models import data_providers
 from deepconsensus.models import model_utils
 from deepconsensus.postprocess import stitch_utils
 from deepconsensus.preprocess import pre_lib
+from deepconsensus.quality_calibration import calibration_lib
 from deepconsensus.utils import dc_constants
 from deepconsensus.utils import utils
 from tensorflow.python.platform import gfile
@@ -176,22 +177,6 @@ def register_required_flags():
 
 
 @dataclasses.dataclass
-class QualityCalibrationValues:
-  """A structure that defines variables required for base quality calibration.
-
-  Attributes:
-    enabled: If set then calibration is enabled.
-    threshold: A threshold value above which the qualities will be calibrated
-    w: Co-efficient for linear transformation.
-    b: Bias term for linear transformation.
-  """
-  enabled: bool
-  threshold: float
-  w: float
-  b: float
-
-
-@dataclasses.dataclass
 class InferenceOptions:
   """A central place to define options used across various stages of inference.
 
@@ -223,8 +208,8 @@ class InferenceOptions:
   cpus: int
   skip_windows_above: int
   use_saved_model: bool
-  dc_calibration_values: QualityCalibrationValues
-  ccs_calibration_values: QualityCalibrationValues
+  dc_calibration_values: calibration_lib.QualityCalibrationValues
+  ccs_calibration_values: calibration_lib.QualityCalibrationValues
 
 
 timing = []
@@ -247,30 +232,6 @@ def timelog(stage: str,
       'num_subreads': num_subreads
   }
   timing.append(datum)
-
-
-def calibrate_quality_scores(
-    quality_scores: np.ndarray,
-    calibration_values: QualityCalibrationValues) -> np.ndarray:
-  """Calibrate the quality score using linear transformation.
-
-  Args:
-    quality_scores: A list containing the predicted quality score.
-    calibration_values: Co-efficient values of the linear transformation.
-
-  Returns:
-    A list of calibrated quality scores.
-  """
-  if calibration_values.threshold == 0:
-    # Skip O(n) operations of np.where when we need to calibrate the entire list
-    return quality_scores * calibration_values.w + calibration_values.b
-
-  w_values = np.where(quality_scores > calibration_values.threshold,
-                      calibration_values.w, 1.0)
-  b_values = np.where(quality_scores > calibration_values.threshold,
-                      calibration_values.b, 0.0)
-  calibrated_score = quality_scores * w_values + b_values
-  return calibrated_score
 
 
 # TODO Add unit test for this function. We need to create unit test
@@ -351,8 +312,8 @@ def run_model_on_examples(
     error_prob = 1 - np.max(softmax_output, axis=-1)
     quality_scores = -10 * np.log10(error_prob)
     if options.dc_calibration_values.enabled:
-      quality_scores = calibrate_quality_scores(quality_scores,
-                                                options.dc_calibration_values)
+      quality_scores = calibration_lib.calibrate_quality_scores(
+          quality_scores, options.dc_calibration_values)
     quality_scores = np.minimum(quality_scores, dc_constants.MAX_QUAL)
     quality_scores = np.round(quality_scores, decimals=0)
     quality_scores = quality_scores.astype(dtype=np.int32)
@@ -519,7 +480,7 @@ def process_skipped_window(
   ccs_seq = utils.encoded_sequence_to_string(ccs)
   ccs_quality_scores = feature_dict['ccs_base_quality_scores']
   if options.ccs_calibration_values.enabled:
-    ccs_quality_scores = calibrate_quality_scores(
+    ccs_quality_scores = calibration_lib.calibrate_quality_scores(
         ccs_quality_scores, options.ccs_calibration_values)
   ccs_quality_scores = np.minimum(ccs_quality_scores, dc_constants.MAX_QUAL)
   ccs_quality_scores = ccs_quality_scores.astype(dtype=np.int32)
@@ -700,29 +661,8 @@ def save_runtime(time_points, output_prefix):
     df.to_csv(writer, index=False)
 
 
-def parse_calibration_string(
-    calibration_string: str) -> QualityCalibrationValues:
-  """Parse calibration string and return threshold, w and b values."""
-  # If calibration string is set to skip, no calibration will be performed.
-  if calibration_string == 'skip':
-    return QualityCalibrationValues(enabled=False, threshold=0.0, w=1.0, b=0.0)
-
-  parsed_list = calibration_string.split(',')
-  if len(parsed_list) != 3:
-    raise ValueError(
-        'Malformed calibration string. Expected 3 values (or set '
-        'to "skip" to perform no quality calibration).', calibration_string)
-
-  calibration_values = QualityCalibrationValues(
-      enabled=True,
-      threshold=float(parsed_list[0]),
-      w=float(parsed_list[1]),
-      b=float(parsed_list[2]))
-  return calibration_values
-
-
 def run() -> stitch_utils.OutcomeCounter:
-  """Called by main."""
+  """Performs an inference run."""
 
   # Determine if --checkpoint is a saved model.
   use_saved_model = (
@@ -747,11 +687,13 @@ def run() -> stitch_utils.OutcomeCounter:
           'model params.json: %s', dc_calibration_values)
   else:
     dc_calibration_values = FLAGS.dc_calibration
-  dc_calibration_values = parse_calibration_string(dc_calibration_values)
+  dc_calibration_values = calibration_lib.parse_calibration_string(
+      dc_calibration_values)
   if not FLAGS.ccs_calibration:
     raise ValueError('--ccs_calibration should be set to "skip" '
                      'or to base calibration scores.')
-  ccs_calibration_values = parse_calibration_string(FLAGS.ccs_calibration)
+  ccs_calibration_values = calibration_lib.parse_calibration_string(
+      FLAGS.ccs_calibration)
 
   options = InferenceOptions(
       max_length=params.max_length,
