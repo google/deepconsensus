@@ -43,7 +43,7 @@ mkdir "${DC_TRAIN_DIR}"
 mkdir "${TF_EXAMPLES}"
 mkdir "${DC_TRAIN_OUTPUT}"
 
-gsutil cp -R gs://pacbio-collab/pb-dc-training-set/tf-examples/* "${TF_EXAMPLES}/"
+gsutil -m cp -R gs://brain-genomics-public/research/deepconsensus/training-tutorial/v1.0/* "${TF_EXAMPLES}/"
 ```
 
 The path to training examples has to be set in
