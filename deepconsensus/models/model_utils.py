@@ -39,9 +39,14 @@ import tensorflow as tf
 
 from deepconsensus.models import data_providers
 from deepconsensus.models import losses_and_metrics
+from deepconsensus.models import model_configs
 from deepconsensus.models import networks
 from deepconsensus.models import transformer_basic_params
-from deepconsensus.utils import dc_constants
+from official.modeling import optimization
+
+
+_YIELD_OVER_CSS_METRIC_NAME = 'yield_over_ccs'
+_BATCH_IDENTITY_METRIC_NAME = 'per_batch_alignment_identity'
 
 
 def get_deepconsensus_loss(
@@ -55,29 +60,33 @@ def get_deepconsensus_loss(
           losses_and_metrics.AlignmentLoss(
               del_cost=params.del_cost,
               loss_reg=params.loss_reg,
+              width=params.band_width,
               reduction=reduction),
   }[params.loss_function]
 
 
 def get_deepconsensus_metrics(name_prefix='') -> List[tf.keras.metrics.Metric]:
   """Returns the metrics to use for training and evaluation."""
-  class_to_name = {
-      base: dc_constants.VOCAB.index(base) for base in dc_constants.VOCAB
-  }
-  class_to_name['gap_or_pad'] = class_to_name[dc_constants.GAP_OR_PAD]
-  del class_to_name[dc_constants.GAP_OR_PAD]
-  per_class_accuracy_metrics = [
-      losses_and_metrics.PerClassAccuracy(
-          class_value=class_value, name=f'{name_prefix}{name}')
-      for name, class_value in class_to_name.items()
-  ]
   return [
-      tf.keras.metrics.SparseCategoricalAccuracy(name=f'{name_prefix}accuracy'),
       losses_and_metrics.PerExampleAccuracy(
           name=f'{name_prefix}per_example_accuracy'),
-      losses_and_metrics.AlignmentMetric(
-          name=f'{name_prefix}alignment_identity')
-  ] + per_class_accuracy_metrics
+      tf.keras.metrics.Mean(name=f'{name_prefix}{_BATCH_IDENTITY_METRIC_NAME}'),
+      losses_and_metrics.YieldOverCCSMetric(
+          name=f'{name_prefix}{_YIELD_OVER_CSS_METRIC_NAME}')
+  ]
+
+
+def update_metrics(metrics: List[tf.keras.metrics.Metric], labels: tf.Tensor,
+                   predictions: tf.Tensor, identity_pred: tf.Tensor,
+                   identity_ccs: tf.Tensor) -> None:
+  """Updates metrics."""
+  for metric in metrics:
+    if _YIELD_OVER_CSS_METRIC_NAME in metric.name:
+      metric.update_state(identity_ccs, identity_pred)
+    elif _BATCH_IDENTITY_METRIC_NAME in metric.name:
+      metric.update_state(identity_pred)
+    else:
+      metric.update_state(labels, predictions)
 
 
 def get_record_shape(dataset_path: str) -> List[int]:
@@ -103,14 +112,19 @@ def get_record_shape(dataset_path: str) -> List[int]:
   return list(map(int, features['subreads/shape'].numpy()))
 
 
-def extract_max_length(dataset_sharded_path: str) -> int:
-  """Extracts the example length based on a single entry within a dataset."""
-  return get_record_shape(dataset_sharded_path)[1]
-
-
 def extract_example_height(dataset_sharded_path: str) -> int:
   """Gets example height based on a single entry within a dataset."""
   return get_record_shape(dataset_sharded_path)[0]
+
+
+def get_ccs_from_example(features: tf.Tensor,
+                         params: ml_collections.ConfigDict) -> tf.Tensor:
+  """Gets CCS sequence from model input features."""
+  _, _, _, _, ccs_index, _ = data_providers.get_indices(params['max_passes'])
+  # CCS tensor with shape [batch_size, 1, max_length, 1].
+  ccs = tf.gather(features, tf.range(*ccs_index), axis=1)
+  # Return CCS tensor with shape [batch_size, max_length].
+  return tf.squeeze(ccs, axis=[1, -1])
 
 
 def get_model(params: ml_collections.ConfigDict) -> tf.keras.Model:
@@ -126,6 +140,76 @@ def get_model(params: ml_collections.ConfigDict) -> tf.keras.Model:
   return model
 
 
+def set_dataset(params):
+  """Sets dataset paths and loads example counts."""
+  # Individual specifications:
+  manual_spec = hasattr(params, 'train_path') and hasattr(
+      params, 'eval_path') and hasattr(params, 'test_path')
+  if hasattr(params, 'tf_dataset') and manual_spec:
+    msg = 'Cannot specify tf_dataset and individual paths (e.g. train_path)'
+    raise Exception(msg)
+  if hasattr(params, 'tf_dataset'):
+    params.train_path = []
+    params.eval_path = []
+    params.test_path = []
+    params.inference_path = []
+    params.subsample_examples = []
+    # If the user has not set the number of examples,
+    # extract from summary.training.json files.
+    n_examples_train_not_set = not hasattr(params, 'n_examples_train')
+    n_examples_eval_not_set = not hasattr(params, 'n_examples_eval')
+    if n_examples_train_not_set ^ n_examples_eval_not_set:
+      raise Exception(
+          'You only have one of n_examples_{train,eval} set. '
+          'Set both in model_configs.py to manually set these values, '
+          'or set neither to load the counts from summary.training.json.')
+    load_example_counts = n_examples_train_not_set and n_examples_eval_not_set
+    if load_example_counts:
+      params.n_examples_train = 0
+      params.n_examples_eval = 0
+    for dataset_path in params.tf_dataset:
+      params.train_path.append(f'{dataset_path}/train/*')
+      params.eval_path.append(f'{dataset_path}/eval/*')
+      params.test_path.append(f'{dataset_path}/test/*')
+
+      dataset_summary_path, dataset_summary = load_dataset_summary(dataset_path)
+      n_examples_train = dataset_summary.get('n_examples_train', None)
+      n_examples_eval = dataset_summary.get('n_examples_eval', None)
+      if not n_examples_train or not n_examples_eval:
+        raise Exception(
+            f'No example count specified. Review {dataset_summary_path}')
+      if load_example_counts:
+        params.n_examples_train += n_examples_train
+        params.n_examples_eval += n_examples_eval
+
+      # Check for compatibility of dataset and model config
+      dataset_max_passes = int(dataset_summary.get('max_passes'))
+      if params.max_passes != dataset_max_passes:
+        raise Exception('dataset and model max_passes do not match.')
+
+
+def load_dataset_summary(dataset_path: str) -> Tuple[str, Dict[str, Any]]:
+  """Loads the dataset summary from the `summary.training.json` file.
+
+  If present, load the `n_example_counts.subsample.json` and override
+  parameters with values from that file.
+
+  Args:
+    dataset_path: Root directory for the associated dataset.
+
+  Returns:
+    Path from which params were loaded, and the loaded dataset summary.
+  """
+  dataset_summary_path = os.path.join(dataset_path, 'summary.training.json')
+  with tf.io.gfile.GFile(dataset_summary_path, 'r') as ds:
+    dataset_summary = json.load(ds)
+  # Update dataset_summary with subsample params
+  subsample_path = os.path.join(dataset_path, 'n_example_counts.subsample.json')
+  if tf.io.gfile.exists(subsample_path):
+    dataset_summary_path = subsample_path
+    with tf.io.gfile.GFile(subsample_path, 'r') as ds:
+      dataset_summary.update(json.load(ds))
+  return dataset_summary_path, dataset_summary
 
 
 def del_param(params, name):
@@ -136,7 +220,6 @@ def del_param(params, name):
 def modify_params(params: ml_collections.ConfigDict,
                   tpu: Optional[str] = None,
                   tpu_topology: Optional[str] = None,
-                  dataset_path: Optional[str] = None,
                   speedy: bool = False,
                   max_length: Optional[int] = None,
                   is_training: bool = True) -> None:
@@ -150,11 +233,10 @@ def modify_params(params: ml_collections.ConfigDict,
     params: Config dictionary of the parameters to use.
     tpu: Name of the TPU being used or None.
     tpu_topology: of the form NxM, where N * M is the number of chips.
-    dataset_path: Optional. Path to dataset from which to extract max_length.
     speedy: Bool. Skip time-consuming steps that only add nice-to-have
-        information.
-    max_length: Equivalent to padded_len in preprocess. If given, use this to
-        set params.max_length instead of inspecting the examples.
+      information.
+    max_length: Equivalent to max_length in preprocess. If given, use this to
+      set params.max_length instead of inspecting the examples.
     is_training: When not in training mode, do not run set_dataset
 
   Returns:
@@ -170,6 +252,9 @@ def modify_params(params: ml_collections.ConfigDict,
       del_param(params, 'eval_path')
       del_param(params, 'test_path')
       del_param(params, 'inference_path')
+    # Set dataset if tf_dataset is set.
+    if 'tf_dataset' in params and params.tf_dataset:
+      set_dataset(params)
     # For all models, scale batch size by number of GPUs when using GPUs. If no
     # GPUs are being used, keep the original batch size.
     num_gpus = len(tf.config.experimental.list_physical_devices('GPU'))
@@ -198,11 +283,9 @@ def modify_params(params: ml_collections.ConfigDict,
     # Otherwise, we can expect params.train_path to exist.
     if max_length is not None:
       params.max_length = max_length
-    elif dataset_path:
-      params.max_length = extract_max_length(
-          os.path.join(dataset_path, os.path.basename(dataset_path)))
-    else:
-      params.max_length = extract_max_length(params.train_path)
+
+    if not hasattr(params, 'max_length'):
+      raise ValueError('No params.max_length provided.')
 
     if 'transformer_learn_values' in params.model_name:
       dim = ((params.use_bases * params.per_base_hidden_size) +
@@ -312,30 +395,22 @@ def print_model_summary(model: tf.keras.Model, input_shape: Tuple[int, int, int,
 def read_params_from_json(checkpoint_path: str) -> ml_collections.ConfigDict:
   """Reads the params read from the params.json file for given checkpoint."""
   # For SavedModel, the path could be to the directory itself.
+  param_set = model_configs.get_config()
   if os.path.isdir(checkpoint_path):
     dir_path = checkpoint_path
   else:
     dir_path = os.path.dirname(checkpoint_path)
   json_path = os.path.join(dir_path, 'params.json')
-  params = ml_collections.ConfigDict(
+  json_params = ml_collections.ConfigDict(
       json.load(tf.io.gfile.GFile(json_path, 'r')))
-  # This cannot be passed in to be updated as json serializes it as a string.
-  # This value shouldn't change across experiments, so just use what is present
-  # in cuurrent config, rather than the experiment config.
-  if params.dtype:
-    del params.dtype
-    params.dtype = dc_constants.TF_DATA_TYPE
-  return params
-
-
-class DTypeEncoder(json.JSONEncoder):
-  """json encoder that allows for dtypes to be encoded."""
-
-  def default(self, o: Any) -> Any:
-    if isinstance(o, tf.DType):
-      return repr(o)
-    else:
-      return json.JSONEncoder.default(self, o)
+  # Report new base parameters that are not present in params.json
+  for b_param in param_set:
+    if b_param not in json_params:
+      logging.warning(('A new parameter (%s=%s) was added to the base config '
+                       'that is not present in params.json'), b_param,
+                      param_set[b_param])
+  param_set.update(json_params)
+  return param_set
 
 
 def save_params_as_json(out_dir: str,
@@ -344,7 +419,7 @@ def save_params_as_json(out_dir: str,
   json_path = os.path.join(out_dir, 'params.json')
   tf.io.gfile.makedirs(os.path.dirname(json_path))
   with tf.io.gfile.GFile(json_path, 'w') as json_file:
-    json_file.write(json.dumps(dict(params), indent=4, cls=DTypeEncoder))
+    json_file.write(json.dumps(dict(params), indent=4))
 
 
 def get_datasets(
@@ -379,15 +454,20 @@ def get_step_counts(params: ml_collections.ConfigDict,
 
 def get_checkpoint_and_initial_epoch(
     model: tf.keras.models.Model, optimizer: tf.keras.optimizers.Optimizer,
-    out_dir: str, steps_per_epoch: int) -> Tuple[tf.train.Checkpoint, int]:
+    epoch_checkpoint: str) -> Tuple[tf.train.Checkpoint, int]:
   """Loads a checkpoint if available and sets epoch to start training."""
-  checkpoint = tf.train.Checkpoint(model=model, optimizer=optimizer)
-  latest_checkpoint = tf.train.latest_checkpoint(out_dir)
   initial_epoch = 0
-  if latest_checkpoint:
-    checkpoint.restore(latest_checkpoint)
-    logging.info('Loaded checkpoint %s', latest_checkpoint)
-    initial_epoch = optimizer.iterations.numpy() // steps_per_epoch
+  checkpoint = tf.train.Checkpoint(model=model, optimizer=optimizer)
+  if tf.io.gfile.exists(epoch_checkpoint):
+    with tf.io.gfile.GFile(epoch_checkpoint, 'r') as f:
+      epoch_checkpoint, initial_epoch = f.readline().split('\t')
+      initial_epoch = int(initial_epoch)
+      checkpoint.restore(epoch_checkpoint)
+      logging.info('Loading checkpoint %s for epoch %s', epoch_checkpoint,
+                   initial_epoch)
+  else:
+    logging.info('No Epoch checkpoint. Starting from epoch %s', initial_epoch)
+    initial_epoch = 0
   return checkpoint, initial_epoch
 
 
@@ -397,24 +477,32 @@ def reset_all_metrics(metrics: List[tf.keras.metrics.Metric]) -> None:
     metric.reset_states()
 
 
-def log_and_save_metrics(epoch: int, step: int, total_steps: int,
+def log_and_save_metrics(epoch: int, num_epochs: int, step: int,
+                         total_steps: int,
                          optimizer: tf.keras.optimizers.Optimizer,
-                         losses_dict: Dict[str, float],
-                         metrics: List[tf.keras.metrics.Metric],
-                         training: bool) -> None:
+                         metrics: List[tf.keras.metrics.Metric], training: bool,
+                         steps_per_second: float) -> None:
   """Logs metrics and saves them for TensorBoard."""
   logging.info(
       'epoch: %d  step: %d of %d metrics: %s', epoch, step, total_steps,
-      ' '.join(f'{loss_name}= {losses_dict[loss_name]}'
-               for loss_name in losses_dict.keys()))
+      ' '.join(f'{metric.name}= {metric.result()}' for metric in metrics))
+
+  overall_progress = optimizer.iterations.numpy() / (total_steps * num_epochs)
+
 
   if training:
-    tf.summary.scalar('learning_rate', optimizer.lr, step=optimizer.iterations)
-  for loss_name in losses_dict.keys():
     tf.summary.scalar(
-        loss_name, losses_dict[loss_name], step=optimizer.iterations)
+        'learning_rate',
+        optimizer.lr(optimizer.iterations),
+        step=optimizer.iterations)
+    tf.summary.scalar('progress/epoch', epoch, step=optimizer.iterations)
+    tf.summary.scalar(
+        'progress/overall_progress',
+        overall_progress,
+        step=optimizer.iterations)
   for metric in metrics:
     tf.summary.scalar(metric.name, metric.result(), step=optimizer.iterations)
+    metric.reset_states()
 
 
 def write_row(handle: Union[io.TextIOWrapper], row: List[Any]) -> None:
@@ -423,7 +511,6 @@ def write_row(handle: Union[io.TextIOWrapper], row: List[Any]) -> None:
 
 
 def save_checkpoint(checkpoint: tf.train.Checkpoint, out_dir: str,
-                    train_metrics: List[tf.keras.metrics.Metric],
                     eval_metrics: List[tf.keras.metrics.Metric],
                     write_checkpoint_metrics: bool) -> str:
   """Save checkpoint and return its name."""
@@ -438,8 +525,7 @@ def save_checkpoint(checkpoint: tf.train.Checkpoint, out_dir: str,
         write_row(f, row)
 
     with tf.io.gfile.GFile(metrics_file, 'a') as f:
-      for group_name, metrics in [('train', train_metrics),
-                                  ('eval', eval_metrics)]:
+      for group_name, metrics in [('eval', eval_metrics)]:
         for metric in metrics:
           row = [
               checkpoint_name, group_name, metric.name,
@@ -447,3 +533,43 @@ def save_checkpoint(checkpoint: tf.train.Checkpoint, out_dir: str,
           ]
           write_row(f, row)
   return checkpoint_name
+
+
+def create_optimizer(params: ml_collections.ConfigDict,
+                     decay_steps: int) -> tf.keras.optimizers.Optimizer:
+  """Creates optimizer based on specified model params and decay steps.
+
+  Args:
+    params: Config dictionary of the model parameters.
+    decay_steps: Scalar (must be positive) for decay computation.
+
+  Returns:
+    Optimizer instance.
+  """
+  # Create optimizer.
+  optimization_config = optimization.OptimizationConfig(
+      optimizer=optimization.OptimizerConfig(
+          type='lamb',
+          lamb=optimization.LAMBConfig(
+              weight_decay_rate=params.weight_decay_rate,
+              beta_1=params.beta_1,
+              beta_2=params.beta_2,
+              epsilon=params.epsilon,
+              exclude_from_weight_decay=[
+                  'LayerNorm', 'bias', 'norm', 'BatchNorm',
+                  'batch_normalization'
+              ])),
+      learning_rate=optimization.LrConfig(
+          type='polynomial',
+          polynomial=optimization.PolynomialLrConfig(
+              initial_learning_rate=params.initial_learning_rate,
+              decay_steps=decay_steps,
+              end_learning_rate=params.end_learning_rate)),
+      warmup=optimization.WarmupConfig(
+          type='linear',
+          linear=optimization.LinearWarmupConfig(
+              warmup_steps=params.warmup_steps)))
+
+  opt_factory = optimization.OptimizerFactory(optimization_config)
+  optimizer = opt_factory.build_optimizer(opt_factory.build_learning_rate())
+  return optimizer

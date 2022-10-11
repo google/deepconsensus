@@ -88,7 +88,7 @@ class ModelsTest(parameterized.TestCase):
     # First dimension will always be equal to batch_size because test config
     # uses a batch size of 1.
     self.assertEqual(softmax_output.shape,
-                     (params.batch_size, params.max_length, params.num_classes))
+                     (params.batch_size, params.max_length, params.vocab_size))
     self.assertTrue(
         np.allclose(
             np.sum(softmax_output, axis=-1),

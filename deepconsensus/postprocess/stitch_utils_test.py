@@ -43,17 +43,21 @@ def setUpModule():
   logging.set_verbosity(logging.FATAL)
 
 
-def fake_model_output(start: int, window_size: int, padding: int):
+def fake_model_output(start: int, window_size: int):
   return stitch_utils.DCModelOutput(
       molecule_name='name',
       window_pos=start,
-      sequence=''.join(random.choices('ACGT', k=window_size)) + '-' * padding,
-      quality_string='!' * (window_size + padding))
+      sequence=''.join(random.choices('ACGT', k=window_size)),
+      quality_string='!' * window_size,
+      ec=2.5,
+      np_num_passes=2,
+      rq=0.98,
+      rg='test_rg')
 
 
-def fake_model_outputs(window_size: int, num_windows: int, padding: int = 0):
+def fake_model_outputs(window_size: int, num_windows: int):
   outputs = [
-      fake_model_output(start=start, window_size=window_size, padding=padding)
+      fake_model_output(start=start, window_size=window_size)
       for start in range(0, window_size * num_windows, window_size)
   ]
   return outputs
@@ -71,7 +75,7 @@ class GetFullSequenceTest(parameterized.TestCase):
         [dc_output.quality_string for dc_output in dc_outputs])
 
     sequence_output, quality_output = stitch_utils.get_full_sequence(
-        deepconsensus_outputs=dc_outputs, example_width=width)
+        deepconsensus_outputs=dc_outputs, max_length=width)
     self.assertEqual(expected_sequence, sequence_output)
     self.assertEqual(expected_quality_string, quality_output)
 
@@ -95,16 +99,16 @@ class GetFullSequenceTest(parameterized.TestCase):
     dc_outputs.pop(rand_seq_knockout)
 
     sequence_output, quality_output = stitch_utils.get_full_sequence(
-        deepconsensus_outputs=dc_outputs, example_width=width, fill_n=True)
+        deepconsensus_outputs=dc_outputs, max_length=width, fill_n=True)
     self.assertEqual(expected_sequence, sequence_output)
     self.assertEqual(expected_quality_string, quality_output)
 
 
-class RemoveGapsAndPaddingTest(parameterized.TestCase):
+class RemoveGapsTest(parameterized.TestCase):
 
   @parameterized.named_parameters(
       dict(
-          testcase_name='no gaps/padding',
+          testcase_name='no gaps',
           sequence='ATCG',
           quality_string=utils.quality_scores_to_string(np.array([1, 2, 3, 4])),
           expected_sequence='ATCG',
@@ -112,7 +116,7 @@ class RemoveGapsAndPaddingTest(parameterized.TestCase):
               np.array([1, 2, 3, 4])),
       ),
       dict(
-          testcase_name='some gaps/padding',
+          testcase_name='some gaps',
           sequence='AT CG ',
           quality_string=utils.quality_scores_to_string(
               np.array([1, 2, 3, 4, 5, 6])),
@@ -121,21 +125,21 @@ class RemoveGapsAndPaddingTest(parameterized.TestCase):
               np.array([1, 2, 4, 5])),
       ),
       dict(
-          testcase_name='all gaps/padding',
+          testcase_name='all gaps',
           sequence='    ',
           quality_string=utils.quality_scores_to_string(np.array([1, 2, 3, 4])),
           expected_sequence=None,
           expected_quality_string=None,
       ),
   )
-  def test_remove_gaps_and_padding(self, sequence, quality_string,
-                                   expected_sequence, expected_quality_string):
+  def test_remove_gaps(self, sequence, quality_string, expected_sequence,
+                       expected_quality_string):
     if expected_sequence:
       expected_output = (expected_sequence, expected_quality_string)
     else:
       expected_output = ('', '')
 
-    output = stitch_utils.remove_gaps_and_padding(
+    output = stitch_utils.remove_gaps(
         sequence=sequence, quality_string=quality_string)
     self.assertEqual(output, expected_output)
 
@@ -168,9 +172,9 @@ class ConvertToFastqStrDoFnTest(absltest.TestCase):
     sequence_line = fasta_str_parts[1]
     separator_line = fasta_str_parts[2]
     quality_string_line = fasta_str_parts[3]
-    padding_and_gap = [dc_constants.GAP_OR_PAD, dc_constants.GAP_OR_PAD]
+    gap = [dc_constants.GAP, dc_constants.GAP]
     # Check the sequence line contains only valid bases.
-    self.assertNoCommonElements(set(sequence_line), padding_and_gap)
+    self.assertNoCommonElements(set(sequence_line), gap)
     self.assertEqual(separator_line, '+')
     # Not all values in this range are allowed, since we are binning, but we
     # do not consider that for this test.

@@ -43,17 +43,13 @@ from deepconsensus.models import data_providers
 from deepconsensus.models import model_utils
 from tensorflow.python.platform import gfile
 
-FLAGS = flags.FLAGS
-
 # Outputs:
-flags.DEFINE_string('output', None, 'Output SavedModel name.')
+_OUTPUT = flags.DEFINE_string('output', None, 'Output SavedModel name.')
 
 # Model checkpoint:
-flags.DEFINE_string(
-    'checkpoint',
-    None, 'Path to checkpoint directory + prefix. '
-    'For example: <path/to/model>/checkpoint-50.',
-    required=True)
+_CHECKPOINT = flags.DEFINE_string(
+    'checkpoint', None, 'Path to checkpoint directory + prefix. '
+    'For example: <path/to/model>/checkpoint-50.')
 
 
 def register_required_flags():
@@ -95,12 +91,12 @@ def initialize_model(checkpoint_path: str) -> Optional[tf.keras.Model]:
 
 def main(_):
   """Main entry point."""
-  loaded_model = initialize_model(checkpoint_path=FLAGS.checkpoint)
-  tf.saved_model.save(loaded_model, FLAGS.output)
+  loaded_model = initialize_model(checkpoint_path=_CHECKPOINT.value)
+  tf.saved_model.save(loaded_model, _OUTPUT.value)
   # Copy over the params.json. At this point, we know params.json exists.
-  json_path = os.path.join(os.path.dirname(FLAGS.checkpoint), 'params.json')
+  json_path = os.path.join(os.path.dirname(_CHECKPOINT.value), 'params.json')
   gfile.Copy(
-      json_path, os.path.join(FLAGS.output, 'params.json'), overwrite=True)
+      json_path, os.path.join(_OUTPUT.value, 'params.json'), overwrite=True)
 
 
 if __name__ == '__main__':

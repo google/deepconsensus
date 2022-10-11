@@ -55,7 +55,8 @@ contiguity and accuracy. See the
 
 If you are using DeepConsensus in your work, please cite:
 
-[DeepConsensus: Gap-Aware Sequence Transformers for Sequence Correction](https://www.biorxiv.org/content/10.1101/2021.08.31.458403v1)
+[DeepConsensus improves the accuracy of sequences with a gap-aware sequence
+transformer](https://www.nature.com/articles/s41587-022-01435-7)
 
 ## How DeepConsensus works
 
@@ -75,7 +76,7 @@ to inspect some example model inputs and outputs.
 If you're on a GPU machine:
 
 ```bash
-pip install deepconsensus[gpu]==0.3.0
+pip install deepconsensus[gpu]==1.0.0
 # To make sure the `deepconsensus` CLI works, set the PATH:
 export PATH="/home/${USER}/.local/bin:${PATH}"
 ```
@@ -83,7 +84,7 @@ export PATH="/home/${USER}/.local/bin:${PATH}"
 If you're on a CPU machine:
 
 ```bash
-pip install deepconsensus[cpu]==0.3.0
+pip install deepconsensus[cpu]==1.0.0
 # To make sure the `deepconsensus` CLI works, set the PATH:
 export PATH="/home/${USER}/.local/bin:${PATH}"
 ```
@@ -93,13 +94,13 @@ export PATH="/home/${USER}/.local/bin:${PATH}"
 For GPU:
 
 ```bash
-sudo docker pull google/deepconsensus:0.3.0-gpu
+sudo docker pull google/deepconsensus:1.0.0-gpu
 ```
 
 For CPU:
 
 ```bash
-sudo docker pull google/deepconsensus:0.3.0
+sudo docker pull google/deepconsensus:1.0.0
 ```
 
 ### From source

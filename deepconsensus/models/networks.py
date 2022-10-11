@@ -36,6 +36,7 @@ import tensorflow as tf
 from deepconsensus.models import data_providers
 from deepconsensus.models import encoder_stack
 from official.nlp.modeling import layers
+from deepconsensus.utils import dc_constants
 
 
 # TODO: Looking into removing this eventually.
@@ -78,8 +79,8 @@ def FullyConnectedNet(params: ml_collections.ConfigDict) -> tf.keras.Model:
             net)
     net = tf.keras.layers.Dropout(rate=params.fc_dropout)(net)
 
-  net = tf.keras.layers.Dense(units=params.max_length * params.num_classes)(net)
-  net = tf.keras.layers.Reshape((params.max_length, params.num_classes))(net)
+  net = tf.keras.layers.Dense(units=params.max_length * params.vocab_size)(net)
+  net = tf.keras.layers.Reshape((params.max_length, params.vocab_size))(net)
   net = tf.keras.layers.Softmax(axis=-1)(net)
   outputs = net
   return tf.keras.Model(inputs=inputs, outputs=outputs)
@@ -108,7 +109,7 @@ class ConvNet(tf.keras.Model):
     super(ConvNet, self).__init__(params, **kwargs)
     # Most conv models only accept 3 channels.
     self.resnet_input_shape = (params.hidden_size, params.max_length, 3)
-    self.dimensions = params.max_length * params.num_classes
+    self.dimensions = params.max_length * params.vocab_size
 
     model, self.conv_preprocess = get_conv_sub_model(params.conv_model)
     self.model = model(
@@ -118,7 +119,7 @@ class ConvNet(tf.keras.Model):
         pooling='avg')
     self.use_sn = params.use_sn
     self.max_length = params.max_length
-    self.num_classes = params.num_classes
+    self.vocab_size = params.vocab_size
 
     # Define layers
     self.layer_dense = tf.keras.layers.Dense(units=self.dimensions)
@@ -144,7 +145,7 @@ class ConvNet(tf.keras.Model):
       net = tf.keras.layers.Flatten()(net)
 
     net = self.layer_dense(net)
-    net = tf.keras.layers.Reshape((self.max_length, self.num_classes))(net)
+    net = tf.keras.layers.Reshape((self.max_length, self.vocab_size))(net)
     net = tf.keras.layers.Softmax(axis=-1)(net)
     output = net
     return output
@@ -207,12 +208,15 @@ class EncoderOnlyTransformer(tf.keras.Model):
       each position in the sequence.
     """
     with tf.name_scope('Transformer'):
-      logits = self.get_logits(inputs, training=training)
+      intermediate_outputs_dict = self.get_intermediate_outputs(
+          inputs, training=training)
+      logits = intermediate_outputs_dict['logits']
       preds = self.softmax(logits)
       return preds
 
-  def get_logits(self, inputs: tf.Tensor, training: bool) -> tf.Tensor:
-    """Get logits of the model.
+  def get_intermediate_outputs(self, inputs: tf.Tensor,
+                               training: bool) -> Dict[str, tf.Tensor]:
+    """Get intermediate outputs of the model.
 
     Args:
       inputs: tensor of shape (batch_size, hidden_size, input_length
@@ -220,8 +224,19 @@ class EncoderOnlyTransformer(tf.keras.Model):
       training: boolean, whether in training mode or not.
 
     Returns:
-      Output logits over the vocabulary at each position in the sequence. The
-        output tensor is of shape (batch_size, length, vocab_size).
+      Dictionary with the following (key:value) pairs:
+        "self_attention_layer_{n}": Attention layer output for every layer in
+        the encoder stack with shape [batch_size, input_length, hidden_size].
+        "attention_scores_{n}" : Attention map for every layer in the
+        encoder stack with shape [batch_size, num_heads, input_length,
+        input_length].
+        "ffn_layer_{n}": Feedforward network output for every layer in the
+        encoder stack with shape [batch_size, input_length, hidden_size].
+        "final_output": Final output of the entire encoder stack after
+        normalization with shape [batch_size, input_length, hidden_size]. Used
+        as input to the fully-connected layer which outputs logits.
+        "logits": Logits over the vocabulary at each position in the sequence
+        with shape [batch_size, input_length, vocab_size].
     """
 
     # Get rid of the channel dimension as we only have one channel.
@@ -238,12 +253,13 @@ class EncoderOnlyTransformer(tf.keras.Model):
     all_zeros = tf.reduce_sum(tf.zeros_like(inputs), -1)
     attention_bias = tf.expand_dims(tf.expand_dims(all_zeros, 1), 1)
 
-    # Run inputs through the encoder. Encoder returns logits from dense layer.
-    encoder_outputs = self.encode(inputs, attention_bias, training)
-    return encoder_outputs
+    # Run inputs through the encoder. Encoder returns a dictionary of
+    # logits from dense layer as well as other intermediate model outputs.
+    intermediate_outputs_dict = self.encode(inputs, attention_bias, training)
+    return intermediate_outputs_dict
 
   def encode(self, inputs: tf.Tensor, attention_bias: tf.Tensor,
-             training: bool) -> tf.Tensor:
+             training: bool) -> Dict[str, tf.Tensor]:
     """Runs the input through Encoder stack and problem-specific layers."""
 
     with tf.name_scope('encode'):
@@ -269,7 +285,7 @@ class EncoderOnlyTransformer(tf.keras.Model):
       inputs_padding = tf.reduce_sum(tf.zeros_like(encoder_inputs), -1)
 
       # Cast input `attention_bias` to correct type, as done in the base model.
-      attention_bias = tf.cast(attention_bias, self.params['dtype'])
+      attention_bias = tf.cast(attention_bias, dc_constants.TF_DATA_TYPE)
 
       # Add positional encoding to the input. The scale of the positional
       # encoding relative to the input values will matter since we are not
@@ -277,7 +293,7 @@ class EncoderOnlyTransformer(tf.keras.Model):
       if self.params['add_pos_encoding']:
         with tf.name_scope('add_pos_encoding'):
           pos_encoding = self.position_embedding(inputs=encoder_inputs)
-          pos_encoding = tf.cast(pos_encoding, self.params['dtype'])
+          pos_encoding = tf.cast(pos_encoding, dc_constants.TF_DATA_TYPE)
           encoder_inputs += pos_encoding
 
       # Add dropout when training.
@@ -286,14 +302,19 @@ class EncoderOnlyTransformer(tf.keras.Model):
             encoder_inputs, rate=self.params['layer_postprocess_dropout'])
 
       # Pass inputs through the encoder. As mentioned above, `inputs_padding` is
-      # not actually used by EncoderStack.call. Encoder stack output has shape
-      # (batch_size, input_length, hidden_size).
-      encoder_outputs = self.encoder_stack(
+      # not actually used by EncoderStack.call. Encoder stack output is a
+      # dictionary containing final output of the encoder stack with shape
+      # (batch_size, input_length, hidden_size) as well as intermediate outputs
+      # of each of the attention and feed forward network layers in the stack.
+      encoder_outputs_dict = self.encoder_stack(
           encoder_inputs, attention_bias, inputs_padding, training=training)
 
-      # Pass through dense layer and output logits over vocab for each position.
-      encoder_outputs = self.fc1(encoder_outputs)
-      return encoder_outputs
+      # Pass the final output of the encoder stack through dense layer and
+      # output logits over vocab for each position.
+      encoder_outputs = self.fc1(encoder_outputs_dict['final_output'])
+      # Add logits to the outputs dictionary.
+      encoder_outputs_dict['logits'] = encoder_outputs
+      return encoder_outputs_dict
 
   def decode(self, encoder_outputs: tf.Tensor, attention_bias: tf.Tensor,
              training: bool) -> tf.Tensor:
@@ -364,7 +385,7 @@ class EncoderOnlyLearnedValuesTransformer(EncoderOnlyTransformer):
           bias_initializer='zeros')
 
   def encode(self, inputs: tf.Tensor, attention_bias: tf.Tensor,
-             training: bool) -> tf.Tensor:
+             training: bool) -> Dict[str, tf.Tensor]:
     """Runs the input through Encoder stack and problem-specific layers."""
 
     # Input to embedding layer is [batch_size, length] and output will be
@@ -414,7 +435,7 @@ class EncoderOnlyLearnedValuesTransformer(EncoderOnlyTransformer):
         embedded_inputs.append(embedded)
 
     embedded_inputs = tf.concat(embedded_inputs, axis=-1)
-    embedded_inputs = tf.cast(embedded_inputs, self.params['dtype'])
+    embedded_inputs = tf.cast(embedded_inputs, dc_constants.TF_DATA_TYPE)
 
     if self.params.condense_transformer_input:
       # Condense the transformer input at each position to a smaller vector to

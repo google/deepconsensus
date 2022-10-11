@@ -33,15 +33,15 @@ import pysam
 import tensorflow as tf
 
 # DeepConsensus Version
-__version__ = '0.3.0'
+__version__ = '1.0.0'
 
 # Vocab
-GAP_OR_PAD = ' '
+GAP = ' '
 ALLOWED_BASES = 'ATCG'
-VOCAB = GAP_OR_PAD + ALLOWED_BASES
+VOCAB = GAP + ALLOWED_BASES
 
 # Value used to fill in empty rows in the tf.Examples.
-GAP_OR_PAD_INT = VOCAB.index(GAP_OR_PAD)
+GAP_INT = VOCAB.index(GAP)
 
 PYSAM_READ_ADVANCING_OPS = list(
     map(int, [pysam.CMATCH, pysam.CINS, pysam.CEQUAL, pysam.CDIFF]))
@@ -72,18 +72,15 @@ CIGAR_OPS = {
 }
 
 # Defining this as ints makes comparison operations faster.
+PYSAM_CMATCH = int(pysam.CMATCH)
 PYSAM_CINS = int(pysam.CINS)
+PYSAM_CDEL = int(pysam.CDEL)
 PYSAM_CSOFT_CLIP = int(pysam.CSOFT_CLIP)
 PYSAM_CHARD_CLIP = int(pysam.CHARD_CLIP)
 
 # Dtypes
 TF_DATA_TYPE = tf.float32
 NP_DATA_TYPE = np.float32
-
-PW_MAX = 9
-IP_MAX = 9
-SN_MAX = 15
-STRAND_MAX = 2
 
 # E. Coli eval region is first 10% of the genome,
 # Test region is last 10% of the genome
@@ -104,8 +101,11 @@ HUMAN_TEST_REGIONS = ['19', '20', 'chr19', 'chr20']
 # List of features in DC examples.
 DC_FEATURES = [
     'rows', 'label', 'num_passes', 'window_pos', 'name',
-    'ccs_base_quality_scores'
+    'ccs_base_quality_scores', 'ec', 'np_num_passes', 'rq', 'rg'
 ]
 
 MAX_QUAL = 40
 EMPTY_QUAL = 0
+
+# The name of the eval metric to optimize (choosing checkpoints and vizier).
+MAIN_EVAL_METRIC_NAME = 'eval/per_example_accuracy'

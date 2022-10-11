@@ -241,8 +241,8 @@ class DataProvidersTest(parameterized.TestCase):
       self.assertNotEmpty(ccs_rows)
       self.assertNotEmpty(sn_rows)
       self.assertTrue(np.all(base_rows < params.vocab_size))
-      self.assertTrue(np.all(ip_rows <= dc_constants.IP_MAX))
-      self.assertTrue(np.all(pw_rows <= dc_constants.PW_MAX))
+      self.assertTrue(np.all(ip_rows <= params.IP_MAX))
+      self.assertTrue(np.all(pw_rows <= params.PW_MAX))
     self.assertTrue(check_not_empty)  # Used to fail on empty dataset.
 
   @parameterized.named_parameters(
@@ -292,40 +292,6 @@ class DataProvidersTest(parameterized.TestCase):
         inference=inference)
     limit_dataset_size = sum(1 for record in dataset)
     self.assertEqual(min(limit, full_dataset_size), limit_dataset_size)
-
-  @parameterized.named_parameters(
-      dict(
-          testcase_name='no_qfilter',
-          max_phred_qual=0,
-          expected_n=1301,
-      ),
-      dict(
-          testcase_name='max_phred_qual_30',
-          max_phred_qual=30,
-          expected_n=534,
-      ),
-      dict(
-          testcase_name='max_phred_qual_40',
-          max_phred_qual=40,
-          expected_n=668,
-      ),
-  )
-  def test_dataset_with_max_phred_quality(self, max_phred_qual, expected_n):
-    """Checks that batches are of expected size and all examples yielded."""
-    file_pattern, _ = get_test_dataset(inference=False)
-    params = model_configs.get_config('transformer_learn_values+test')
-    model_utils.modify_params(params)
-    params.max_phred_qual = max_phred_qual
-    # Fetch the complete dataset.
-    full_dataset = data_providers.get_dataset(
-        file_pattern=file_pattern,
-        num_epochs=1,
-        batch_size=1,
-        params=params,
-        inference=False,
-    )
-    full_dataset_size = sum(1 for record in full_dataset)
-    self.assertEqual(full_dataset_size, expected_n)
 
   def test_remove_internal_gaps_and_shift(self):
     label, expected = ('   GGGCGAG   ACATA   ACATA ATA ATA      ',

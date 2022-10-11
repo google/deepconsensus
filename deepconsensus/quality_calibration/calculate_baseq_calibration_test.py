@@ -32,6 +32,7 @@ from absl.testing import flagsaver
 from absl.testing import parameterized
 import pysam
 from deepconsensus.quality_calibration import calculate_baseq_calibration
+from deepconsensus.quality_calibration import calibration_lib
 from deepconsensus.utils import test_utils
 
 
@@ -211,7 +212,8 @@ class Test(parameterized.TestCase):
               "M": 1,
               "X": 0
           }],
-          message="Test 1: Simple test wil all match."),
+          calibration="skip",
+          message="Test 1: Simple test with all match."),
       dict(
           query_sequence="AAAA",
           reference_name="chr20",
@@ -238,6 +240,7 @@ class Test(parameterized.TestCase):
               "M": 1,
               "X": 0
           }],
+          calibration="skip",
           message="Test 2: Start is one base off."),
       dict(
           query_sequence="AAAT",
@@ -265,6 +268,7 @@ class Test(parameterized.TestCase):
               "M": 0,
               "X": 1
           }],
+          calibration="skip",
           message="Test 3: Last base is a mismatch"),
       dict(
           query_sequence="AACCAT",
@@ -295,6 +299,7 @@ class Test(parameterized.TestCase):
               "M": 0,
               "X": 1
           }],
+          calibration="skip",
           message="Test 4: An insert, we consider inserts as mismatches"),
       dict(
           query_sequence="AACCAT",
@@ -325,13 +330,40 @@ class Test(parameterized.TestCase):
               "M": 0,
               "X": 1
           }],
-          message="Test 5: Everything is a mismatch."))
+          calibration="skip",
+          message="Test 5: Everything is a mismatch."),
+      dict(
+          query_sequence="AAAA",
+          reference_name="chr20",
+          region_interval=calculate_baseq_calibration.RegionRecord(
+              "chr20", 0, 100),
+          reference_start=0,
+          query_qualities=[2, 2, 2, 2],
+          cigartuples=[(pysam.CMATCH, 4)],
+          ref_sequence="AAAA",
+          max_qual=3,
+          expected_dict=[{
+              "M": 0,
+              "X": 0
+          }, {
+              "M": 0,
+              "X": 0
+          }, {
+              "M": 0,
+              "X": 0
+          }, {
+              "M": 4,
+              "X": 0
+          }],
+          calibration="0,1,1",
+          message="Test 6: Calibration shifts query qualities."),
+  )
   @flagsaver.flagsaver
   def test_get_quality_calibration_stats(self, query_sequence, reference_name,
                                          reference_start, query_qualities,
                                          cigartuples, ref_sequence,
                                          region_interval, max_qual,
-                                         expected_dict, message):
+                                         expected_dict, message, calibration):
     """Test the base quality calibration calculation method."""
     bam = "prediction_assessment/CHM13_chr20_0_200000_dc.to_truth.bam"
     bam_file = test_utils.deepconsensus_testdata(bam)
@@ -346,8 +378,9 @@ class Test(parameterized.TestCase):
     read_1.query_qualities = query_qualities
     read_1.cigartuples = cigartuples
     reads = [read_1]
+    dc_calibration = calibration_lib.parse_calibration_string(calibration)
     match_mismatch_dict = calculate_baseq_calibration.get_quality_calibration_stats(
-        reads, ref_sequence, region_interval, min_mapq)
+        reads, ref_sequence, region_interval, min_mapq, dc_calibration)
 
     for baseq in range(0, max_qual + 1):
       for match_mismatch in ["M", "X"]:
@@ -389,8 +422,9 @@ class Test(parameterized.TestCase):
     min_mapq = 60
     max_qual = 4
     region_interval = calculate_baseq_calibration.RegionRecord("chr20", 0, 100)
+    dc_calibration = calibration_lib.parse_calibration_string("skip")
     match_mismatch_dict = calculate_baseq_calibration.get_quality_calibration_stats(
-        reads, ref_sequence, region_interval, min_mapq)
+        reads, ref_sequence, region_interval, min_mapq, dc_calibration)
 
     # everything should be zero as this read will be skipped
     for baseq in range(0, max_qual + 1):

@@ -27,14 +27,15 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """Implementation of multiheaded attention and self-attention layers."""
 import math
-
+from typing import Any, Dict, Optional, Union, Iterable
 import tensorflow as tf
 
 
 class Attention(tf.keras.layers.Layer):
   """Multi-headed attention layer."""
 
-  def __init__(self, hidden_size, num_heads, attention_dropout):
+  def __init__(self, hidden_size: int, num_heads: int,
+               attention_dropout: float):
     """Initialize Attention.
 
     Args:
@@ -52,7 +53,7 @@ class Attention(tf.keras.layers.Layer):
     self.num_heads = num_heads
     self.attention_dropout = attention_dropout
 
-  def build(self, input_shape):
+  def build(self, input_shape: Union[tf.TensorShape, Iterable[tf.TensorShape]]):
     """Builds the layer."""
     # Layers for linearly projecting the queries, keys, and values.
     size_per_head = self.hidden_size // self.num_heads
@@ -61,24 +62,26 @@ class Attention(tf.keras.layers.Layer):
       limit = math.sqrt(6.0 / (fan_in + fan_out))
       return tf.keras.initializers.RandomUniform(minval=-limit, maxval=limit)
 
-    attention_initializer = _glorot_initializer(input_shape.as_list()[-1],
-                                                self.hidden_size)
+    input_hidden_size = input_shape.as_list()[-1]
+    query_initializer = _glorot_initializer(input_hidden_size, self.hidden_size)
+    key_initializer = _glorot_initializer(input_hidden_size, self.hidden_size)
+    value_initializer = _glorot_initializer(input_hidden_size, self.hidden_size)
     self.query_dense_layer = tf.keras.layers.experimental.EinsumDense(
         "BTE,ENH->BTNH",
         output_shape=(None, self.num_heads, size_per_head),
-        kernel_initializer=attention_initializer,
+        kernel_initializer=query_initializer,
         bias_axes=None,
         name="query")
     self.key_dense_layer = tf.keras.layers.experimental.EinsumDense(
         "BTE,ENH->BTNH",
         output_shape=(None, self.num_heads, size_per_head),
-        kernel_initializer=attention_initializer,
+        kernel_initializer=key_initializer,
         bias_axes=None,
         name="key")
     self.value_dense_layer = tf.keras.layers.experimental.EinsumDense(
         "BTE,ENH->BTNH",
         output_shape=(None, self.num_heads, size_per_head),
-        kernel_initializer=attention_initializer,
+        kernel_initializer=value_initializer,
         bias_axes=None,
         name="value")
 
@@ -91,7 +94,7 @@ class Attention(tf.keras.layers.Layer):
         name="output_transform")
     super(Attention, self).build(input_shape)
 
-  def get_config(self):
+  def get_config(self) -> Dict[str, Any]:
     return {
         "hidden_size": self.hidden_size,
         "num_heads": self.num_heads,
@@ -99,12 +102,12 @@ class Attention(tf.keras.layers.Layer):
     }
 
   def call(self,
-           query_input,
-           source_input,
-           bias,
-           training,
-           cache=None,
-           decode_loop_step=None):
+           query_input: tf.Tensor,
+           source_input: tf.Tensor,
+           bias: tf.Tensor,
+           training: bool,
+           cache: Optional[Dict[str, tf.Tensor]] = None,
+           decode_loop_step: Optional[int] = None) -> Dict[str, tf.Tensor]:
     """Apply attention mechanism to query_input and source_input.
 
     Args:
@@ -124,7 +127,12 @@ class Attention(tf.keras.layers.Layer):
         for autoregressive inference on TPU.
 
     Returns:
-      Attention layer output with shape [batch_size, length_query, hidden_size]
+      Dictionary with the following (key:value) pairs:
+        "main_output": Attention layer output with shape [batch_size,
+        length_query, hidden_size]. Used as input to the feed_forward_network.
+        "attention scores": Attention map weights (after softmax) with shape
+        [batch_size, num_heads, length_query, length_query] - auxiliary output.
+
     """
     # Linearly project the query, key and value using different learned
     # projections. Splitting heads is automatically done during the linear
@@ -173,17 +181,19 @@ class Attention(tf.keras.layers.Layer):
     # Run the outputs through another linear projection layer. Recombining heads
     # is automatically done --> [batch_size, length, hidden_size]
     attention_output = self.output_dense_layer(attention_output)
-    return attention_output
+
+    layer_output = dict(main_output=attention_output, attention_scores=weights)
+    return layer_output
 
 
 class SelfAttention(Attention):
   """Multiheaded self-attention layer."""
 
   def call(self,
-           query_input,
-           bias,
-           training,
-           cache=None,
-           decode_loop_step=None):
+           query_input: tf.Tensor,
+           bias: tf.Tensor,
+           training: bool,
+           cache: Optional[Dict[str, tf.Tensor]] = None,
+           decode_loop_step: Optional[int] = None) -> Dict[str, tf.Tensor]:
     return super(SelfAttention, self).call(query_input, query_input, bias,
                                            training, cache, decode_loop_step)

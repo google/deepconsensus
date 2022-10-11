@@ -52,11 +52,9 @@ def edit_distance(s1: str, s2: str) -> int:
   if len(s1) > len(s2):
     s1, s2 = s2, s1
 
-  # Remove all gaps/padding from strings.
-  s1 = s1.replace(dc_constants.GAP_OR_PAD, '')
-  s1 = s1.replace(dc_constants.GAP_OR_PAD, '')
-  s2 = s2.replace(dc_constants.GAP_OR_PAD, '')
-  s2 = s2.replace(dc_constants.GAP_OR_PAD, '')
+  # Remove all gaps from strings.
+  s1 = s1.replace(dc_constants.GAP, '')
+  s2 = s2.replace(dc_constants.GAP, '')
 
   distances = range(len(s1) + 1)
   for i2, c2 in enumerate(s2):
@@ -73,7 +71,7 @@ def edit_distance(s1: str, s2: str) -> int:
 
 def homopolymer_content(seq: str) -> float:
   """Calculates proportion of seq composed of 3+ repeated bases."""
-  seq = seq.replace(dc_constants.GAP_OR_PAD, '').strip(dc_constants.GAP_OR_PAD)
+  seq = seq.replace(dc_constants.GAP, '').strip(dc_constants.GAP)
   if not seq:
     return 0.0
   run_length_encoding = [len(list(g)) for _, g in itertools.groupby(seq)]

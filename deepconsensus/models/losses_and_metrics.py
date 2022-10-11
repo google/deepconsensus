@@ -66,9 +66,6 @@ class PerClassAccuracy(tf.keras.metrics.Accuracy):
   """Compute per-position accuracy for the given class."""
 
   def __init__(self, class_value: int, name: Optional[str] = None, **kwargs):
-    if not name:
-      name = str(class_value)
-    name = f'per_class_accuracy_{name}'
     self.class_value = class_value
     super(PerClassAccuracy, self).__init__(name=name, **kwargs)
 
@@ -96,7 +93,7 @@ def left_shift_sequence(y_true: tf.Tensor) -> tf.int32:
     left shifted y_true
 
   """
-  gap_token = dc_constants.VOCAB.find(dc_constants.GAP_OR_PAD)
+  gap_token = dc_constants.VOCAB.find(dc_constants.GAP)
   shape = tf.shape(y_true)
   seq_length = shape[1]
 
@@ -196,9 +193,9 @@ def xentropy_ins_cost_fn(y_pred: tf.Tensor, eps=1e-7) -> tf.Tensor:
 
   Returns:
     A tf.Tensor<float>[batch, n] such that out[b][l] represents the
-    cross-entropy loss between dc_constants.GAP_OR_PAD and y_pred[b][l].
+    cross-entropy loss between dc_constants.PAD and y_pred[b][l].
   """
-  gap_token = dc_constants.VOCAB.find(dc_constants.GAP_OR_PAD)
+  gap_token = dc_constants.VOCAB.find(dc_constants.GAP)
   ins_scores = tf.clip_by_value(y_pred[..., gap_token], eps, 1 - eps)
   return -tf.math.log(ins_scores)
 
@@ -314,19 +311,18 @@ class AlignmentLoss(tf.keras.losses.Loss):
       A tuple (y_true_oh, seq_lens) such that
         +  y_true_oh is a tf.Tensor<dtype>[batch, m, n_tokens], where n_tokens
            is the number of tokens in dc_constants.VOCAB. It contains a one-hot
-           representation of the input y_true, with dc_constants.GAP_OR_PAD
-           tokens removed and extra dc_constants.GAP_OR_PAD tokens appended if
+           representation of the input y_true, with dc_constants.PAD
+           tokens removed and extra dc_constants.PAD tokens appended if
            necessary.
         +  seq_lens is a tf.Tensor<int>[batch] containing the length of each
            label sequence in y_true, excluding any pad and gap tokens.
     """
     # Ensures y_true is of integer type.
     y_true = tf.cast(y_true, tf.int32)
-    # Removes internal gaps, shifting sequences left and adding padding when
-    # necessary.
+    # Removes internal gaps, shifting sequences left.
     y_true = left_shift_sequence(y_true)
-    # Computes per-example label sequence length, excluding padding.
-    pad_token = dc_constants.VOCAB.find(dc_constants.GAP_OR_PAD)
+    # Computes per-example label sequence length.
+    pad_token = dc_constants.VOCAB.find(dc_constants.GAP)
     seq_lens = tf.reduce_sum(tf.cast(y_true != pad_token, y_true.dtype), -1)
     # Converts y_true to one-hot.
     n_tokens = len(dc_constants.VOCAB)
@@ -595,8 +591,8 @@ def preprocess_y_true_metric(y_true: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
   Returns:
     A tuple (y_true, y_true_lens) such that
       +  y_true is a tf.Tensor<int>[batch, m]. It contains the input y_true,
-          with dc_constants.GAP_OR_PAD tokens removed and extra
-          dc_constants.GAP_OR_PAD tokens appended if necessary.
+          with dc_constants.GAP tokens removed and extra
+          dc_constants.GAP tokens appended if necessary.
       +  y_true_lens is a tf.Tensor<int>[batch] containing the length of each
           label sequence in y_true, excluding any pad and gap tokens.
   """
@@ -606,7 +602,7 @@ def preprocess_y_true_metric(y_true: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
   # necessary.
   y_true = left_shift_sequence(y_true)
   # Computes per-example label sequence length, excluding padding.
-  pad_token = dc_constants.VOCAB.find(dc_constants.GAP_OR_PAD)
+  pad_token = dc_constants.VOCAB.find(dc_constants.GAP)
   y_true_lens = tf.reduce_sum(tf.cast(y_true != pad_token, y_true.dtype), -1)
   return y_true, y_true_lens
 
@@ -622,8 +618,8 @@ def preprocess_y_pred_metric(y_pred: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
     A tuple (y_pred, y_pred_lens) such that
       +  y_pred is a tf.Tensor<int>[batch, m]. It contains the most likely
           token at each position of the input y_pred, with
-          dc_constants.GAP_OR_PAD tokens removed and extra
-          dc_constants.GAP_OR_PAD tokens appended if necessary.
+          dc_constants.PAD tokens removed and extra
+          dc_constants.PAD tokens appended if necessary.
       +  y_pred_lens is a tf.Tensor<int>[batch] containing the length of each
           predicted sequence in y_pred, excluding any pad and gap tokens.
   """
@@ -631,11 +627,10 @@ def preprocess_y_pred_metric(y_pred: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
   y_pred = tf.argmax(y_pred, axis=-1)
   # Ensures y_pred is of integer type.
   y_pred = tf.cast(y_pred, tf.int32)
-  # Removes internal gaps, shifting sequences left and adding padding when
-  # necessary.
+  # Removes internal gaps, shifting sequences left when necessary.
   y_pred = left_shift_sequence(y_pred)
   # Computes per-example label sequence length, excluding padding.
-  pad_token = dc_constants.VOCAB.find(dc_constants.GAP_OR_PAD)
+  pad_token = dc_constants.VOCAB.find(dc_constants.GAP)
   y_pred_lens = tf.reduce_sum(tf.cast(y_pred != pad_token, y_pred.dtype), -1)
   return y_pred, y_pred_lens
 
@@ -1015,6 +1010,103 @@ class AlignmentMetric(tf.keras.metrics.Metric):
     self._pid.reset_states()
 
 
+def get_batch_identity_ccs_pred(
+    ccs: tf.Tensor, y_pred: tf.Tensor, y_true: tf.Tensor,
+    alignment_metric: AlignmentMetric) -> Tuple[tf.Tensor, tf.Tensor]:
+  """Calculate identity for CCS and sequence predicted by DeepConsensus.
+
+  Args:
+    ccs: A tf.Tensor of size [batch, max_length] representing CCS sequence.
+    y_pred: A tf.Tensor of size [batch, max_length, vocab_size] representing the
+      predicted tokens.
+    y_true: A tf.Tensor of size [batch, max_length] representing the true
+      sequence.
+    alignment_metric: AlignmentMetric object for computing alignment to the true
+      sequence for identity calculation.
+
+  Returns:
+    A tuple (identity_ccs, identity_pred) such that
+      + identity_ccs is a tf.Tensor of size [] that contains proportion
+          identity (between 0 and 1) for the CCS sequence over the batch.
+      + identity_pred is a tf.Tensor of size [] that contains proportion
+          identity (between 0 and 1) of predicted sequence over batch.
+  """
+  # Calculate identity for the predicted sequence.
+  _, _, metric_values_pred = alignment_metric.alignment(y_true, y_pred)
+  identity_pred = per_batch_identity(metric_values_pred)
+
+  # Calculate identity for CCS sequence.
+  ccs = tf.cast(ccs, tf.int32)
+  # Convert CCS to one-hot to match the shape of expected alignment inputs.
+  ccs_one_hot = tf.one_hot(
+      ccs, depth=len(dc_constants.VOCAB), dtype=dc_constants.TF_DATA_TYPE)
+
+  _, _, metric_values_ccs = alignment_metric.alignment(y_true, ccs_one_hot)
+  identity_ccs = per_batch_identity(metric_values_ccs)
+  return identity_ccs, identity_pred
+
+
+def per_batch_identity(metric_values: Mapping[str, tf.Tensor]) -> tf.Tensor:
+  """Calculates identity over the whole batch given metrics."""
+  tot_alignment_length = tf.reduce_sum(metric_values['alignment_length'])
+  unsafe_pid = tf.reduce_sum(
+      metric_values['num_correct_matches']) / tot_alignment_length
+  # PID is defined as 1.0 in the particular case in which all the ground-truth
+  # and all predicted sequences are "empty", i.e., consist only of gap tokens.
+  if tf.equal(tot_alignment_length, 0):
+    return tf.convert_to_tensor(1.0, dtype=tf.float32)
+  return tf.cast(unsafe_pid, dtype=tf.float32)
+
+
+class YieldOverCCSMetric(tf.keras.metrics.Metric):
+  """Computes yield over ccs metric for a given quality threshold.
+
+  Attributes:
+    quality_threshold: a float value for thersholding DC and CCS identity.
+    yield_dc: DeepConsensus yield (number of batches that have identity >=
+      quality threshold).
+    yield_ccs: CCS yield.
+  """
+
+  def __init__(self,
+               quality_threshold: float = 0.997,
+               name: str = 'yield_over_ccs',
+               **kwargs):
+    super(YieldOverCCSMetric, self).__init__(name=name, **kwargs)
+    self.quality_threshold = quality_threshold
+    self.yield_dc = self.add_weight(
+        name='yield_dc', shape=[], initializer='zeros')
+    self.yield_ccs = self.add_weight(
+        name='yield_ccs', shape=[], initializer='zeros')
+
+  def update_state(self, identity_ccs: tf.Tensor,
+                   identity_pred: tf.Tensor) -> None:
+    """Updates DeepConsensus and CCS yield based on provided identities.
+
+    Args:
+      identity_ccs: A tf.Tensor of size [] that contains proportion identity
+        (between 0 and 1) for the CCS sequence over the batch.
+      identity_pred: A tf.Tensor of size [] that contains proportion identity
+        (between 0 and 1) of predicted sequence over batch.
+    """
+    yield_dc = tf.cast(
+        identity_pred >= self.quality_threshold, dtype=tf.float32)
+    yield_ccs = tf.cast(
+        identity_ccs >= self.quality_threshold, dtype=tf.float32)
+    self.yield_dc.assign_add(yield_dc)
+    self.yield_ccs.assign_add(yield_ccs)
+
+  def result(self) -> tf.Tensor:
+    """Calculates yield of DeepConsensus over CCS using accumulated yields."""
+    # Avoid division by 0.
+    return tf.math.divide_no_nan(self.yield_dc, self.yield_ccs)
+
+  def reset_state(self) -> None:
+    """Resets DeepConsensus and CCS yield back to 0."""
+    self.yield_dc.assign(0.0)
+    self.yield_ccs.assign(0.0)
+
+
 class DistillationLoss(tf.keras.losses.Loss):
   """Computes the distillation loss between the student and teacher logits.
 
@@ -1033,9 +1125,11 @@ class DistillationLoss(tf.keras.losses.Loss):
   def __init__(
       self,
       temperature: float = 1.0,
+      logit_loss: tf.keras.losses.Loss = tf.keras.losses.get('kl_divergence'),
       reduction: tf.keras.losses.Reduction = tf.keras.losses.Reduction.AUTO):
     super(DistillationLoss, self).__init__(reduction=reduction)
     self.temperature = temperature
+    self.logit_loss = logit_loss
 
   def call(self, teacher_logits: tf.Tensor,
            student_logits: tf.Tensor) -> tf.Tensor:
@@ -1052,6 +1146,6 @@ class DistillationLoss(tf.keras.losses.Loss):
     """
     teacher_probs = tf.nn.softmax(teacher_logits / self.temperature, axis=-1)
     student_probs = tf.nn.softmax(student_logits / self.temperature, axis=-1)
-    kl = tf.keras.losses.kld(teacher_probs, student_probs)
+    loss = self.logit_loss(teacher_probs, student_probs)
     # Take the mean across the positions in the sequence.
-    return tf.math.reduce_mean(kl, axis=-1)
+    return tf.math.reduce_mean(loss, axis=-1)

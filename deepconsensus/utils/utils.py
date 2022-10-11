@@ -106,10 +106,8 @@ def avg_phred(base_qualities: Union[np.ndarray, List[int]]) -> float:
 
 def left_shift_seq(seq: np.ndarray) -> np.ndarray:
   """Left shift a numeric-encoded sequence."""
-  return np.concatenate([
-      seq[seq != dc_constants.GAP_OR_PAD_INT],
-      seq[seq == dc_constants.GAP_OR_PAD_INT]
-  ])
+  return np.concatenate(
+      [seq[seq != dc_constants.GAP_INT], seq[seq == dc_constants.GAP_INT]])
 
 
 def left_shift(batch_seq: np.ndarray, axis: int = 1) -> np.ndarray:

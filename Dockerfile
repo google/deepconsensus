@@ -12,7 +12,7 @@ RUN conda config --add channels defaults && \
     conda config --add channels bioconda && \
     conda config --add channels conda-forge
 RUN conda create -n bio \
-                    python=3.8 \
+                    python=3.9 \
                     pbcore \
                     pbbam \
                     pbccs \
@@ -23,14 +23,12 @@ RUN conda create -n bio \
                     memory_profiler \
                     pycocotools \
                     bioconda::seqtk \
-                    bioconda::unimap \
                     bioconda::bedtools \
                     bioconda::minimap2 \
                     bioconda::extracthifi \
                     bioconda::zmwfilter \
                     bioconda::pysam \
-                    bioconda::samtools=1.10 \
-                    bioconda::pyfastx=0.8.4 \
+                    bioconda::samtools=1.15 \
     && conda clean -a
 RUN wget https://github.com/PacificBiosciences/align-clr-to-ccs/releases/download/0.2.0/actc && \
     chmod +x actc && \

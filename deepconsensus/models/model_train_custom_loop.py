@@ -37,9 +37,11 @@ time blaze run -c opt \
 //learning/genomics/deepconsensus/models:model_train_custom_loop -- \
   --params ${CONFIG} \
   --out_dir ${OUT_DIR} \
+  --xm_runlocal \
   --alsologtostderr
 """
 
+import datetime
 import logging
 import os
 import random
@@ -51,25 +53,27 @@ import ml_collections
 from ml_collections.config_flags import config_flags
 import tensorflow as tf
 
+from deepconsensus.models import convert_to_saved_model
+from deepconsensus.models import losses_and_metrics
 from deepconsensus.models import model_utils
+from deepconsensus.utils import dc_constants
 
-
-# pylint: disable=unused-import
+# pylint: disable=unused-import g-import-not-at-top
 
 FLAGS = flags.FLAGS
 config_flags.DEFINE_config_file('params', None, 'Training configuration.')
-flags.DEFINE_string('out_dir', None,
-                    'Output path for logs and model checkpoints.')
-flags.DEFINE_string(
+_OUT_DIR = flags.DEFINE_string('out_dir', None,
+                               'Output path for logs and model checkpoints.')
+_TPU = flags.DEFINE_string(
     'tpu', None, 'Name of the TPU to use. This gets '
     'populated automatically when using XManager.')
-flags.DEFINE_string('tpu_topology', None, 'Tpu topology.')
-flags.DEFINE_bool('debug', False,
-                  'Enables dumping debug info for TensorBoard Debugger V2.')
-flags.DEFINE_bool(
+_TPU_TOPOLOGY = flags.DEFINE_string('tpu_topology', None, 'Tpu topology.')
+_DEBUG = flags.DEFINE_bool(
+    'debug', False, 'Enables dumping debug info for TensorBoard Debugger V2.')
+_WRITE_CHECKPOINT_METRICS = flags.DEFINE_bool(
     'write_checkpoint_metrics', False,
     'Whether to write eval metrics for each checkpoint during training.')
-flags.DEFINE_bool(
+_EVAL_AND_LOG_EVERY_STEP = flags.DEFINE_bool(
     'eval_and_log_every_step', False, 'Eval and log after every step. '
     'Use this e.g. for testing training and inspecting metrics locally.')
 
@@ -83,17 +87,36 @@ def train_model(out_dir: str, params: ml_collections.ConfigDict,
   model_utils.save_params_as_json(out_dir, params)
   train_dataset, eval_dataset = model_utils.get_datasets(params, strategy)
   steps_per_epoch, steps_per_eval = model_utils.get_step_counts(
-      params, FLAGS.eval_and_log_every_step)
+      params, _EVAL_AND_LOG_EVERY_STEP.value)
+  # Number of steps this model will train for.
+  total_train_steps = steps_per_epoch * params['num_epochs']
+  logging.info('Total training steps = %s', total_train_steps)
 
   with strategy.scope():
     logging.info('Building model.')
-    model = model_utils.get_model(params)
+    if FLAGS.checkpoint:
+      model = convert_to_saved_model.initialize_model(FLAGS.checkpoint)
+      if model is None:
+        raise Exception('Could not load model from checkpoint ',
+                        FLAGS.checkpoint)
+    else:
+      model = model_utils.get_model(params)
     logging.info('Done building model.')
-    optimizer = tf.keras.optimizers.Adam(learning_rate=params.learning_rate)
-    train_loss = tf.keras.metrics.Mean(name=params.loss_function)
-    train_metrics = model_utils.get_deepconsensus_metrics(name_prefix='')
-    eval_loss = tf.keras.metrics.Mean(name=params.loss_function)
-    eval_metrics = model_utils.get_deepconsensus_metrics(name_prefix='')
+    epoch_checkpoint = os.path.join(out_dir, 'epoch_checkpoint.txt')
+
+    # Calculate the number of steps to decay the learning rate over.
+    # Usually this number is the total training steps. However, since we train
+    # the model for more epochs to obtain the final model, decay_steps is based
+    # on the total training steps taken during final training.
+    decay_steps = steps_per_epoch * params['num_epochs_for_decay']
+    optimizer = model_utils.create_optimizer(params, decay_steps)
+    train_loss = tf.keras.metrics.Mean(name='train/loss')
+    train_metrics = model_utils.get_deepconsensus_metrics(name_prefix='train/')
+    eval_loss = tf.keras.metrics.Mean(name='eval/loss')
+    eval_metrics = model_utils.get_deepconsensus_metrics(name_prefix='eval/')
+    # Create an alignment metric object that will be used in yield calculation.
+    alignment_metric_yield_obj = losses_and_metrics.AlignmentMetric(
+        name='alignment_metric_yield')
     loss_object = model_utils.get_deepconsensus_loss(
         params, reduction=tf.keras.losses.Reduction.NONE)
 
@@ -106,7 +129,7 @@ def train_model(out_dir: str, params: ml_collections.ConfigDict,
 
     # model, optimizer, and checkpoint must be created under `strategy.scope`.
     checkpoint, initial_epoch = model_utils.get_checkpoint_and_initial_epoch(
-        model, optimizer, out_dir, steps_per_epoch)  # pytype: disable=wrong-arg-types  # typed-keras
+        model, optimizer, epoch_checkpoint)  # pytype: disable=wrong-arg-types  # typed-keras
 
   # Create summary writers
   train_writer = tf.summary.create_file_writer(os.path.join(out_dir, 'train'))
@@ -121,8 +144,15 @@ def train_model(out_dir: str, params: ml_collections.ConfigDict,
     grads = tape.gradient(loss, model.trainable_variables)
     optimizer.apply_gradients(zip(grads, model.trainable_variables))
     train_loss.update_state(loss)
-    for metric in train_metrics:
-      metric.update_state(labels, predictions)
+
+    # Calculate identity for CCS and the DC prediction.
+    ccs = model_utils.get_ccs_from_example(features, params)
+    (identity_ccs,
+     identity_pred) = losses_and_metrics.get_batch_identity_ccs_pred(
+         ccs, predictions, labels, alignment_metric_yield_obj)
+    # Update metrics.
+    model_utils.update_metrics(train_metrics, labels, predictions,
+                               identity_pred, identity_ccs)
     return loss
 
   def eval_step(inputs):
@@ -131,8 +161,15 @@ def train_model(out_dir: str, params: ml_collections.ConfigDict,
     predictions = model(features)
     loss = compute_loss(labels, predictions)
     eval_loss.update_state(loss)
-    for metric in eval_metrics:
-      metric.update_state(labels, predictions)
+
+    # Calculate identity for CCS and the DC prediction.
+    ccs = model_utils.get_ccs_from_example(features, params)
+    (identity_ccs,
+     identity_pred) = losses_and_metrics.get_batch_identity_ccs_pred(
+         ccs, predictions, labels, alignment_metric_yield_obj)
+    # Update metrics.
+    model_utils.update_metrics(eval_metrics, labels, predictions, identity_pred,
+                               identity_ccs)
     return loss
 
   @tf.function
@@ -147,49 +184,89 @@ def train_model(out_dir: str, params: ml_collections.ConfigDict,
     return strategy.reduce(
         tf.distribute.ReduceOp.SUM, per_replica_losses, axis=None)
 
-  log_steps = 100
-  if FLAGS.eval_and_log_every_step:
-    log_steps = 1
+  log_train_steps = 100
+  log_eval_steps = 3000
+  if _EVAL_AND_LOG_EVERY_STEP.value:
+    log_train_steps = 1
   train_iterator = iter(train_dataset)
   eval_iterator = iter(eval_dataset)
-  min_eval_loss = 1e6
+
+  # Decide the best checkpoiht using main eval metric.
+  max_main_eval_metric = 0.0
+  # From a list of eval metrics get the main eval metric.
+  main_eval_metric = next(
+      (metric for metric in eval_metrics
+       if metric.name == dc_constants.MAIN_EVAL_METRIC_NAME), None)
+  if not main_eval_metric:
+    raise ValueError('No eval metric found.')
+
   for epoch in range(initial_epoch, params['num_epochs']):
     logging.info('Starting to run epoch: %s', epoch)
-    with train_writer.as_default():
-      for step in range(steps_per_epoch):
-        reduced_train_loss = distributed_train_step(train_iterator)
-        if step % log_steps == 0:
-          train_loss_dict = {train_loss.name: reduced_train_loss}
+    train_time_start = datetime.datetime.now()
+    for step_train in range(1, steps_per_epoch + 1):
+      distributed_train_step(train_iterator)
+      # Log and reset train metrics.
+      if optimizer.iterations % log_train_steps == 0:
+        train_time_end = datetime.datetime.now()
+        train_steps_per_second = log_train_steps / (
+            train_time_end - train_time_start).total_seconds()
+        with train_writer.as_default():
           model_utils.log_and_save_metrics(
               epoch=epoch,
-              step=step,
+              num_epochs=params['num_epochs'],
+              step=step_train,
               total_steps=steps_per_epoch,
               optimizer=optimizer,
-              losses_dict=train_loss_dict,
-              metrics=train_metrics,
-              training=True)
-    with eval_writer.as_default():
-      for step in range(steps_per_eval):
-        reduced_eval_loss = distributed_eval_step(eval_iterator)
-      eval_loss_dict = {eval_loss.name: reduced_eval_loss}
-      model_utils.log_and_save_metrics(
-          epoch=epoch,
-          step=step,
-          total_steps=steps_per_eval,
-          optimizer=optimizer,
-          losses_dict=eval_loss_dict,
-          metrics=eval_metrics,
-          training=False)
-    checkpoint_name = model_utils.save_checkpoint(checkpoint, out_dir,
-                                                  train_metrics, eval_metrics,
-                                                  write_checkpoint_metrics)
-    if min_eval_loss > float(eval_loss.result()):
-      min_eval_loss = float(eval_loss.result())
-      with tf.io.gfile.GFile(os.path.join(out_dir, 'best_checkpoint.txt'),
-                             'w') as f:
-        f.write(os.path.basename(checkpoint_name))
-    model_utils.reset_all_metrics([train_loss, eval_loss] + train_metrics +
-                                  eval_metrics)
+              metrics=[train_loss] + train_metrics,
+              training=True,
+              steps_per_second=train_steps_per_second)
+          train_time_start = datetime.datetime.now()
+      # Log eval metrics, save checkpoint, and reset eval metrics every
+      # log_eval_steps and at the end of training.
+      if (optimizer.iterations % log_eval_steps == 0) or (optimizer.iterations
+                                                          == total_train_steps):
+        # Run evalution on the whole eval dataset and collect metrics.
+        eval_time_start = datetime.datetime.now()
+        for step_eval in range(1, steps_per_eval + 1):
+          distributed_eval_step(eval_iterator)
+        eval_time_end = datetime.datetime.now()
+        eval_steps_per_second = steps_per_eval / (
+            eval_time_end - eval_time_start).total_seconds()
+        # Save checkpoint.
+        checkpoint_name = model_utils.save_checkpoint(
+            checkpoint, out_dir, [eval_loss] + eval_metrics,
+            write_checkpoint_metrics)
+        # Record the best checkpoint based on the main eval metric.
+        main_eval_metric_val = float(main_eval_metric.result())
+        if main_eval_metric_val >= max_main_eval_metric:
+          max_main_eval_metric = main_eval_metric_val
+          with tf.io.gfile.GFile(
+              os.path.join(out_dir, 'best_checkpoint.txt'), 'w') as f:
+            f.write(os.path.basename(checkpoint_name))
+        # Log metrics on the eval set, this must be done at the end since
+        # log_and_save_metrics will reset the eval metrics values.
+        with eval_writer.as_default():
+          model_utils.log_and_save_metrics(
+              epoch=epoch,
+              num_epochs=params['num_epochs'],
+              step=step_eval,
+              total_steps=steps_per_eval,
+              optimizer=optimizer,
+              metrics=[eval_loss] + eval_metrics,
+              training=False,
+              steps_per_second=eval_steps_per_second)
+        # Reset timer
+        train_time_start = datetime.datetime.now()
+    # At the end of an epoch, create a savepoint checkpoint
+    # which will be used to resume training in the event of preemption or
+    # crashes. Intermediate checkpoints can still be used to
+    # select the best checkpoint.
+    epoch_checkpoint_name = model_utils.save_checkpoint(
+        checkpoint, out_dir, [eval_loss] + eval_metrics,
+        write_checkpoint_metrics)
+    with tf.io.gfile.GFile(epoch_checkpoint, 'w') as f:
+      logging.info('Epoch checkpoint: %s %s', epoch_checkpoint_name, epoch + 1)
+      f.write(f'{epoch_checkpoint_name}\t{epoch}')
 
 
 def train(out_dir: str,
@@ -221,8 +298,8 @@ def train(out_dir: str,
 
 
 def main(unused_args=None):
-  train(FLAGS.out_dir, FLAGS.params, FLAGS.tpu, FLAGS.tpu_topology,
-        FLAGS.write_checkpoint_metrics, FLAGS.debug)
+  train(_OUT_DIR.value, FLAGS.params, _TPU.value, _TPU_TOPOLOGY.value,
+        _WRITE_CHECKPOINT_METRICS.value, _DEBUG.value)
 
 
 if __name__ == '__main__':

@@ -44,9 +44,11 @@ time blaze run -c opt \
   --teacher_model_dir ${TEACHER_MODEL_DIR} \
   --params ${CONFIG} \
   --out_dir ${OUT_DIR} \
+  --xm_runlocal \
   --alsologtostderr
 """
 
+import datetime
 import logging
 import os
 import random
@@ -61,26 +63,27 @@ import tensorflow as tf
 from deepconsensus.models import data_providers
 from deepconsensus.models import losses_and_metrics
 from deepconsensus.models import model_utils
+from deepconsensus.utils import dc_constants
 
 
 # pylint: disable=unused-import
 
 FLAGS = flags.FLAGS
 config_flags.DEFINE_config_file('params', None, 'Training configuration.')
-flags.DEFINE_string('teacher_model_dir', None,
-                    'Path to the teacher model checkpoint.')
-flags.DEFINE_string('out_dir', None,
-                    'Output path for logs and model checkpoints.')
-flags.DEFINE_string(
+_TEACHER_MODEL_DIR = flags.DEFINE_string(
+    'teacher_model_dir', None, 'Path to the teacher model checkpoint.')
+_OUT_DIR = flags.DEFINE_string('out_dir', None,
+                               'Output path for logs and model checkpoints.')
+_TPU = flags.DEFINE_string(
     'tpu', None, 'Name of the TPU to use. This gets '
     'populated automatically when using XManager.')
-flags.DEFINE_string('tpu_topology', None, 'Tpu topology.')
-flags.DEFINE_bool('debug', False,
-                  'Enables dumping debug info for TensorBoard Debugger V2.')
-flags.DEFINE_bool(
+_TPU_TOPOLOGY = flags.DEFINE_string('tpu_topology', None, 'Tpu topology.')
+_DEBUG = flags.DEFINE_bool(
+    'debug', False, 'Enables dumping debug info for TensorBoard Debugger V2.')
+_WRITE_CHECKPOINT_METRICS = flags.DEFINE_bool(
     'write_checkpoint_metrics', False,
     'Whether to write eval metrics for each checkpoint during training.')
-flags.DEFINE_bool(
+_EVAL_AND_LOG_EVERY_STEP = flags.DEFINE_bool(
     'eval_and_log_every_step', False, 'Eval and log after every step. '
     'Use this e.g. for testing training and inspecting metrics locally.')
 
@@ -154,7 +157,10 @@ def train_model(teacher_model: tf.keras.Model, out_dir: str,
   model_utils.save_params_as_json(out_dir, params)
   train_dataset, eval_dataset = model_utils.get_datasets(params, strategy)
   steps_per_epoch, steps_per_eval = model_utils.get_step_counts(
-      params, FLAGS.eval_and_log_every_step)
+      params, _EVAL_AND_LOG_EVERY_STEP.value)
+  # Number of steps this model will train for.
+  total_train_steps = steps_per_epoch * params['num_epochs']
+  logging.info('Total training steps = %s', total_train_steps)
 
   with strategy.scope():
     logging.info('Building model.')
@@ -166,16 +172,29 @@ def train_model(teacher_model: tf.keras.Model, out_dir: str,
     model_utils.print_model_summary(model, input_shape)
     logging.info('Done building model.')
     # Initialize student model from teacher based on model params.
+    epoch_checkpoint = os.path.join(out_dir, 'epoch_checkpoint.txt')
     model = init_student_from_teacher(model, teacher_model, params)
-    optimizer = tf.keras.optimizers.Adam(learning_rate=params.learning_rate)
-    train_loss = tf.keras.metrics.Mean(name='loss')
-    train_metrics = model_utils.get_deepconsensus_metrics(name_prefix='')
-    eval_loss = tf.keras.metrics.Mean(name='loss')
-    eval_metrics = model_utils.get_deepconsensus_metrics(name_prefix='')
+
+    # Calculate the number of steps to decay the learning rate over.
+    # Usually this number is the total training steps. However, since we train
+    # the model for more epochs to obtain the final model, decay_steps is based
+    # on the total training steps taken during final training.
+    decay_steps = steps_per_epoch * params['num_epochs_for_decay']
+    optimizer = model_utils.create_optimizer(params, decay_steps)
+
+    train_loss = tf.keras.metrics.Mean(name='train/loss')
+    train_metrics = model_utils.get_deepconsensus_metrics(name_prefix='train/')
+    eval_loss = tf.keras.metrics.Mean(name='eval/loss')
+    eval_metrics = model_utils.get_deepconsensus_metrics(name_prefix='eval/')
+    # Create an alignment metric object that will be used in yield calculation.
+    alignment_metric_yield_obj = losses_and_metrics.AlignmentMetric(
+        name='alignment_metric_yield')
+    # Create loss objects.
     student_loss_object = model_utils.get_deepconsensus_loss(
         params, reduction=tf.keras.losses.Reduction.NONE)
     distillation_loss_object = losses_and_metrics.DistillationLoss(
         temperature=params.temperature,
+        logit_loss=tf.keras.losses.get(params.logit_loss_identifier),
         reduction=tf.keras.losses.Reduction.NONE)
 
     def compute_all_replica_loss(
@@ -207,7 +226,7 @@ def train_model(teacher_model: tf.keras.Model, out_dir: str,
 
     # model, optimizer, and checkpoint must be created under `strategy.scope`.
     checkpoint, initial_epoch = model_utils.get_checkpoint_and_initial_epoch(
-        model, optimizer, out_dir, steps_per_epoch)  # pytype: disable=wrong-arg-types  # typed-keras
+        model, optimizer, epoch_checkpoint)  # pytype: disable=wrong-arg-types  # typed-keras
 
   # Create summary writers
   train_writer = tf.summary.create_file_writer(os.path.join(out_dir, 'train'))
@@ -217,10 +236,14 @@ def train_model(teacher_model: tf.keras.Model, out_dir: str,
     """Training StepFn."""
     features, labels = inputs
     # Get logits from the teacher model.
-    teacher_logits = teacher_model.get_logits(features, training=False)
+    teacher_intermediate_outputs_dict = teacher_model.get_intermediate_outputs(
+        features, training=False)
+    teacher_logits = teacher_intermediate_outputs_dict['logits']
 
     with tf.GradientTape() as tape:
-      student_logits = model.get_logits(features, training=True)
+      student_intermediate_outputs_dict = model.get_intermediate_outputs(
+          features, training=True)
+      student_logits = student_intermediate_outputs_dict['logits']
       student_preds = tf.nn.softmax(student_logits)
       train_losses_dict = compute_loss(labels, student_preds, student_logits,
                                        teacher_logits)
@@ -231,24 +254,41 @@ def train_model(teacher_model: tf.keras.Model, out_dir: str,
     optimizer.apply_gradients(zip(grads, model.trainable_variables))
 
     train_loss.update_state(loss)
-    for metric in train_metrics:
-      metric.update_state(labels, student_preds)
+
+    # Calculate identity for CCS and the DC prediction.
+    ccs = model_utils.get_ccs_from_example(features, params)
+    (identity_ccs,
+     identity_pred) = losses_and_metrics.get_batch_identity_ccs_pred(
+         ccs, student_preds, labels, alignment_metric_yield_obj)
+    # Update metrics.
+    model_utils.update_metrics(train_metrics, labels, student_preds,
+                               identity_pred, identity_ccs)
     return train_losses_dict
 
   def eval_step(inputs):
     """Eval StepFn."""
     features, labels = inputs
     # Get logits from the teacher model.
-    teacher_logits = teacher_model.get_logits(features, training=False)
+    teacher_intermediate_outputs_dict = teacher_model.get_intermediate_outputs(
+        features, training=False)
+    teacher_logits = teacher_intermediate_outputs_dict['logits']
 
-    student_logits = model.get_logits(features, training=False)
+    student_intermediate_outputs_dict = model.get_intermediate_outputs(
+        features, training=False)
+    student_logits = student_intermediate_outputs_dict['logits']
     student_preds = tf.nn.softmax(student_logits)
     eval_losses_dict = compute_loss(labels, student_preds, student_logits,
                                     teacher_logits)
 
     eval_loss.update_state(eval_losses_dict['total_loss'])
-    for metric in eval_metrics:
-      metric.update_state(labels, student_preds)
+    # Calculate identity for CCS and the DC prediction.
+    ccs = model_utils.get_ccs_from_example(features, params)
+    (identity_ccs,
+     identity_pred) = losses_and_metrics.get_batch_identity_ccs_pred(
+         ccs, student_preds, labels, alignment_metric_yield_obj)
+    # Update metrics.
+    model_utils.update_metrics(eval_metrics, labels, student_preds,
+                               identity_pred, identity_ccs)
     return eval_losses_dict
 
   @tf.function
@@ -273,47 +313,89 @@ def train_model(teacher_model: tf.keras.Model, out_dir: str,
           axis=None)
     return reduced_eval_losses_dict
 
-  log_steps = 100
-  if FLAGS.eval_and_log_every_step:
-    log_steps = 1
+  log_train_steps = 100
+  log_eval_steps = 3000
+  if _EVAL_AND_LOG_EVERY_STEP.value:
+    log_train_steps = 1
   train_iterator = iter(train_dataset)
   eval_iterator = iter(eval_dataset)
-  min_eval_loss = 1e6
+
+  # Decide the best checkpoiht using main eval metric.
+  max_main_eval_metric = 0.0
+  # From a list of eval metrics get the main eval metric.
+  main_eval_metric = next(
+      (metric for metric in eval_metrics
+       if metric.name == dc_constants.MAIN_EVAL_METRIC_NAME), None)
+  if not main_eval_metric:
+    raise ValueError('No eval metric found.')
+
   for epoch in range(initial_epoch, params['num_epochs']):
     logging.info('Starting to run epoch: %s', epoch)
-    with train_writer.as_default():
-      for step in range(steps_per_epoch):
-        reduced_train_losses = distributed_train_step(train_iterator)
-        if step % log_steps == 0:
+    train_time_start = datetime.datetime.now()
+    for step_train in range(steps_per_epoch):
+      distributed_train_step(train_iterator)
+      # Log and reset train metrics.
+      if optimizer.iterations % log_train_steps == 0:
+        train_time_end = datetime.datetime.now()
+        train_steps_per_second = log_train_steps / (
+            train_time_end - train_time_start).total_seconds()
+        with train_writer.as_default():
           model_utils.log_and_save_metrics(
               epoch=epoch,
-              step=step,
+              num_epochs=params['num_epochs'],
+              step=step_train,
               total_steps=steps_per_epoch,
               optimizer=optimizer,
-              losses_dict=reduced_train_losses,
-              metrics=train_metrics,
-              training=True)
-    with eval_writer.as_default():
-      for step in range(steps_per_eval):
-        reduced_eval_losses = distributed_eval_step(eval_iterator)
-      model_utils.log_and_save_metrics(
-          epoch=epoch,
-          step=step,
-          total_steps=steps_per_eval,
-          optimizer=optimizer,
-          losses_dict=reduced_eval_losses,
-          metrics=eval_metrics,
-          training=False)
-    checkpoint_name = model_utils.save_checkpoint(checkpoint, out_dir,
-                                                  train_metrics, eval_metrics,
-                                                  write_checkpoint_metrics)
-    if min_eval_loss > float(eval_loss.result()):
-      min_eval_loss = float(eval_loss.result())
-      with tf.io.gfile.GFile(os.path.join(out_dir, 'best_checkpoint.txt'),
-                             'w') as f:
-        f.write(os.path.basename(checkpoint_name))
-    model_utils.reset_all_metrics([train_loss, eval_loss] + train_metrics +
-                                  eval_metrics)
+              metrics=[train_loss] + train_metrics,
+              training=True,
+              steps_per_second=train_steps_per_second)
+          train_time_start = datetime.datetime.now()
+      # Log eval metrics, save checkpoint, and reset eval metrics every
+      # log_eval_steps and at the end of training.
+      if (optimizer.iterations % log_eval_steps == 0) or (optimizer.iterations
+                                                          == total_train_steps):
+        # Run evalution on the whole eval dataset and collect metrics.
+        eval_time_start = datetime.datetime.now()
+        for step_eval in range(steps_per_eval):
+          distributed_eval_step(eval_iterator)
+        eval_time_end = datetime.datetime.now()
+        eval_steps_per_second = steps_per_eval / (
+            eval_time_end - eval_time_start).total_seconds()
+        # Save checkpoint.
+        checkpoint_name = model_utils.save_checkpoint(
+            checkpoint, out_dir, [eval_loss] + eval_metrics,
+            write_checkpoint_metrics)
+        # Record the best checkpoint based on the main eval metric.
+        main_eval_metric_val = float(main_eval_metric.result())
+        if main_eval_metric_val >= max_main_eval_metric:
+          max_main_eval_metric = main_eval_metric_val
+          with tf.io.gfile.GFile(
+              os.path.join(out_dir, 'best_checkpoint.txt'), 'w') as f:
+            f.write(os.path.basename(checkpoint_name))
+        # Log metrics on the eval set, this must be done at the end since
+        # log_and_save_metrics will reset the eval metrics values.
+        with eval_writer.as_default():
+          model_utils.log_and_save_metrics(
+              epoch=epoch,
+              num_epochs=params['num_epochs'],
+              step=step_eval,
+              total_steps=steps_per_eval,
+              optimizer=optimizer,
+              metrics=[eval_loss] + eval_metrics,
+              training=False,
+              steps_per_second=eval_steps_per_second)
+        # Reset timer
+        train_time_start = datetime.datetime.now()
+    # At the end of an epoch, create a savepoint checkpoint
+    # which will be used to resume training in the event of preemption or
+    # crashes. Intermediate checkpoints can still be used to
+    # select the best checkpoint.
+    epoch_checkpoint_name = model_utils.save_checkpoint(
+        checkpoint, out_dir, [eval_loss] + eval_metrics,
+        write_checkpoint_metrics)
+    with tf.io.gfile.GFile(epoch_checkpoint, 'w') as f:
+      logging.info('Epoch checkpoint: %s %s', epoch_checkpoint_name, epoch + 1)
+      f.write(f'{epoch_checkpoint_name}\t{epoch}')
 
 
 def train(teacher_model_dir: str,
@@ -348,8 +430,8 @@ def train(teacher_model_dir: str,
 
 
 def main(unused_args=None):
-  train(FLAGS.teacher_model_dir, FLAGS.out_dir, FLAGS.params, FLAGS.tpu,
-        FLAGS.tpu_topology, FLAGS.write_checkpoint_metrics, FLAGS.debug)
+  train(_TEACHER_MODEL_DIR.value, _OUT_DIR.value, FLAGS.params, _TPU.value,
+        _TPU_TOPOLOGY.value, _WRITE_CHECKPOINT_METRICS.value, _DEBUG.value)
 
 
 if __name__ == '__main__':

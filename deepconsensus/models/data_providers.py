@@ -28,7 +28,7 @@
 """Functions for yielding input arrays for models."""
 
 import itertools
-from typing import Dict, Iterable, List, Optional, Tuple, Union
+from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union
 
 import ml_collections
 from ml_collections.config_dict import config_dict
@@ -36,7 +36,6 @@ import numpy as np
 import tensorflow.compat.v2 as tf
 
 from deepconsensus.utils import dc_constants
-from deepconsensus.utils import utils
 
 
 # Define base fields for TFRecords.
@@ -97,23 +96,19 @@ def remove_internal_gaps_and_shift(label: tf.Tensor) -> tf.Tensor:
   """Filters internal gaps and shifts sequences to the left."""
   label = tf.squeeze(label)
   subset = tf.transpose(
-      tf.gather(label, tf.where(label != dc_constants.GAP_OR_PAD_INT)))
+      tf.gather(label, tf.where(label != dc_constants.GAP_INT)))
   pad_amt = tf.shape(label)[0] - tf.shape(subset)[1]
   padded = tf.pad(subset, [[0, 0], [0, pad_amt]])
   return tf.squeeze(padded)
 
 
 def format_rows(
-    subreads: tf.Tensor,
-    max_passes: int,
-    max_length: int,
-    cap_pw: bool = True,
-    cap_ip: bool = True,
-    cap_sn: bool = True,
+    subreads: tf.Tensor, params: Union[config_dict.ConfigDict,
+                                       config_dict.FrozenConfigDict]
 ) -> tf.Tensor:
   """Returns model input matrix formatted based on input args."""
   base_indices, pw_indices, ip_indices, strand_indices, ccs_indices, sn_indices = get_indices(
-      max_passes)
+      params.max_passes)
   base_rows = subreads[slice(*base_indices)]
   pw_rows = subreads[slice(*pw_indices)]
   ip_rows = subreads[slice(*ip_indices)]
@@ -121,37 +116,31 @@ def format_rows(
   ccs_rows = subreads[slice(*ccs_indices)]
   sn_rows = subreads[slice(*sn_indices)]
 
-  if cap_pw:
+  if params.PW_MAX:
     pw_rows = tf.clip_by_value(
-        pw_rows, clip_value_min=0, clip_value_max=dc_constants.PW_MAX)
-  if cap_ip:
+        pw_rows, clip_value_min=0, clip_value_max=params.PW_MAX)
+  if params.IP_MAX:
     ip_rows = tf.clip_by_value(
-        ip_rows, clip_value_min=0, clip_value_max=dc_constants.IP_MAX)
-  if cap_sn:
+        ip_rows, clip_value_min=0, clip_value_max=params.IP_MAX)
+  if params.SN_MAX:
     sn_rows = tf.clip_by_value(
-        sn_rows, clip_value_min=0, clip_value_max=dc_constants.SN_MAX)
+        sn_rows, clip_value_min=0, clip_value_max=params.SN_MAX)
   rows = tf.concat(
       [base_rows, pw_rows, ip_rows, strand_rows, ccs_rows, sn_rows], axis=0)
-  num_rows = get_total_rows(max_passes)
-  rows.set_shape((num_rows, max_length, 1))
+  num_rows = get_total_rows(params.max_passes)
+  rows.set_shape((num_rows, params.max_length, 1))
   return rows
 
 
 def process_feature_dict(
     features: Dict[str, Union[np.ndarray, int, bytes]],
-    params: Union[config_dict.ConfigDict, config_dict.FrozenConfigDict],
-    cap_pw: bool = True,
-    cap_ip: bool = True,
-    cap_sn: bool = True,
-) -> Dict[str, Union[np.ndarray, int, bytes]]:
+    params: Union[config_dict.ConfigDict, config_dict.FrozenConfigDict]
+) -> Dict[str, Union[np.ndarray, int, bytes, str]]:
   """Parses a serialized tf.Example to return an input, label, and metadata.
 
   Args:
     features: Dictionary of features to process for the model.
     params: A config dictionary containing desired hyperparameters.
-    cap_pw: If True, pulse width values are capped.
-    cap_ip: If True, interpulse distance values are capped.
-    cap_sn: If True, signal to noise ratio values are capped.
 
   Returns:
     rows: Input matrix that will be fed into neural networks for training.
@@ -164,13 +153,7 @@ def process_feature_dict(
   label = tf.convert_to_tensor(np.array([]))
   subreads = features['subreads']
   num_passes = features['subreads/num_passes']
-  rows = format_rows(
-      subreads=subreads,
-      max_passes=params.max_passes,
-      max_length=params.max_length,
-      cap_pw=cap_pw,
-      cap_ip=cap_ip,
-      cap_sn=cap_sn)
+  rows = format_rows(subreads=subreads, params=params)
   # Don't forget to update DC_FEATURES in dc_constants.py if new features are
   # added/removed.
   features = {
@@ -179,14 +162,18 @@ def process_feature_dict(
       'num_passes': num_passes,
       'window_pos': features['window_pos'],
       'name': features['name'],
-      'ccs_base_quality_scores': features['ccs_base_quality_scores']
+      'ccs_base_quality_scores': features['ccs_base_quality_scores'],
+      'ec': features['ec'],
+      'np_num_passes': features['np_num_passes'],
+      'rq': features['rq'],
+      'rg': features['rg']
   }
   return features
 
 
 def parse_example(proto_string: Dict[str, tf.Tensor],
                   inference: bool = False,
-                  max_length: int = 120) -> Dict[str, tf.Tensor]:
+                  max_length: int = 100) -> Dict[str, tf.Tensor]:
   """Parses serialized Training or Inference TF.Examples."""
   if inference:
     proto_features = PROTO_FEATURES_INFERENCE
@@ -199,23 +186,15 @@ def parse_example(proto_string: Dict[str, tf.Tensor],
   return parsed_features
 
 
-def process_input(
-    proto_string: Union[tf.Tensor, bytes],
-    params: ml_collections.FrozenConfigDict,
-    inference: bool,
-    cap_pw: bool = True,
-    cap_ip: bool = True,
-    cap_sn: bool = True,
-) -> Dict[str, tf.Tensor]:
+def process_input(proto_string: Union[tf.Tensor, bytes],
+                  params: ml_collections.FrozenConfigDict,
+                  inference: bool) -> Dict[str, tf.Tensor]:
   """Parses a serialized tf.Example to return an input, label, and metadata.
 
   Args:
     proto_string: A tensor containing the serialized tf.Example string.
     params: A config dictionary containing desired hyperparameters.
     inference: Whether to parse tf.Examples for inference or training.
-    cap_pw: If True, pulse width values are capped.
-    cap_ip: If True, interpulse distance values are capped.
-    cap_sn: If True, signal to noise ratio values are capped.
 
   Returns:
     rows: Input matrix that will be fed into neural networks for training.
@@ -241,13 +220,7 @@ def process_input(
     label.set_shape((params.max_length))
   else:
     label = tf.convert_to_tensor(np.array([]))
-  rows = format_rows(
-      subreads=subreads,
-      max_passes=params.max_passes,
-      max_length=params.max_length,
-      cap_pw=cap_pw,
-      cap_ip=cap_ip,
-      cap_sn=cap_sn)
+  rows = format_rows(subreads=subreads, params=params)
   rows = {
       'rows': rows,
       'label': label,
@@ -265,24 +238,12 @@ def tf_example_to_training_tuple(
   return (tf_example['rows'], tf_example['label'])
 
 
-def filter_ccs_q_score(tf_example: Dict[str, tf.Tensor],
-                       max_phred_qual: int = 0) -> bool:
-  """Returns True if phred is less than max_phred_qual."""
-  # When max_phred_qual is 0, do not filter.
-  if max_phred_qual == 0:
-    return True
-  phred = utils.tf_avg_phred(tf_example['ccs_base_quality_scores'])
-  return phred <= max_phred_qual
-
-
 def get_dataset(file_pattern: str,
                 num_epochs: Optional[int],
                 batch_size: int,
                 params: Union[ml_collections.ConfigDict,
                               ml_collections.FrozenConfigDict],
                 inference: bool,
-                cap_pw: bool = True,
-                cap_ip: bool = True,
                 limit: int = -1,
                 drop_remainder: bool = True,
                 example_label_tuple: bool = False) -> tf.data.Dataset:
@@ -294,8 +255,6 @@ def get_dataset(file_pattern: str,
     batch_size: How many examples should be in each batch.
     params: Hyperparameters used to format the subreads into rows.
     inference: Whether to parse tf.Examples for inference or training.
-    cap_pw: If True, pulse width values are capped.
-    cap_ip: If True, interpulse distance values are capped.
     limit: Max number of examples to get. Set to -1 for no limit.
     drop_remainder: Passed to TFRecordDataset.batch
     example_label_tuple: If True, output simplified format for training/eval
@@ -315,19 +274,11 @@ def get_dataset(file_pattern: str,
     return process_input(
         proto_string=proto_string,
         params=params,
-        cap_pw=cap_pw,
-        cap_ip=cap_ip,
         inference=inference)
-
-  def _filter_q_helper(tf_example: Dict[str, tf.Tensor]) -> bool:
-    return filter_ccs_q_score(tf_example, params.max_phred_qual)
 
   file_patterns = create_glob_list(file_pattern)
   ds = tf.data.TFRecordDataset(file_patterns, compression_type='GZIP')
   ds = ds.map(map_func=_process_input_helper)
-
-  if params.max_phred_qual:
-    ds = ds.filter(_filter_q_helper)
 
   ds = ds.shuffle(buffer_size=params.buffer_size, reshuffle_each_iteration=True)
 
@@ -356,21 +307,20 @@ def create_glob_list(paths: Union[str, List[str]]) -> List[str]:
   return list(itertools.chain(*file_patterns))
 
 
-def create_input_fn(params, mode, limit: int = -1, drop_remainder: bool = True):
+def create_input_fn(
+    params: Union[config_dict.ConfigDict, config_dict.FrozenConfigDict],
+    mode: str,
+    limit: int = -1,
+    drop_remainder: bool = True) -> Callable[..., tf.data.Dataset]:
   """Returns an input function that will return a tfrecord based dataset."""
 
-  def _process_input_helper(proto_string: tf.Tensor) -> Dict[str, tf.Tensor]:
+  def _process_input_helper(
+      proto_string: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
     # Set inference to False here because we only use this function with
     # tf.Examples that have labels present.
-    return process_input(
-        proto_string=proto_string,
-        params=params,
-        inference=False,
-        cap_pw=True,
-        cap_ip=True)
-
-  def _filter_q_helper(tf_example: Dict[str, tf.Tensor]) -> bool:
-    return filter_ccs_q_score(tf_example, params.max_phred_qual)
+    tf_example = process_input(
+        proto_string=proto_string, params=params, inference=False)
+    return tf_example_to_training_tuple(tf_example)
 
   def input_fn() -> tf.data.Dataset:
     """Prepares a dataset for training or evaluation."""
@@ -378,32 +328,23 @@ def create_input_fn(params, mode, limit: int = -1, drop_remainder: bool = True):
     batch_size = params.batch_size
     assert mode in ['train', 'eval']
     file_patterns = create_glob_list(params[f'{mode}_path'])
-    ds = tf.data.Dataset.list_files(file_patterns, shuffle=is_training)
-    ds = ds.repeat()
+    ds = tf.data.Dataset.list_files(file_patterns)
     ds = ds.interleave(
         lambda x: tf.data.TFRecordDataset(x, compression_type='GZIP'),
         num_parallel_calls=tf.data.AUTOTUNE,
         deterministic=False)
 
-    # Best practices suggest batching first, but this map errors out when we
-    # batch first, so do this before mapping.
     ds = ds.map(
         _process_input_helper,
         num_parallel_calls=tf.data.experimental.AUTOTUNE,
         deterministic=False)
 
-    ds = ds.filter(_filter_q_helper, 'ccs_quality_filter')
-
     if is_training:
       ds = ds.shuffle(
           buffer_size=params['buffer_size'], reshuffle_each_iteration=True)
 
-    # Best practices suggest batching before mapping.
     ds = ds.batch(batch_size, drop_remainder=drop_remainder)
-    ds = ds.map(
-        tf_example_to_training_tuple,
-        num_parallel_calls=tf.data.AUTOTUNE,
-        deterministic=False)
+    ds = ds.repeat()
     ds = ds.prefetch(tf.data.experimental.AUTOTUNE)
     ds = ds.take(limit)
     return ds

@@ -46,13 +46,13 @@ import multiprocessing
 import multiprocessing.pool
 import os
 import time
-from typing import Dict, List
+from typing import Dict, List, Tuple, Union, Counter
 
 from absl import flags
 from absl import logging
 import tensorflow as tf
 
-from deepconsensus.preprocess import utils
+from deepconsensus.preprocess import pre_lib
 from deepconsensus.utils import dc_constants
 from absl import app
 
@@ -87,6 +87,16 @@ flags.DEFINE_integer(
 flags.DEFINE_integer('bam_reader_threads', 8,
                      'Number of decompression threads to use.')
 flags.DEFINE_integer('limit', 0, 'Limit processing to n ZMWs.')
+flags.DEFINE_integer(
+    'ins_trim', 5,
+    'Trim insertions greater than ins_trim bp in subreads to 0bp.'
+    'No trimming if flag is set to 0')
+
+# The following just need to match the training parameters.
+_MAX_PASSES = flags.DEFINE_integer('max_passes', 20,
+                                   'Maximum subreads in each input.')
+_EXAMPLE_WIDTH = flags.DEFINE_integer('max_length', 100,
+                                      'Number of bases in each input.')
 
 
 def register_required_flags():
@@ -108,7 +118,6 @@ def trace_exception(f):
     except:  # pylint: disable=bare-except
       logging.exception('Error in function %s.', f.__name__)
       raise Exception('Error in worker process')
-
   return wrap
 
 
@@ -154,15 +163,17 @@ def tf_record_writer(output_fname: str, splits: List[str],
 
 
 @trace_exception
-def process_subreads(subreads: List[utils.Read],
-                     ccs_seqname: str,
-                     dc_config: utils.DcConfig,
-                     split: str,
-                     queue: Queue,
-                     local=False):
+def process_subreads(
+    subreads: List[pre_lib.Read],
+    ccs_seqname: str,
+    dc_config: pre_lib.DcConfig,
+    split: str,
+    queue: Queue,
+    local: bool = False
+) -> Union[Counter[str], Tuple[List[str], str, Counter[str]]]:
   """Subread processing worker."""
   tf_out = []
-  dc_example = utils.subreads_to_dc_example(subreads, ccs_seqname, dc_config)
+  dc_example = pre_lib.subreads_to_dc_example(subreads, ccs_seqname, dc_config)
   for example in dc_example.iter_examples():
     tf_out.append(example.tf_example().SerializeToString())
   dc_example.counter[f'n_examples_{split}'] += len(tf_out)
@@ -206,7 +217,7 @@ def main(unused_argv) -> None:
 
   if is_training:
     logging.info('Generating tf.Examples in training mode.')
-    contig_split = utils.read_truth_split(FLAGS.truth_split)
+    contig_split = pre_lib.read_truth_split(FLAGS.truth_split)
     splits = set(contig_split.values())
     for split in splits:
       if '@split' not in FLAGS.output:
@@ -222,12 +233,14 @@ def main(unused_argv) -> None:
   manager = multiprocessing.Manager()
   queue = manager.Queue()
 
-  dc_config = utils.DcConfig(max_passes=20, example_width=100, padding=20)
+  dc_config = pre_lib.DcConfig(
+      max_passes=_MAX_PASSES.value, max_length=_EXAMPLE_WIDTH.value)
 
-  proc_feeder, main_counter = utils.create_proc_feeder(
+  proc_feeder, main_counter = pre_lib.create_proc_feeder(
       subreads_to_ccs=FLAGS.subreads_to_ccs,
       ccs_bam=FLAGS.ccs_bam,
       dc_config=dc_config,
+      ins_trim=FLAGS.ins_trim,
       truth_bed=FLAGS.truth_bed,
       truth_to_ccs=FLAGS.truth_to_ccs,
       truth_split=FLAGS.truth_split,
@@ -277,14 +290,16 @@ def main(unused_argv) -> None:
   dataset_summary = dataset_summary.replace('@split', 'summary')
   logging.info('Writing %s.', dataset_summary)
   make_dirs(dataset_summary)
-  with open(dataset_summary, 'w') as summary_file:
+  with tf.io.gfile.GFile(dataset_summary, 'w') as summary_file:
     summary = dict(main_counter.items())
     summary.update(dc_config.to_dict())
     flag_list = [
-        'subreads_to_ccs', 'ccs_bam', 'truth_to_ccs', 'truth_bed', 'truth_split'
+        'subreads_to_ccs', 'ccs_bam', 'truth_to_ccs', 'truth_bed',
+        'truth_split', 'max_passes', 'max_length', 'ins_trim'
     ]
     for flag in flag_list:
-      summary[flag] = FLAGS[flag].value
+      # Encode these as strings to ensure aggregation does not add values.
+      summary[flag] = str(FLAGS[flag].value)
     summary['version'] = dc_constants.__version__
     json_summary = json.dumps(summary, indent=True)
     summary_file.write(json_summary)

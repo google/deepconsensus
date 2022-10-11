@@ -100,10 +100,10 @@ QS_DIR="${HOME}/deepconsensus_quick_start"
 mkdir -p "${QS_DIR}" "${QS_DIR}/model"
 
 # Download the input PacBio Subread data.
-gsutil cp gs://brain-genomics-public/research/deepconsensus/quickstart/v0.3/n1000.subreads.bam "${QS_DIR}"/
+gsutil cp gs://brain-genomics-public/research/deepconsensus/quickstart/v1.0/n1000.subreads.bam "${QS_DIR}"/
 
 # Download the DeepConsensus model.
-gsutil cp -r gs://brain-genomics-public/research/deepconsensus/models/v0.3/model_checkpoint/* "${QS_DIR}"/model/
+gsutil cp -r gs://brain-genomics-public/research/deepconsensus/models/v1.0/model_checkpoint/* "${QS_DIR}"/model/
 ```
 
 This directory should now contain the following files:
@@ -133,8 +133,8 @@ the appropriate version (CPU / GPU) depending on your use case.
 
 ```bash
 # Define DOCKER_IMAGE *once* depending on whether you will be using CPU or GPU:
-DOCKER_IMAGE=google/deepconsensus:0.3.0  # For CPU
-DOCKER_IMAGE=google/deepconsensus:0.3.0-gpu  # For GPU
+DOCKER_IMAGE=google/deepconsensus:1.0.0  # For CPU
+DOCKER_IMAGE=google/deepconsensus:1.0.0-gpu  # For GPU
 sudo docker pull ${DOCKER_IMAGE}
 ```
 
@@ -304,7 +304,7 @@ At the end of your run, you should see:
 
 ```
 Processed 178 ZMWs in 334.629 seconds
-Outcome counts: OutcomeCounter(empty_sequence=0, only_gaps_and_padding=0, failed_quality_filter=0, failed_length_filter=0, success=178)
+Outcome counts: OutcomeCounter(empty_sequence=0, only_gaps_and_padding=0, failed_quality_filter=3, failed_length_filter=0, success=175)
 ```
 
 ## Optimizing Runtime

@@ -51,12 +51,14 @@ from ml_collections.config_dict import config_dict
 from ml_collections.config_flags import config_flags
 import numpy as np
 import pandas as pd
+import pysam
 import tensorflow as tf
 
 from deepconsensus.models import data_providers
 from deepconsensus.models import model_utils
 from deepconsensus.postprocess import stitch_utils
-from deepconsensus.preprocess import utils as preprocess_utils
+from deepconsensus.preprocess import pre_lib
+from deepconsensus.quality_calibration import calibration_lib
 from deepconsensus.utils import dc_constants
 from deepconsensus.utils import utils
 from tensorflow.python.platform import gfile
@@ -81,8 +83,9 @@ flags.DEFINE_string('ccs_bam', None, 'Input BAM containing ccs sequences.')
 
 # Outputs:
 flags.DEFINE_string(
-    'output', None, 'Filename of output FASTQ file. If this path '
-    'does not end in ".fastq", the suffix will be added.')
+    'output', None,
+    'Filename of output. Use .fq or .fastq suffix to output FASTQ, '
+    'or use .bam to output bam file.')
 
 # Model checkpoint:
 flags.DEFINE_string(
@@ -94,16 +97,9 @@ config_flags.DEFINE_config_file(
     'params', None, 'params.json configuration file. By default, '
     '/path/to/model_directory/params.json is used.')
 
-# The following just need to match the training parameters.
-flags.DEFINE_integer('max_passes', 20, 'Maximum subreads in each input.')
-flags.DEFINE_integer('example_width', 100, 'Number of bases in each input.')
-flags.DEFINE_integer(
-    'padding', 20, 'Number of bases of padding to add to example_width to '
-    'allow for insertions.')
-
 # The following parameters are used at the end for filtering the final output.
 flags.DEFINE_integer('min_length', 0, 'Minimum length for reads output.')
-flags.DEFINE_integer('min_quality', 0, 'Minimum quality for reads output.')
+flags.DEFINE_integer('min_quality', 20, 'Minimum quality for reads output.')
 
 # The following parameters affect performance of this script.
 flags.DEFINE_integer(
@@ -117,6 +113,9 @@ flags.DEFINE_integer(
     'Average CCS Base Quality used to skip individual windows from being '
     'processed by the neural network. This can help speed up DeepConsensus. '
     'Use 0 for no skipping.')
+flags.DEFINE_integer(
+    'ins_trim', 5, 'Trim insertions in subreads.'
+    'No trimming if flag is set to 0')
 
 # The following parameters are for debugging.
 flags.DEFINE_integer('limit', None, 'Only process this many ZMWs. ')
@@ -149,21 +148,23 @@ flags.DEFINE_integer(
 # The following parameters are for quality score calibration
 
 flags.DEFINE_string(
-    'dc_calibration', '0,1.197654,-0.99781', 'Comma separated values of '
-    'linear transformation model\'s calibration values for deepconsensus base '
-    'qualities. The values are set as \"threshold,w,b\" where threshold is '
-    'minimum base quality threshold after which  the linear transformation '
-    'will be applied, w is the co-efficient value and b is the bias term for '
-    'linear transformation. Default: 0,1.197654,-0.99781. Set to "" '
-    '(empty string) to perform no quality calibration.')
+    'dc_calibration', None, 'If set to None, base quality values will be read '
+    'from model params.json if available. Set to "skip" to perform no quality '
+    'calibration. Otherwise, calibration values can be directly supplied as a '
+    'comma separated set of values of the linear transformation model\'s '
+    'calibration values for deepconsensus base qualities. The values are set as'
+    ' \"threshold,w,b\" where threshold is minimum base quality threshold '
+    'after which  the linear transformation will be applied, w is the '
+    'co-efficient value and b is the bias term for linear transformation. '
+    'Default: None [read from params.json if available].')
 flags.DEFINE_string(
-    'ccs_calibration', '', 'Comma separated values of '
+    'ccs_calibration', 'skip', 'Comma separated values of '
     'linear transformation model\'s calibration values for deepconsensus base '
     'qualities. The values are set as \"threshold,w,b\" where threshold is '
     'minimum base quality threshold after which  the linear transformation '
     'will be applied, w is the co-efficient value and b is the bias term for '
-    'linear transformation. Default: "". Set to "" '
-    '(empty string) to perform no quality calibration.')
+    'linear transformation. Set to "skip" to perform no quality '
+    'calibration. Default: "skip".')
 
 
 def register_required_flags():
@@ -176,32 +177,13 @@ def register_required_flags():
 
 
 @dataclasses.dataclass
-class QualityCalibrationValues:
-  """A structure that defines variables required for base quality calibration.
-
-  Attributes:
-    enabled: If set then calibration is enabled.
-    threshold: A threshold value above which the qualities will be calibrated
-    w: Co-efficient for linear transformation.
-    b: Bias term for linear transformation.
-  """
-  enabled: bool
-  threshold: float
-  w: float
-  b: float
-
-
-@dataclasses.dataclass
 class InferenceOptions:
   """A central place to define options used across various stages of inference.
 
   Attributes:
-    example_width: Number of bases for each window/example given to the model.
     example_height: Height of examples, which depends on max_passes.
-    padding: Number of bases of padding to add to example_width to allow for
-      insertions.
-    padded_len: Length of window after padding is added. This should be equal to
-      example_width + padding.
+
+    max_length: Length of window.
     max_passes: Max number of subreads to include in input shown to model.
     min_quality: Quality threshold to filter final reads.
     min_length: Length threshold to filter final reads.
@@ -217,10 +199,8 @@ class InferenceOptions:
     ccs_calibration_values: QualityCalibrationValues defining values to be used
       for ccs quality calibration.
   """
-  example_width: int
+  max_length: int
   example_height: int
-  padding: int
-  padded_len: int
   max_passes: int
   min_quality: int
   min_length: int
@@ -228,8 +208,8 @@ class InferenceOptions:
   cpus: int
   skip_windows_above: int
   use_saved_model: bool
-  dc_calibration_values: QualityCalibrationValues
-  ccs_calibration_values: QualityCalibrationValues
+  dc_calibration_values: calibration_lib.QualityCalibrationValues
+  ccs_calibration_values: calibration_lib.QualityCalibrationValues
 
 
 timing = []
@@ -254,34 +234,10 @@ def timelog(stage: str,
   timing.append(datum)
 
 
-def calibrate_quality_scores(
-    quality_scores: np.ndarray,
-    calibration_values: QualityCalibrationValues) -> np.ndarray:
-  """Calibrate the quality score using linear transformation.
-
-  Args:
-    quality_scores: A list containing the predicted quality score.
-    calibration_values: Co-efficient values of the linear transformation.
-
-  Returns:
-    A list of calibrated quality scores.
-  """
-  if calibration_values.threshold == 0:
-    # Skip O(n) operations of np.where when we need to calibrate the entire list
-    return quality_scores * calibration_values.w + calibration_values.b
-
-  w_values = np.where(quality_scores > calibration_values.threshold,
-                      calibration_values.w, 1.0)
-  b_values = np.where(quality_scores > calibration_values.threshold,
-                      calibration_values.b, 0.0)
-  calibrated_score = quality_scores * w_values + b_values
-  return calibrated_score
-
-
 # TODO Add unit test for this function. We need to create unit test
 # infrastructure that allows to easily create input data for unit tests.
-def batch_examples(feature_dicts: List[Tuple[str, Union[np.ndarray, int,
-                                                        bytes]]],
+def batch_examples(feature_dicts: List[Tuple[str, Union[np.ndarray, int, bytes,
+                                                        float]]],
                    model_params: Union[config_dict.ConfigDict,
                                        config_dict.FrozenConfigDict],
                    options: InferenceOptions):
@@ -346,22 +302,31 @@ def run_model_on_examples(
       softmax_output = model.predict(rows)
 
     softmax_output = softmax_output.numpy()
-    window_pos_arr = np.array(window_pos_arr)
-    molecule_name_arr = np.array(molecule_name_arr)
+
+    ec_arr = data['ec']
+    np_num_passes_arr = data['np_num_passes']
+    rq_arr = data['rq']
+    rg_arr = data['rg']
+
     y_preds = np.argmax(softmax_output, -1)
     error_prob = 1 - np.max(softmax_output, axis=-1)
     quality_scores = -10 * np.log10(error_prob)
     if options.dc_calibration_values.enabled:
-      quality_scores = calibrate_quality_scores(quality_scores,
-                                                options.dc_calibration_values)
+      quality_scores = calibration_lib.calibrate_quality_scores(
+          quality_scores, options.dc_calibration_values)
     quality_scores = np.minimum(quality_scores, dc_constants.MAX_QUAL)
     quality_scores = np.round(quality_scores, decimals=0)
     quality_scores = quality_scores.astype(dtype=np.int32)
-    for y_pred, qs, window_pos, molecule_name in zip(y_preds, quality_scores,
-                                                     window_pos_arr,
-                                                     molecule_name_arr):
+    for y_pred, qs, window_pos, molecule_name, ec, np_, rq, rg in zip(
+        y_preds, quality_scores, window_pos_arr, molecule_name_arr, ec_arr,
+        np_num_passes_arr, rq_arr, rg_arr):
       dc_output = stitch_utils.DCModelOutput(
-          window_pos=window_pos, molecule_name=molecule_name)
+          window_pos=window_pos,
+          molecule_name=molecule_name,
+          ec=ec,
+          np_num_passes=np_,
+          rq=rq,
+          rg=rg)
       y_pred_bases = ''.join(
           np.vectorize(dc_constants.VOCAB.__getitem__)(y_pred))
       quality_string = utils.quality_scores_to_string(qs)
@@ -390,7 +355,7 @@ def stitch_predictions_for_one_zmw(
   fastq_string = stitch_utils.stitch_to_fastq(
       molecule_name=zmw,
       predictions=predictions,
-      example_width=options.example_width,
+      max_length=options.max_length,
       min_quality=options.min_quality,
       min_length=options.min_length,
       outcome_counter=outcome_counter)
@@ -414,15 +379,16 @@ def stream_bam(
     For every ZMW, (ZMW name, template sequence, list of subreads).
   """
 
-  dc_config = preprocess_utils.DcConfig(
-      max_passes=options.max_passes,
-      example_width=options.example_width,
-      padding=options.padding)
+  dc_config = pre_lib.DcConfig(
+      max_passes=options.max_passes, max_length=options.max_length)
 
   # Temporarily disable unused-variable.
   # pylint: disable=unused-variable
-  proc_feeder, main_counter = preprocess_utils.create_proc_feeder(
-      subreads_to_ccs=subreads_to_ccs, ccs_bam=ccs_bam, dc_config=dc_config)
+  proc_feeder, main_counter = pre_lib.create_proc_feeder(
+      subreads_to_ccs=subreads_to_ccs,
+      ccs_bam=ccs_bam,
+      dc_config=dc_config,
+      ins_trim=FLAGS.ins_trim)
   # pylint: enable=unused_variable
 
   for input_data in proc_feeder():
@@ -448,14 +414,6 @@ def initialize_model(
   if FLAGS.end_after_stage in [DebugStage.TF_EXAMPLES, DebugStage.DC_INPUT]:
     return None, None
 
-  # Figure out model parameters.
-  if not FLAGS.params:
-    params = model_utils.read_params_from_json(checkpoint_path=checkpoint_path)
-  else:
-    params = FLAGS.params
-
-  with params.unlocked():
-    params.max_passes = options.max_passes
   logging.info('Loading %s', checkpoint_path)
   if options.use_saved_model:
     model = tf.saved_model.load(checkpoint_path)
@@ -479,14 +437,14 @@ def initialize_model(
   model_utils.modify_params(
       params=params,
       speedy=True,
-      max_length=options.padded_len,
+      max_length=options.max_length,
       is_training=False)
   logging.info('Finished initialize_model.')
   return model, params
 
 
 def preprocess(
-    one_zmw: Tuple[str, List[preprocess_utils.Read], preprocess_utils.DcConfig]
+    one_zmw: Tuple[str, List[pre_lib.Read], pre_lib.DcConfig]
 ) -> List[Dict[str, Any]]:
   """Preprocess input data for one ZMW into windows of features.
 
@@ -503,7 +461,7 @@ def preprocess(
   """
   zmw, subreads, dc_config = one_zmw
 
-  dc_whole_zmw = preprocess_utils.subreads_to_dc_example(
+  dc_whole_zmw = pre_lib.subreads_to_dc_example(
       subreads=subreads, ccs_seqname=zmw, dc_config=dc_config)
   if dc_whole_zmw is None or FLAGS.end_after_stage == DebugStage.DC_INPUT:
     return []
@@ -522,7 +480,7 @@ def process_skipped_window(
   ccs_seq = utils.encoded_sequence_to_string(ccs)
   ccs_quality_scores = feature_dict['ccs_base_quality_scores']
   if options.ccs_calibration_values.enabled:
-    ccs_quality_scores = calibrate_quality_scores(
+    ccs_quality_scores = calibration_lib.calibrate_quality_scores(
         ccs_quality_scores, options.ccs_calibration_values)
   ccs_quality_scores = np.minimum(ccs_quality_scores, dc_constants.MAX_QUAL)
   ccs_quality_scores = ccs_quality_scores.astype(dtype=np.int32)
@@ -530,7 +488,11 @@ def process_skipped_window(
       window_pos=feature_dict['window_pos'],
       molecule_name=feature_dict['name'],
       sequence=ccs_seq,
-      quality_string=utils.quality_scores_to_string(ccs_quality_scores))
+      quality_string=utils.quality_scores_to_string(ccs_quality_scores),
+      ec=feature_dict['ec'],
+      np_num_passes=feature_dict['np_num_passes'],
+      rq=feature_dict['rq'],
+      rg=feature_dict['rg'])
   return dc_output
 
 
@@ -538,7 +500,7 @@ def inference_on_n_zmws(
     inputs: Sequence[Tuple[str, str, Sequence[Any]]],
     model: tf.keras.Model,
     model_params: Union[config_dict.ConfigDict, config_dict.FrozenConfigDict],
-    fastq_writer: gfile.GFile,
+    output_writer: Union[gfile.GFile, pysam.AlignmentFile],
     options: InferenceOptions,
     batch_name: str,
     outcome_counter: stitch_utils.OutcomeCounter,
@@ -550,7 +512,7 @@ def inference_on_n_zmws(
         three elements: (name of zmw, aligned_subreads, DcConfig).
     model: An initialized model that will be used to make predictions.
     model_params: Parameters for the model.
-    fastq_writer: File writer where fastq output will be written.
+    output_writer: File writer where fastq or bam output will be written.
     options: Some options that apply to various stages of the inference run.
     batch_name: Name of batch used for runtime metrics.
     outcome_counter: Counts outcomes for each ZMW.
@@ -643,15 +605,42 @@ def inference_on_n_zmws(
   # pylint: disable=g-long-lambda
   predictions = sorted(
       predictions, key=lambda dc: (dc.molecule_name, dc.window_pos))
+
   for zmw, predictions_for_zmw in itertools.groupby(predictions,
                                                     lambda p: p.molecule_name):
-    fastq_string = stitch_predictions_for_one_zmw(
+    predictions_for_zmw = list(predictions_for_zmw)
+    fastq_string = stitch_utils.stitch_to_fastq(
+        molecule_name=zmw,
         predictions=predictions_for_zmw,
-        zmw=zmw,
-        options=options,
+        max_length=options.max_length,
+        min_quality=options.min_quality,
+        min_length=options.min_length,
         outcome_counter=outcome_counter)
+
     if fastq_string:
-      fastq_writer.write(fastq_string)
+      # FASTQs are written with gfile, bams are written with pysam.
+      if isinstance(output_writer, gfile.GFile):
+        output_writer.write(fastq_string)
+      else:
+        name, seq, _, qual = fastq_string.splitlines()
+        # Remove the @ prefix from sequence name.
+        name = name[1:]
+        record = pysam.AlignedSegment()
+        record.query_name = name
+        record.query_sequence = seq
+        record.query_qualities = pysam.qualitystring_to_array(qual)
+        record.flag = 4  # unmapped.
+        record.mapping_quality = 255
+        zmw = int(name.split('/')[1])
+        record.set_tags([
+            ('ec', predictions_for_zmw[0].ec or -1, 'f'),
+            ('np', predictions_for_zmw[0].np_num_passes, 'i'),
+            ('rq', predictions_for_zmw[0].rq, 'f'),
+            ('RG', predictions_for_zmw[0].rg, 'Z'),
+            ('zm', zmw, 'i'),
+        ])
+        output_writer.write(record)
+
   timelog(
       stage='stitch_and_write_fastq',
       item=batch_name,
@@ -672,44 +661,44 @@ def save_runtime(time_points, output_prefix):
     df.to_csv(writer, index=False)
 
 
-def parse_calibration_string(
-    calibration_string: str) -> QualityCalibrationValues:
-  """Parse calibration string and return threshold, w and b values."""
-  # calibration string is empty. So no calibration will be performed.
-  if not calibration_string:
-    return QualityCalibrationValues(enabled=False, threshold=0.0, w=1.0, b=0.0)
-
-  parsed_list = calibration_string.split(',')
-  if len(parsed_list) != 3:
-    raise ValueError('Malformed calibration string. Expected 3 values.',
-                     calibration_string)
-
-  calibration_values = QualityCalibrationValues(
-      enabled=True,
-      threshold=float(parsed_list[0]),
-      w=float(parsed_list[1]),
-      b=float(parsed_list[2]))
-  return calibration_values
-
-
 def run() -> stitch_utils.OutcomeCounter:
-  """Called by main."""
-  dc_config = preprocess_utils.DcConfig(FLAGS.max_passes, FLAGS.example_width,
-                                        FLAGS.padding)
+  """Performs an inference run."""
+
   # Determine if --checkpoint is a saved model.
   use_saved_model = (
       tf.io.gfile.exists(FLAGS.checkpoint) and
       tf.io.gfile.exists(f'{FLAGS.checkpoint}/saved_model.pb'))
 
-  dc_calibration_values = parse_calibration_string(FLAGS.dc_calibration)
-  ccs_calibration_values = parse_calibration_string(FLAGS.ccs_calibration)
+  # Load model parameters
+  if not FLAGS.params:
+    params = model_utils.read_params_from_json(checkpoint_path=FLAGS.checkpoint)
+  else:
+    params = FLAGS.params
+
+  dc_config = pre_lib.DcConfig(params.max_passes, params.max_length)
+
+  # Attempt to read default calibration values from model params.json.
+  # If not found, set to 'skip'.
+  if FLAGS.dc_calibration is None:
+    dc_calibration_values = params.get('dc_calibration', 'skip')
+    if dc_calibration_values != 'skip':
+      logging.info(
+          'DeepConsensus base calibration values read from '
+          'model params.json: %s', dc_calibration_values)
+  else:
+    dc_calibration_values = FLAGS.dc_calibration
+  dc_calibration_values = calibration_lib.parse_calibration_string(
+      dc_calibration_values)
+  if not FLAGS.ccs_calibration:
+    raise ValueError('--ccs_calibration should be set to "skip" '
+                     'or to base calibration scores.')
+  ccs_calibration_values = calibration_lib.parse_calibration_string(
+      FLAGS.ccs_calibration)
 
   options = InferenceOptions(
-      example_width=FLAGS.example_width,
+      max_length=params.max_length,
       example_height=dc_config.tensor_height,
-      padding=FLAGS.padding,
-      padded_len=FLAGS.example_width + FLAGS.padding,
-      max_passes=FLAGS.max_passes,
+      max_passes=params.max_passes,
       min_quality=FLAGS.min_quality,
       min_length=FLAGS.min_length,
       batch_size=FLAGS.batch_size,
@@ -732,20 +721,26 @@ def run() -> stitch_utils.OutcomeCounter:
   # Set up model.
   before_model_setup = time.time()
   loaded_model, model_params = initialize_model(
-      checkpoint_path=FLAGS.checkpoint,
-      params=FLAGS.params,
-      options=options)
+      checkpoint_path=FLAGS.checkpoint, params=params, options=options)
   logging.info('Model setup took %s seconds.', time.time() - before_model_setup)
 
   # Initialize output fastq writer.
-  output_filename = FLAGS.output
-  if not output_filename.endswith('.fastq'):
-    output_filename += '.fastq'
+  output_fname = FLAGS.output
+  correct_suffix = output_fname.endswith('.fq') or output_fname.endswith(
+      '.fastq') or output_fname.endswith('.bam')
+  if not correct_suffix:
+    raise NameError('Filename must end in .fq, .fastq, or .bam')
 
-  output_dir = os.path.dirname(output_filename)
+  output_dir = os.path.dirname(output_fname)
   if not tf.io.gfile.exists(output_dir):
     tf.io.gfile.makedirs(output_dir)
-  fastq_writer = gfile.Open(output_filename, 'wb')
+
+  if output_fname.endswith('.fq') or output_fname.endswith('.fastq'):
+    output_writer = gfile.Open(output_fname, 'wb')
+  else:
+    ccs_bam_header = pysam.AlignmentFile(FLAGS.ccs_bam, check_sq=False).header
+    output_writer = pysam.AlignmentFile(
+        output_fname, 'wb', header=ccs_bam_header)
 
   input_file_generator = stream_bam(
       subreads_to_ccs=FLAGS.subreads_to_ccs,
@@ -769,7 +764,7 @@ def run() -> stitch_utils.OutcomeCounter:
           inputs=stored_n_zmws,
           model=loaded_model,
           model_params=model_params,
-          fastq_writer=fastq_writer,
+          output_writer=output_writer,
           options=options,
           batch_name=str(batch_count),
           outcome_counter=outcome_counter,
@@ -784,7 +779,7 @@ def run() -> stitch_utils.OutcomeCounter:
         inputs=stored_n_zmws,
         model=loaded_model,
         model_params=model_params,
-        fastq_writer=fastq_writer,
+        output_writer=output_writer,
         options=options,
         batch_name=str(batch_count),
         outcome_counter=outcome_counter,
@@ -793,12 +788,12 @@ def run() -> stitch_utils.OutcomeCounter:
   if pool:
     pool.shutdown(wait=True)
 
-  fastq_writer.close()
+  output_writer.close()
 
   logging.info('Processed %s ZMWs in %0.3f seconds', zmw_counter,
                time.time() - before_all_zmws)
   logging.info('Outcome counts: %s', outcome_counter)
-  save_runtime(time_points=timing, output_prefix=f'{output_filename}.runtime')
+  save_runtime(time_points=timing, output_prefix=f'{output_fname}.runtime')
   return outcome_counter
 
 

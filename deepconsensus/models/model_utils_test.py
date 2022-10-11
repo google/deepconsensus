@@ -36,6 +36,7 @@ from absl.testing import parameterized
 import tensorflow as tf
 
 from deepconsensus.models import data_providers
+from deepconsensus.models import losses_and_metrics
 from deepconsensus.models import model_configs
 from deepconsensus.models import model_utils
 from deepconsensus.utils import test_utils

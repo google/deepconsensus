@@ -29,9 +29,13 @@
 # pylint: disable=line-too-long
 import os
 
+from typing import Optional
 import ml_collections
 from deepconsensus.utils import dc_constants
 
+# Do not add any additional imports to the config.
+# It can lead to circular dependencies easily and should not be necessary
+# for setting parameters.
 
 ############### Base params for different model architectures ###############
 
@@ -61,8 +65,17 @@ def _set_base_fc_hparams(params):
   params.l2 = 0.0
   params.batch_size = 256
   params.num_epochs = 15
-  params.learning_rate = 0.004
-  params.buffer_size = 1000
+  params.num_epochs_for_decay = 15
+  params.buffer_size = 1_000_000
+
+  # Optimizer params (optimized for transformer).
+  params.initial_learning_rate = 3.6246e-3
+  params.end_learning_rate = 2.86594e-5
+  params.warmup_steps = 35536
+  params.weight_decay_rate = 6.9868e-3
+  params.beta_1 = 0.9
+  params.beta_2 = 0.999
+  params.epsilon = 1e-6
 
 
 def _set_base_transformer_hparams(params):
@@ -75,7 +88,6 @@ def _set_base_transformer_hparams(params):
   # tuning.
   params.num_heads = 2
   params.layer_norm = False
-  params.dtype = dc_constants.TF_DATA_TYPE
   params.condense_transformer_input = False
   params.transformer_model_size = 'base'
 
@@ -94,9 +106,21 @@ def _set_base_transformer_hparams(params):
 
   # Training
   params.batch_size = 256
-  params.num_epochs = 50
-  params.learning_rate = 1e-4
-  params.buffer_size = 1000
+  # We use this number of epochs to obtain fast training results.
+  params.num_epochs = 4
+  # We use this number of epochs to obtain the finalized models. This parameter
+  # keeps the learning rate schedule the same when num_epochs is changed.
+  params.num_epochs_for_decay = 7
+  params.buffer_size = 1_000_000
+
+  # Optimizer params (values obtained in b/246369335#comment3).
+  params.initial_learning_rate = 3.6246e-3
+  params.end_learning_rate = 2.86594e-5
+  params.warmup_steps = 35536
+  params.weight_decay_rate = 6.9868e-3
+  params.beta_1 = 0.9
+  params.beta_2 = 0.999
+  params.epsilon = 1e-6
 
 
 def _set_transformer_learned_embeddings_hparams(params):
@@ -105,10 +129,6 @@ def _set_transformer_learned_embeddings_hparams(params):
   # adjust the params below. For now just making a copy of the previous params.
   _set_base_transformer_hparams(params)
   params.model_name = 'transformer_learn_values'
-  params.PW_MAX = dc_constants.PW_MAX
-  params.IP_MAX = dc_constants.IP_MAX
-  params.STRAND_MAX = dc_constants.STRAND_MAX
-  params.SN_MAX = dc_constants.SN_MAX
   params.per_base_hidden_size = 8
   params.pw_hidden_size = 8
   params.ip_hidden_size = 8
@@ -116,6 +136,13 @@ def _set_transformer_learned_embeddings_hparams(params):
   params.sn_hidden_size = 8
   params.condense_transformer_input = True
   params.transformer_input_size = 280
+
+
+def _set_custom_data_hparams(params):
+  """Updates the given config with values for custom dataset (subreads are aligned to CCS)."""
+  params.tf_dataset = ['/path_to_training_data'
+                      ]  # This needs to point to the actual training examples
+  params.max_passes = 20
 
 
 def _set_transformer_learned_embeddings_distill_hparams(params):
@@ -141,13 +168,18 @@ def _set_transformer_learned_embeddings_distill_hparams(params):
     assert len(params.student_encoder_layers) == params.num_hidden_layers
     assert max(params.student_encoder_layers) < params.num_hidden_layers
 
+  # Optimizer parameters.
+  params.warmup_steps = 0
+
   # Distillation loss parameters.
   # Weight corresponding to the distillation loss.
-  params.distill_alpha = 500
+  params.distill_alpha = 1.0e+5
   # Weight corresponding to the student loss.
-  params.student_alpha = 1
+  params.student_alpha = 1.0
   # Temperature for softening probability distributions.
-  params.temperature = 1
+  params.temperature = 1.0
+  # Loss type for comparing teacher and student logits (e.g. kl_divergence).
+  params.logit_loss_identifier = 'mean_squared_error'
 
 
 
@@ -182,7 +214,7 @@ def _set_test_data_hparams(params):
 ############### Core function for setting all config values ###############
 
 
-def get_config(config_name: str) -> ml_collections.ConfigDict:
+def get_config(config_name: Optional[str] = None) -> ml_collections.ConfigDict:
   """Returns the default configuration as instance of ConfigDict.
 
   Valid config names must consist of two parts: {model_name}+{dataset_name}. The
@@ -209,25 +241,45 @@ def get_config(config_name: str) -> ml_collections.ConfigDict:
     specified.
   """
   params = ml_collections.ConfigDict()
+
+  # Base config
+  params.PW_MAX = 255
+  params.IP_MAX = 255
+  params.SN_MAX = 500
+  params.STRAND_MAX = 2
+
   # Specify common configs here.
-  params.num_classes = len(dc_constants.VOCAB)
   params.vocab_size = len(dc_constants.VOCAB)
   params.tensorboard_update_freq = 'batch'
   params.model_checkpoint_freq = 'epoch'
   params.seed = 1
   params.remove_label_gaps = False
   params.loss_function = 'alignment_loss'
-  # AlignmentLoss-specific parameters here.
+
+  # AlignmentLoss parameters
   params.del_cost = 10.0
   params.loss_reg = 0.1
+  params.band_width = None
 
-  # Avg CCS Quality Filter; When set to 0 no examples will be filtered.
-  params.max_phred_qual = 0
+  # Window
+  params.max_length = 100
+
+  # Default model and dataset
+  params.model_config_name = 'transformer_learn_values'
+  params.dataset_config_name = 'ccs'
+
+  # CNN-specific
+  params.conv_model = 'resnet50'
 
 
   # Scaling factor to multiply the batch_size when using TPUs since they have
   # more memory than GPUs.
   params.tpu_scale_factor = 1
+
+  # Allow for a base config to be loaded when no config_name is passed.
+  if config_name is None:
+    return params
+
   model_config_name, dataset_config_name = config_name.split('+')
   params.model_config_name = model_config_name
   params.dataset_config_name = dataset_config_name
@@ -254,6 +306,8 @@ def get_config(config_name: str) -> ml_collections.ConfigDict:
     _set_ecoli_data_hparams(params)
   elif dataset_config_name == 'test':
     _set_test_data_hparams(params)
+  elif dataset_config_name == 'custom':
+    _set_custom_data_hparams(params)
   else:
     raise ValueError('dataset_config_name is %s. Must be one of the following: '
                      'ccs, poa, ecoli, test' % dataset_config_name)

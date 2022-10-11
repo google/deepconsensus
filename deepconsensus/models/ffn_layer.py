@@ -27,13 +27,14 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """Implementation of fully connected network."""
 
+from typing import Any, Dict, Union, Iterable
 import tensorflow as tf
 
 
 class FeedForwardNetwork(tf.keras.layers.Layer):
   """Fully connected feedforward network."""
 
-  def __init__(self, hidden_size, filter_size, relu_dropout):
+  def __init__(self, hidden_size: int, filter_size: int, relu_dropout: float):
     """Initialize FeedForwardNetwork.
 
     Args:
@@ -46,7 +47,7 @@ class FeedForwardNetwork(tf.keras.layers.Layer):
     self.filter_size = filter_size
     self.relu_dropout = relu_dropout
 
-  def build(self, input_shape):
+  def build(self, input_shape: Union[tf.TensorShape, Iterable[tf.TensorShape]]):
     self.filter_dense_layer = tf.keras.layers.Dense(
         self.filter_size,
         use_bias=True,
@@ -56,14 +57,14 @@ class FeedForwardNetwork(tf.keras.layers.Layer):
         self.hidden_size, use_bias=True, name="output_layer")
     super(FeedForwardNetwork, self).build(input_shape)
 
-  def get_config(self):
+  def get_config(self) -> Dict[str, Any]:
     return {
         "hidden_size": self.hidden_size,
         "filter_size": self.filter_size,
         "relu_dropout": self.relu_dropout,
     }
 
-  def call(self, x, training):
+  def call(self, x: tf.Tensor, training: bool) -> Dict[str, tf.Tensor]:
     """Return outputs of the feedforward network.
 
     Args:
@@ -71,8 +72,9 @@ class FeedForwardNetwork(tf.keras.layers.Layer):
       training: boolean, whether in training mode or not.
 
     Returns:
-      Output of the feedforward network.
-      tensor with shape [batch_size, length, hidden_size]
+      Dictionary with the following (key:value) pairs:
+        "main_output": Output of the feedforward network with shape [batch_size,
+        length, hidden_size]. Used as input to the next encoder layer.
     """
     # Retrieve dynamically known shapes
 
@@ -80,5 +82,4 @@ class FeedForwardNetwork(tf.keras.layers.Layer):
     if training:
       output = tf.nn.dropout(output, rate=self.relu_dropout)
     output = self.output_dense_layer(output)
-
-    return output
+    return dict(main_output=output)
