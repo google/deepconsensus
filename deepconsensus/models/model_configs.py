@@ -104,10 +104,15 @@ def _set_base_transformer_hparams(params):
   params.sn_hidden_size = 1
   params.strand_hidden_size = 1
 
+  # Dropout values (only used when training).
+  params.layer_postprocess_dropout = 0.1
+  params.attention_dropout = 0.1
+  params.relu_dropout = 0.1
+
   # Training
   params.batch_size = 256
   # We use this number of epochs to obtain fast training results.
-  params.num_epochs = 4
+  params.num_epochs = 7
   # We use this number of epochs to obtain the finalized models. This parameter
   # keeps the learning rate schedule the same when num_epochs is changed.
   params.num_epochs_for_decay = 7
@@ -151,8 +156,13 @@ def _set_transformer_learned_embeddings_distill_hparams(params):
   params.model_name = 'transformer_learn_values_distill'
 
   # Student architecture parameters.
-  params.num_hidden_layers = 4
+  params.num_hidden_layers = 5
   params.filter_size = 2048
+
+  # Dropout values (only used when training).
+  params.layer_postprocess_dropout = 0.0
+  params.attention_dropout = 0.2623
+  params.relu_dropout = 0.0
 
   # Whether to initialize encoder layers using the teacher model.
   params.init_encoder_stack = True
@@ -160,8 +170,8 @@ def _set_transformer_learned_embeddings_distill_hparams(params):
   params.init_nonencoder_layers = True
   # The order of indices in params.teacher_encoder_layers and
   # params.student_encoder_layers determines the layer to layer initialization.
-  params.teacher_encoder_layers = [0, 1, 2, 4]
-  params.student_encoder_layers = [0, 1, 2, 3]
+  params.teacher_encoder_layers = [1, 2, 3, 4, 5]
+  params.student_encoder_layers = [0, 1, 2, 3, 4]
   if params.init_encoder_stack:
     assert len(params.teacher_encoder_layers) == len(
         params.student_encoder_layers)
