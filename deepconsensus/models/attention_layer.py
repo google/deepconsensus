@@ -34,14 +34,19 @@ import tensorflow as tf
 class Attention(tf.keras.layers.Layer):
   """Multi-headed attention layer."""
 
-  def __init__(self, hidden_size: int, num_heads: int,
-               attention_dropout: float):
+  def __init__(self,
+               hidden_size: int,
+               num_heads: int,
+               attention_dropout: float,
+               attn_win_size: Optional[int] = None):
     """Initialize Attention.
 
     Args:
       hidden_size: int, output dim of hidden layer.
       num_heads: int, number of heads to repeat the same attention structure.
       attention_dropout: float, dropout rate inside attention for training.
+      attn_win_size: Optional[int], local sliding window attention length. Use
+        None for full attention.
     """
     if hidden_size % num_heads:
       raise ValueError(
@@ -52,6 +57,7 @@ class Attention(tf.keras.layers.Layer):
     self.hidden_size = hidden_size
     self.num_heads = num_heads
     self.attention_dropout = attention_dropout
+    self.attn_win_size = attn_win_size
 
   def build(self, input_shape: Union[tf.TensorShape, Iterable[tf.TensorShape]]):
     """Builds the layer."""
@@ -92,6 +98,19 @@ class Attention(tf.keras.layers.Layer):
         kernel_initializer=output_initializer,
         bias_axes=None,
         name="output_transform")
+
+    # input_shape = [batch_size, input_length, hidden_size]
+    max_length = input_shape.as_list()[1]
+
+    if self.attn_win_size:
+      self.attn_mask = tf.ones([1, 1, max_length, max_length])
+      self.attn_mask = tf.linalg.band_part(self.attn_mask, self.attn_win_size,
+                                           self.attn_win_size)
+      # attn_mask will contain True values in the band and False values outside.
+      self.attn_mask = self.attn_mask > 0.0
+    else:
+      self.attn_mask = tf.ones([1, 1, max_length, max_length]) > 0.0
+
     super(Attention, self).build(input_shape)
 
   def get_config(self) -> Dict[str, Any]:
@@ -99,6 +118,7 @@ class Attention(tf.keras.layers.Layer):
         "hidden_size": self.hidden_size,
         "num_heads": self.num_heads,
         "attention_dropout": self.attention_dropout,
+        "attn_win_size": self.attn_win_size,
     }
 
   def call(self,
@@ -119,10 +139,10 @@ class Attention(tf.keras.layers.Layer):
       training: A bool, whether in training mode or not.
       cache: (Used during prediction) A dictionary with tensors containing
         results of previous attentions. The dictionary must have the items:
-            {"k": tensor with shape [batch_size, i, heads, dim_per_head],
-             "v": tensor with shape [batch_size, i, heads, dim_per_head]} where
-               i is the current decoded length for non-padded decode, or max
-               sequence length for padded decode.
+        {"k": tensor with shape [batch_size, i, heads, dim_per_head], "v":
+        tensor with shape [batch_size, i, heads, dim_per_head]} where i is the
+        current decoded length for non-padded decode, or max sequence length for
+        padded decode.
       decode_loop_step: An integer, step number of the decoding loop. Used only
         for autoregressive inference on TPU.
 
@@ -170,6 +190,10 @@ class Attention(tf.keras.layers.Layer):
     # Calculate dot product attention
     logits = tf.einsum("BTNH,BFNH->BNFT", key, query)
     logits += bias
+    # False values in the mask will be set to a large negative number in the
+    # logits. The attention scores for elements outside the band will be close
+    # to 0 after softmax.
+    logits = tf.where(self.attn_mask, logits, -1e9)
     # Note that softmax internally performs math operations using float32
     # for numeric stability. When training with float16, we keep the input
     # and output in float16 for better performance.

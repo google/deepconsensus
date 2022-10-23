@@ -91,6 +91,10 @@ def _set_base_transformer_hparams(params):
   params.condense_transformer_input = False
   params.transformer_model_size = 'base'
 
+  # The width of the band for mask-based attention is (2 * attn_win_size + 1).
+  # Set to None to use full attention.
+  params.attn_win_size = 12
+
   params.num_channels = 1
   params.use_bases = True
   params.use_pw = True

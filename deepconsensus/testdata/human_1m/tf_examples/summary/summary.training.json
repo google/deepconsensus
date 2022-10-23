@@ -1,5 +1,8 @@
 {
  "n_zmw_processed": 10,
+ "zmw_total_bp": 1116014,
+ "zmw_trimmed_insertions": 790,
+ "zmw_trimmed_insertions_bp": 9421,
  "n_zmw_train": 7,
  "n_zmw_pass": 9,
  "n_examples_adjusted_label": 305,
@@ -20,5 +23,6 @@
  "truth_to_ccs": "testdata/human_1m/truth_to_ccs.bam",
  "truth_bed": "testdata/human_1m/truth.bed",
  "truth_split": "testdata/human_1m/truth_split.tsv",
- "version": "0.3.1"
+ "ins_trim": "5",
+ "version": "1.0.0"
 }

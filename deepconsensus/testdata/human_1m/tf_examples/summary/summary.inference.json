@@ -1,5 +1,8 @@
 {
  "n_zmw_processed": 10,
+ "zmw_total_bp": 1116014,
+ "zmw_trimmed_insertions": 790,
+ "zmw_trimmed_insertions_bp": 9421,
  "n_zmw_inference": 10,
  "n_zmw_pass": 10,
  "n_examples_inference": 1593,
@@ -13,5 +16,6 @@
  "truth_to_ccs": "None",
  "truth_bed": "None",
  "truth_split": "None",
- "version": "0.3.1"
+ "ins_trim": "5",
+ "version": "1.0.0"
 }

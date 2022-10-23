@@ -100,7 +100,7 @@ class EncoderStack(tf.keras.layers.Layer):
       # Create sublayers for each layer.
       self_attention_layer = attention_layer.SelfAttention(
           params["hidden_size"], params["num_heads"],
-          params["attention_dropout"])
+          params["attention_dropout"], params["attn_win_size"])
       feed_forward_network = ffn_layer.FeedForwardNetwork(
           params["hidden_size"], params["filter_size"], params["relu_dropout"])
 

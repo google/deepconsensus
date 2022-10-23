@@ -114,5 +114,26 @@ class ModelsTest(parameterized.TestCase):
     self.assertTrue(
         np.allclose(softmax_output_predict, softmax_output, rtol=1e-05))
 
+  @parameterized.parameters(
+      itertools.product(['transformer_learn_values+test'], [True, False],
+                        [6, 12]))
+  def test_attn_win_sizes(self, config_name, inference, attn_win_size):
+    """Checks that attention scores are zero outside attention mask."""
+    config = model_configs.get_config(config_name)
+    model_utils.modify_params(config)
+    config.attn_win_size = attn_win_size
+    model = model_utils.get_model(config)
+    rows = get_tf_example_rows(config, inference=inference)
+    outputs = model.get_intermediate_outputs(rows, training=False)
+    for layer_idx in range(config['num_hidden_layers']):
+      attn_maps = outputs['attention_scores_{}'.format(layer_idx)]
+      ones = tf.ones_like(attn_maps)
+      band = tf.linalg.band_part(ones, attn_win_size, attn_win_size)
+      attn_maps_masked = attn_maps * (1.0 - band)
+      self.assertTrue(np.allclose(attn_maps_masked.numpy(), 0.0, rtol=1e-05))
+    self.assertEqual(outputs['logits'].numpy().shape,
+                     (config.batch_size, config.max_length, config.vocab_size))
+
+
 if __name__ == '__main__':
   absltest.main()
