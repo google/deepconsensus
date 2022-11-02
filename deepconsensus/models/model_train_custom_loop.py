@@ -129,7 +129,7 @@ def train_model(out_dir: str, params: ml_collections.ConfigDict,
 
     # model, optimizer, and checkpoint must be created under `strategy.scope`.
     checkpoint, initial_epoch = model_utils.get_checkpoint_and_initial_epoch(
-        model, optimizer, epoch_checkpoint)  # pytype: disable=wrong-arg-types  # typed-keras
+        model, optimizer, False, out_dir, steps_per_epoch, epoch_checkpoint)  # pytype: disable=wrong-arg-types  # typed-keras
 
   # Create summary writers
   train_writer = tf.summary.create_file_writer(os.path.join(out_dir, 'train'))
