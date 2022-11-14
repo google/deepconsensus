@@ -99,6 +99,15 @@ config_flags.DEFINE_config_file(
     'params', None, 'params.json configuration file. By default, '
     '/path/to/model_directory/params.json is used.')
 
+# TODO Find out if this flag is needed here. Currently it is added to
+# avoid pipeline to fail. max_length should be correctly read from checkpoint.
+flags.DEFINE_integer('max_length', 100, 'Number of bases in each input.')
+
+flags.DEFINE_bool(
+    'use_ccs_smart_windows', False,
+    'If true, CCS smart window widths are used to partition '
+    'subreads into windows.')
+
 # The following parameters are used at the end for filtering the final output.
 flags.DEFINE_integer('min_length', 0, 'Minimum length for reads output.')
 flags.DEFINE_integer('min_quality', 20, 'Minimum quality for reads output.')
@@ -367,7 +376,7 @@ def stitch_predictions_for_one_zmw(
 
 def stream_bam(
     subreads_to_ccs: str, ccs_bam: str, options: InferenceOptions
-) -> Generator[Tuple[str, str, Sequence[Any]], None, None]:
+) -> Generator[Tuple[str, str, Sequence[Any], np.ndarray], None, None]:
   """Streams inputs from FASTA and BAM concurrently.
 
   Args:
@@ -390,12 +399,13 @@ def stream_bam(
       subreads_to_ccs=subreads_to_ccs,
       ccs_bam=ccs_bam,
       dc_config=dc_config,
-      ins_trim=FLAGS.ins_trim)
+      ins_trim=FLAGS.ins_trim,
+      use_ccs_smart_windows=FLAGS.use_ccs_smart_windows)
   # pylint: enable=unused_variable
 
   for input_data in proc_feeder():
-    subreads, zmw, dc_config, _ = input_data
-    yield zmw, subreads, dc_config
+    subreads, zmw, dc_config, split, window_widths = input_data
+    yield zmw, subreads, dc_config, window_widths
 
 
 def initialize_model(
@@ -446,7 +456,7 @@ def initialize_model(
 
 
 def preprocess(
-    one_zmw: Tuple[str, List[pre_lib.Read], pre_lib.DcConfig]
+    one_zmw: Tuple[str, List[pre_lib.Read], pre_lib.DcConfig, np.ndarray]
 ) -> Tuple[List[Dict[str, Any]], Optional[Any]]:
   """Preprocess input data for one ZMW into windows of features.
 
@@ -461,10 +471,13 @@ def preprocess(
     A list of feature dictionaries, one for each window.
     collections.Counter with inference counters.
   """
-  zmw, subreads, dc_config = one_zmw
+  zmw, subreads, dc_config, window_widths = one_zmw
 
   dc_whole_zmw = pre_lib.subreads_to_dc_example(
-      subreads=subreads, ccs_seqname=zmw, dc_config=dc_config)
+      subreads=subreads,
+      ccs_seqname=zmw,
+      dc_config=dc_config,
+      window_widths=window_widths)
   if dc_whole_zmw is None or FLAGS.end_after_stage == DebugStage.DC_INPUT:
     return ([], None)
 
@@ -500,7 +513,7 @@ def process_skipped_window(
 
 # TODO: Combine outcome_counter and stats_counter.
 def inference_on_n_zmws(
-    inputs: Sequence[Tuple[str, str, Sequence[Any]]],
+    inputs: Sequence[Tuple[str, str, Sequence[Any], np.ndarray]],
     model: tf.keras.Model,
     model_params: Union[config_dict.ConfigDict, config_dict.FrozenConfigDict],
     output_writer: Union[gfile.GFile, pysam.AlignmentFile],
@@ -540,7 +553,7 @@ def inference_on_n_zmws(
     stats_counter += counter
 
   batch_total_examples = sum([len(zmw) for zmw in feature_dicts_for_zmws])
-  batch_total_subreads = sum([len(subreads) for _, subreads, _ in inputs])
+  batch_total_subreads = sum([len(subreads) for _, subreads, _, _ in inputs])
   timelog(
       stage='preprocess',
       item=batch_name,
@@ -554,26 +567,27 @@ def inference_on_n_zmws(
   before = time.time()
   before_skipping = time.time()
 
-  if options.skip_windows_above:
-    # Skip windows with average CCS predicted qualities above threshold.
-    feature_dicts_for_model = []
-    predictions_for_skipped_windows = []
-    for one_zmw in feature_dicts_for_zmws:
-      for window in one_zmw:
+  feature_dicts_for_model = []
+  predictions_for_skipped_windows = []
+  for one_zmw in feature_dicts_for_zmws:
+    for window in one_zmw:
+      skip_example = False
+      # Window can be skipped because it is larger than max example width.
+      if window['overflow']:
+        dc_output_for_window = process_skipped_window(window, options)
+        predictions_for_skipped_windows.append(dc_output_for_window)
+        skip_example = True
+      # Or window can be skipped if skip_windows_above is set and average base
+      # quality score is above the threshold.
+      if options.skip_windows_above and not skip_example:
         avg_ccs_base_quality = utils.avg_phred(
             window['ccs_base_quality_scores'])
-        if avg_ccs_base_quality <= options.skip_windows_above:
-          feature_dicts_for_model.append(window)
-        else:
+        if avg_ccs_base_quality > options.skip_windows_above:
           dc_output_for_window = process_skipped_window(window, options)
           predictions_for_skipped_windows.append(dc_output_for_window)
-  else:
-    # Go straight to model without skipping any windows.
-    feature_dicts_for_model = []
-    for one_zmw in feature_dicts_for_zmws:
-      for window in one_zmw:
+          skip_example = True
+      if not skip_example:
         feature_dicts_for_model.append(window)
-    predictions_for_skipped_windows = []
 
   time_to_skip = time.time() - before_skipping
 
@@ -770,11 +784,11 @@ def run() -> stitch_utils.OutcomeCounter:
   zmw_counter = 0
   batch_count = 0
   stored_n_zmws = []
-  for zmw, subreads, dc_config in input_file_generator:
+  for zmw, subreads, dc_config, window_widths in input_file_generator:
     if FLAGS.limit and zmw_counter >= FLAGS.limit:
       break
     zmw_counter += 1
-    stored_n_zmws.append((zmw, subreads, dc_config))
+    stored_n_zmws.append((zmw, subreads, dc_config, window_widths))
     if num_zmws_to_batch and len(stored_n_zmws) >= num_zmws_to_batch:
       inference_on_n_zmws(
           inputs=stored_n_zmws,

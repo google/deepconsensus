@@ -112,7 +112,7 @@ class TestProcFeeder(absltest.TestCase):
         subreads_to_ccs=subread_to_ccs, ccs_bam=ccs_bam, dc_config=dc_config)
     ccs_seqnames = []
     n_subreads = 0
-    for read_set, ccs_seqname, _, mode in proc_feeder():
+    for read_set, ccs_seqname, _, mode, _ in proc_feeder():
       ccs_seqnames.append(ccs_seqname)
       # Subtract 1 for CCS sequence
       n_subreads += len(read_set) - 1
@@ -142,7 +142,7 @@ class TestProcFeeder(absltest.TestCase):
         truth_split=truth_split)
     ccs_seqnames = []
     n_subreads = 0
-    for read_set, ccs_seqname, _, mode in proc_feeder():
+    for read_set, ccs_seqname, _, mode, _ in proc_feeder():
       ccs_seqnames.append(ccs_seqname)
       # Subtract 2: 1 for CCS, 1 for label
       n_subreads += len(read_set) - 2
@@ -944,13 +944,15 @@ class TestDcConfigFromShape(parameterized.TestCase):
     self.assertEqual(dc_config.strand, expected_strand_row)
 
 
-class TestDcExampleFunctionality(absltest.TestCase):
+class TestDcExampleFunctionality(parameterized.TestCase):
 
   def test_dc_example_functions(self):
-    dc_config = pre_lib.DcConfig(max_passes=20, max_length=9)
+    max_length = 9
+    dc_config = pre_lib.DcConfig(max_passes=20, max_length=max_length)
     # First, generate a bunch of reads
     read_set = []
-    for i in range(0, 10):
+    num_of_subreads = 10
+    for i in range(num_of_subreads):
       segment = create_segment(
           name=f'm0/1/{i}', bases='A' * 10, cigar='10M', reference_start=0)
       read = pre_lib.expand_clip_indent(segment)
@@ -960,7 +962,8 @@ class TestDcExampleFunctionality(absltest.TestCase):
     truth_range = {'contig': 'chr1', 'begin': 0, 'end': 10}
     label = pre_lib.expand_clip_indent(label_segment, truth_range)
     read_set += [label]
-    dc_example = pre_lib.subreads_to_dc_example(read_set, 'm0/1/ccs', dc_config)
+    dc_example = pre_lib.subreads_to_dc_example(read_set, 'm0/1/ccs', dc_config,
+                                                None)
 
     # contig
     self.assertEqual(
@@ -1078,7 +1081,8 @@ class TestDcExampleFunctionality(absltest.TestCase):
     truth_range = {'contig': 'chr1', 'begin': 0, 'end': 100}
     label = pre_lib.expand_clip_indent(label_segment, truth_range)
     read_set += [label]
-    dc_example = pre_lib.subreads_to_dc_example(read_set, 'm0/1/ccs', dc_config)
+    dc_example = pre_lib.subreads_to_dc_example(read_set, 'm0/1/ccs', dc_config,
+                                                None)
 
     # Fetch the second iter example.
     iter_examples = dc_example.iter_examples()
@@ -1163,6 +1167,64 @@ class TestDcExampleFunctionality(absltest.TestCase):
         str(dc_example.label.remove_gaps(100)),
         'A' * 10 + dc_constants.GAP * 90)
 
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='simple case',
+          segment_set=[
+              create_segment(
+                  name='ZMW/1/0',
+                  bases='AAAAATTTTT',
+                  cigar='10M',
+                  reference_start=0,
+              ),
+              create_segment(
+                  name='ZMW/1/1',
+                  bases='AAAAATTTTT',
+                  cigar='10M',
+                  reference_start=0,
+              ),
+          ],
+          window_widths=[2, 3, 4, 1],
+          expected_examples=[
+              'Read(m0/1/9) CCS(0-1)\n-----------------------------\n0                    1 >AA   \nCCS                    >AA',
+              'Read(m0/1/9) CCS(2-4)\n-----------------------------\n0                    1 >AAA  \nCCS                    >AAA',
+              'Read(m0/1/9) CCS(5-8)\n-----------------------------\n0                    1 >TTTT \nCCS                    >TTTT',
+              'Read(m0/1/9) CCS(9-9)\n-----------------------------\n0                    1 >T    \nCCS                    >T',
+          ]),
+      dict(
+          testcase_name='overflow case',
+          segment_set=[
+              create_segment(
+                  name='ZMW/1/0',
+                  bases='AAGGGTTTTTTTT',
+                  cigar='2M3I8M',
+                  reference_start=0,
+              ),
+              create_segment(
+                  name='ZMW/1/1',
+                  bases='AAAAATTTTT',
+                  cigar='10M',
+                  reference_start=0,
+              ),
+          ],
+          window_widths=[2, 3, 5],
+          expected_examples=[
+              'Read(m0/1/9) CCS(0-1)\n-----------------------------\n0                    1 >AA   \nCCS                    >AA',
+              'Read(m0/1/9) CCS(2-4)\n------------------------------\n0                    1 >GGGTTT\nCCS                    >   AAA\noverflow               >True',
+              'Read(m0/1/9) CCS(5-9)\n-----------------------------\n0                    1 >TTTTT\nCCS                    >TTTTT',
+          ]))
+  def test_ccs_smart_windows(self, segment_set, window_widths,
+                             expected_examples):
+    dc_config = pre_lib.DcConfig(max_passes=20, max_length=5)
+    read_set = []
+    for segment in segment_set:
+      read = pre_lib.expand_clip_indent(segment)
+      read_set.append(read)
+    aln_reads = pre_lib.space_out_subreads(read_set)
+    dc_example = pre_lib.DcExample('Read(m0/1/9)', aln_reads, dc_config,
+                                   window_widths)
+    examples = [repr(example).strip() for example in dc_example.iter_examples()]
+    self.assertCountEqual(examples, expected_examples)
 
 if __name__ == '__main__':
   absltest.main()

@@ -46,10 +46,11 @@ import multiprocessing
 import multiprocessing.pool
 import os
 import time
-from typing import Dict, List, Tuple, Union, Counter
+from typing import Counter, Dict, List, Tuple, Union
 
 from absl import flags
 from absl import logging
+import numpy as np
 import tensorflow as tf
 
 from deepconsensus.preprocess import pre_lib
@@ -91,7 +92,10 @@ flags.DEFINE_integer(
     'ins_trim', 5,
     'Trim insertions greater than ins_trim bp in subreads to 0bp.'
     'No trimming if flag is set to 0')
-
+flags.DEFINE_bool(
+    'use_ccs_smart_windows', False,
+    'If true, CCS smart window widths are used to partition '
+    'subreads into windows.')
 # The following just need to match the training parameters.
 _MAX_PASSES = flags.DEFINE_integer('max_passes', 20,
                                    'Maximum subreads in each input.')
@@ -168,12 +172,14 @@ def process_subreads(
     ccs_seqname: str,
     dc_config: pre_lib.DcConfig,
     split: str,
+    window_widths: np.ndarray,
     queue: Queue,
     local: bool = False
 ) -> Union[Counter[str], Tuple[List[str], str, Counter[str]]]:
   """Subread processing worker."""
   tf_out = []
-  dc_example = pre_lib.subreads_to_dc_example(subreads, ccs_seqname, dc_config)
+  dc_example = pre_lib.subreads_to_dc_example(subreads, ccs_seqname, dc_config,
+                                              window_widths)
   for example in dc_example.iter_examples():
     tf_out.append(example.tf_example().SerializeToString())
   dc_example.counter[f'n_examples_{split}'] += len(tf_out)
@@ -241,6 +247,7 @@ def main(unused_argv) -> None:
       ccs_bam=FLAGS.ccs_bam,
       dc_config=dc_config,
       ins_trim=FLAGS.ins_trim,
+      use_ccs_smart_windows=FLAGS.use_ccs_smart_windows,
       truth_bed=FLAGS.truth_bed,
       truth_to_ccs=FLAGS.truth_to_ccs,
       truth_split=FLAGS.truth_split,

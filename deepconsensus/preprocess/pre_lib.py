@@ -295,7 +295,7 @@ class Read(abc.Sequence):
 
   def pad(self, pad_width):
     # Skip padding when not necessary.
-    if len(self) == pad_width:
+    if len(self) >= pad_width:
       return self
     return Read(
         name=self.name,
@@ -445,11 +445,13 @@ class DcExample:
   name: str
   reads: List[Read]
   config: DcConfig
+  window_widths: Optional[np.ndarray] = None
   counter: Counter[str] = dataclasses.field(default_factory=collections.Counter)
 
   # Define cached variables.
   _width: Optional[int] = None
   _ccs_width: Optional[int] = None
+  _overflow: bool = False
 
   @property
   def contig(self):
@@ -530,15 +532,45 @@ class DcExample:
     label = right_pad(label, seq_len, 0)
     return np.equal(ccs, label).all()
 
+  def calculate_windows(self, example_width: int) -> List[int]:
+    """Calculate window widths for the given CCS widths with added spacing."""
+    window_positions = []
+    window_widths = []
+    last_pos = 0
+    if self.window_widths is not None:
+      ccs_calculated_width = 0
+      for window_width in self.window_widths:
+        # Calculate window width with spaces
+        original_width = 0
+        window_width_spaced = 0
+        while original_width < window_width:
+          if self.ccs.bases[last_pos + window_width_spaced] != dc_constants.GAP:
+            original_width += 1
+          window_width_spaced += 1
+        window_positions.append(last_pos)
+        window_widths.append(window_width_spaced)
+        last_pos += window_width_spaced
+        ccs_calculated_width += window_width_spaced
+      assert ccs_calculated_width == self.ccs_width
+    else:
+      num_of_full_windows = int(self.ccs_width / example_width)
+      if self.ccs_width % example_width > 0:
+        num_of_full_windows += 1
+      window_widths = [example_width] * num_of_full_windows
+    return window_widths
+
   def iter_examples(self) -> 'DcExample':
     """Generates partitions from a given window."""
     # Initiate counter
     self.counter = collections.Counter()
     max_length = self.config.max_length
-    for start_pos in range(0, self.ccs_width, max_length):
-      window = self[start_pos:start_pos + max_length]
+    start_pos = 0
+    for window_width in self.calculate_windows(max_length):
+      self.counter['example_width_bucket_{}'.format(window_width)] += 1
+      window = self[start_pos:start_pos + window_width]
       if start_pos > self.ccs_width:
         break
+      start_pos += window_width
       if window.is_empty:
         self.counter['n_examples_no_ccs_idx'] += 1
         continue
@@ -557,9 +589,22 @@ class DcExample:
           continue
         self.counter['n_examples_adjusted_label'] += 1
         window.reads[-1] = adjusted_label
+
+      self._overflow = False
+      if window_width > max_length:
+        self.counter['n_examples_overflow'] += 1
+        self._overflow = True
+        # Overflown examples are not used for training.
+        if self.is_training:
+          continue
+      else:
+        self.counter['n_examples_skip_large_windows_keep'] += 1
+
       # Pad all reads so they have the same length.
       reads = [x.pad(max_length) for x in window.reads]
-      yield DcExample(self.name, reads, self.config)
+      # TODO Think about refactoring DCExample and DCExample
+      # generator into different classes.
+      yield DcExample(self.name, reads, self.config, _overflow=self._overflow)
 
   def stack_subread_feature(self, name):
     """Extract read feature and stack."""
@@ -608,6 +653,7 @@ class DcExample:
         'name': self.name,
         'window_pos': self.ccs.ccs_bounds.start,
         'ccs_base_quality_scores': self.ccs.base_quality_scores,
+        'overflow': self._overflow,
         'ec': self.ccs.ec,
         'np_num_passes': self.ccs.np_num_passes,
         'rq': self.ccs.rq,
@@ -663,6 +709,8 @@ class DcExample:
     if self.is_training:
       label = str(self.label)
       output += f'{"Label":<22} >{label}\n'
+    if self._overflow:
+      output += f'{"overflow":<22} >{self._overflow}\n'
     return output
 
 
@@ -1071,6 +1119,7 @@ def create_proc_feeder(subreads_to_ccs: str,
                        ccs_bam: str,
                        dc_config: DcConfig,
                        ins_trim: int = 0,
+                       use_ccs_smart_windows: bool = False,
                        truth_bed: Optional[str] = None,
                        truth_to_ccs: Optional[str] = None,
                        truth_split: Optional[str] = None,
@@ -1113,6 +1162,9 @@ def create_proc_feeder(subreads_to_ccs: str,
         raise ValueError(f'ccs bam does not contain {ccs_seqname}')
 
       ccs_read = construct_ccs_read(ccs_bam_read)
+      window_widths = None
+      if use_ccs_smart_windows:
+        window_widths = np.array(ccs_bam_read.get_tag('wl'))
       subreads.append(ccs_read)
 
       if is_training:
@@ -1143,7 +1195,7 @@ def create_proc_feeder(subreads_to_ccs: str,
         split = 'inference'
       main_counter[f'n_zmw_{split}'] += 1
       main_counter['n_zmw_pass'] += 1
-      yield (subreads, ccs_seqname, dc_config, split)
+      yield (subreads, ccs_seqname, dc_config, split, window_widths)
       if limit and main_counter['n_zmw_pass'] >= limit:
         break
 
@@ -1151,8 +1203,13 @@ def create_proc_feeder(subreads_to_ccs: str,
 
 
 def subreads_to_dc_example(subreads: List[Read], ccs_seqname: str,
-                           dc_config: DcConfig) -> DcExample:
+                           dc_config: DcConfig,
+                           window_widths: np.ndarray) -> DcExample:
   """Process subreads and return a DcExample object."""
   aln_reads = space_out_subreads(subreads)
-  dc_example = DcExample(name=ccs_seqname, reads=aln_reads, config=dc_config)
+  dc_example = DcExample(
+      name=ccs_seqname,
+      reads=aln_reads,
+      config=dc_config,
+      window_widths=window_widths)
   return dc_example
