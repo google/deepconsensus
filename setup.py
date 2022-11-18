@@ -42,8 +42,8 @@ long_description = (here / 'README_pip.md').read_text(encoding='utf-8')
 
 REQUIREMENTS = (here / 'requirements.txt').read_text().splitlines()
 EXTRA_REQUIREMENTS = {
-    'cpu': ['intel-tensorflow>=2.9.0'],
-    'gpu': ['tensorflow-gpu>=2.9.0']
+    'cpu': ['intel-tensorflow==2.9.1'],
+    'gpu': ['tensorflow-gpu==2.9.1']
 }
 
 
