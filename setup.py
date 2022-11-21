@@ -42,6 +42,7 @@ long_description = (here / 'README_pip.md').read_text(encoding='utf-8')
 
 REQUIREMENTS = (here / 'requirements.txt').read_text().splitlines()
 EXTRA_REQUIREMENTS = {
+    # Use '==' to pin the versions.
     'cpu': ['intel-tensorflow==2.9.1'],
     'gpu': ['tensorflow-gpu==2.9.1']
 }
@@ -69,6 +70,8 @@ setup(
     keywords='bioinformatics',
     packages=find_packages(where='.'),
     package_dir={'deepconsensus': 'deepconsensus'},
+    # We tested with 3.8.10. Python 3.8 should work. Higher versions might not
+    # work.
     python_requires='>=3.6',
     install_requires=REQUIREMENTS,
     extras_require=EXTRA_REQUIREMENTS,
