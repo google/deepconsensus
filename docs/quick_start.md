@@ -303,8 +303,8 @@ deepconsensus run \
 At the end of your run, you should see:
 
 ```
-Processed 178 ZMWs in 334.629 seconds
-Outcome counts: OutcomeCounter(empty_sequence=0, only_gaps_and_padding=0, failed_quality_filter=3, failed_length_filter=0, success=175)
+Processed 178 ZMWs in 263.359 seconds
+Outcome counts: OutcomeCounter(empty_sequence=0, only_gaps=0, failed_quality_filter=4, failed_length_filter=0, success=174)
 ```
 
 ## Optimizing Runtime
