@@ -36,37 +36,42 @@ gcloud compute disks create ${USER}-tpu-disk \
 --type pd-balanced \
 --project ${PROJECT}
 ```
-This disk will still need to be formatted.
 
-To format this disk and copy over data, it will be much more cost effective
-if you start a small CPU only VM (such as `n1-standard-2`), and use that
-VM to perform the formatting and copying below, before you attach it to the
-TPU VM below.
+This disk will still need to be formatted. We will use a small (cheap) VM to
+format the disk and copy the data. Then we will attach our persistent disk to
+the TPU VM. This way we won't waste TPU time.
 
-TODO: We can add more details on the CPU VM and copying later on.
-
-For now, get a Cloud TPU VM (`--accelerator-type=v2-8` specifies Cloud TPU v2):
+Create a small VM:
 
 ```bash
-gcloud compute tpus tpu-vm create ${USER}-tpu-name \
---zone=${ZONE} \
---accelerator-type=v2-8 \
---version=tpu-vm-tf-2.10.0 \
---project ${PROJECT} \
---data-disk source=projects/${PROJECT}/zones/${ZONE}/disks/${USER}-tpu-disk,mode=read-write
+gcloud compute instances create "${USER}-disk-setup"   \
+--scopes "compute-rw,storage-full,cloud-platform"   \
+--maintenance-policy "TERMINATE" \
+--image-family "ubuntu-2004-lts" \
+--image-project "ubuntu-os-cloud" \
+--machine-type "n1-standard-4" \
+--zone $ZONE \
+--project ${PROJECT}
 ```
 
-
-## Format the disk and copy over the training data.
-
-First, ssh into the Cloud TPU VM:
+Attach persistent disk:
 
 ```bash
-gcloud compute tpus tpu-vm ssh ${USER}-tpu-name \
-  --zone ${ZONE} --project ${PROJECT}
+gcloud compute instances attach-disk "${USER}-disk-setup" \
+--disk "${USER}-tpu-disk" \
+--zone $ZONE \
+--project ${PROJECT}
 ```
 
-Then, on the VM, format the disk as described in
+SSH to the newly created VM:
+
+```bash
+gcloud compute ssh "${USER}-disk-setup" \
+--zone $ZONE \
+--project ${PROJECT}
+```
+
+format the disk as described in
 https://cloud.google.com/tpu/docs/setup-persistent-disk#setting_up_a_tpu_vm_and_a_persistent_disk:
 
 I ran:
@@ -95,8 +100,7 @@ NOTE: If you get an error like:
 just make sure you run `gcloud init` and `gcloud auth login` with the right
 account that has access to the project you're using.
 
-NOTE: This copying step takes a while. I wonder if it's better to do it outside
-a Cloud TPU VM, because TPUs are expensive.
+NOTE: This copying step takes a while.
 
 The cp command showed this at the end:
 
@@ -108,6 +112,43 @@ Average throughput: 735.6MiB/s
 real    27m37.041s
 user    61m17.018s
 sys     104m5.970s
+```
+
+Exit the VM and detach persistent disk from temporary VM:
+
+```bash
+exit
+gcloud compute instances detach-disk "${USER}-disk-setup" \
+--disk "${USER}-tpu-disk" \
+--zone $ZONE \
+--project ${PROJECT}
+```
+
+Get a Cloud TPU VM (`--accelerator-type=v2-8` specifies Cloud TPU v2):
+
+```bash
+gcloud compute tpus tpu-vm create ${USER}-tpu-name \
+--zone=${ZONE} \
+--accelerator-type=v2-8 \
+--version=tpu-vm-tf-2.10.0 \
+--project ${PROJECT} \
+--data-disk source=projects/${PROJECT}/zones/${ZONE}/disks/${USER}-tpu-disk,mode=read-write
+```
+
+SSH to the newly created TPU VM. Please note that it takes time for VM to boot
+up before you can SSH to it.
+
+```bash
+gcloud compute tpus tpu-vm ssh ${USER}-tpu-name \
+  --zone ${ZONE} --project ${PROJECT}
+```
+
+Mount persistent disk:
+
+```bash
+sudo mkdir -p /mnt/disks/persist
+sudo mount -o discard,defaults /dev/sdb /mnt/disks/persist
+sudo chmod a+w /mnt/disks/persist
 ```
 
 ## Install DeepConsensus
@@ -133,8 +174,9 @@ to confirm that we can still run the simple test after installing DeepConsensus.
 ## Set up variables and files
 
 ```bash
+BASE_DIR=/mnt/disks/persist/dc220828_shuf_ins_trim5
 export DC_TRAIN_DIR="${HOME}/dc-model"
-export TF_EXAMPLES="${BASE_DIR}/tf-examples"  # This should already be there. 
+export TF_EXAMPLES="${BASE_DIR}/tf-examples"  # This should already be there.
 export DC_TRAIN_OUTPUT="${DC_TRAIN_DIR}/output"
 
 mkdir -p "${DC_TRAIN_DIR}"
