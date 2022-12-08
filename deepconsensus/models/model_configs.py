@@ -165,7 +165,7 @@ def _set_transformer_learned_embeddings_distill_hparams(params):
 
   # Dropout values (only used when training).
   params.layer_postprocess_dropout = 0.0
-  params.attention_dropout = 0.2623
+  params.attention_dropout = 0.1
   params.relu_dropout = 0.0
 
   # Whether to initialize encoder layers using the teacher model.
