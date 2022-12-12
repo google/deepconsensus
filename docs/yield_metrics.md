@@ -3,7 +3,7 @@
 ## We evaluate on 3 different datasets
 
 For each PacBio dataset (Movie ID), we compared yield at Q30 for ccs (baseline),
-and v0.2, v0.3, and v1.0 of DeepConsensus.
+and v0.2, v0.3, v1.0, v1.1 of DeepConsensus.
 
 Movie ID             | Sample | Chemistry | Mean insert size
 -------------------- | ------ | --------- | ----------------
@@ -33,46 +33,46 @@ m64014_200920_132517 | HG002  | 2.2       | 24 kb
   </thead>
   <tbody>
     <tr>
-      <td>v1.0</td>
+      <td>v1.1</td>
       <td>m64011_181218_235052</td>
       <td>chem1_11kb</td>
-      <td>1,393,202</td>
-      <td>1,516,705</td>
-      <td>17.03 Gb</td>
-      <td>109.85%</td>
-      <td>12.17 Gb</td>
-      <td>132.79%</td>
-      <td>4.93 Gb</td>
-      <td>203.01%</td>
-      <td>251.04</td>
+      <td>1,392,300</td>
+      <td>1,557,424</td>
+      <td>17.18 Gb</td>
+      <td>111.83%</td>
+      <td>12.14 Gb</td>
+      <td>137.40%</td>
+      <td>5.10 Gb</td>
+      <td>208.66%</td>
+      <td>233.02</td>
     </tr>
     <tr>
-      <td>v1.0</td>
+      <td>v1.1</td>
       <td>m64008_201124_002822</td>
       <td>chem2.2_15kb</td>
-      <td>2,689,147</td>
-      <td>2,851,015</td>
-      <td>42.80 Gb</td>
-      <td>107.06%</td>
-      <td>32.85 Gb</td>
-      <td>124.98%</td>
-      <td>9.33 Gb</td>
-      <td>237.00%</td>
-      <td>618.68</td>
+      <td>2,687,977</td>
+      <td>2,899,794</td>
+      <td>42.97 Gb</td>
+      <td>108.49%</td>
+      <td>32.74 Gb</td>
+      <td>128.44%</td>
+      <td>9.64 Gb</td>
+      <td>241.85%</td>
+      <td>567.41</td>
     </tr>
     <tr>
-      <td>v1.0</td>
+      <td>v1.1</td>
       <td>m64014_200920_132517</td>
       <td>chem2.2_24kb</td>
-      <td>1,919,192</td>
-      <td>2,048,905</td>
-      <td>49.33 Gb</td>
-      <td>107.77%</td>
-      <td>32.55 Gb</td>
-      <td>175.76%</td>
-      <td>2.94 Gb</td>
-      <td>854.15%</td>
-      <td>796.88</td>
+      <td>1,918,627</td>
+      <td>2,087,945</td>
+      <td>49.74 Gb</td>
+      <td>109.94%</td>
+      <td>32.52 Gb</td>
+      <td>194.41%</td>
+      <td>2.73 Gb</td>
+      <td>1058.0%</td>
+      <td>724.48</td>
     </tr>
   </tbody>
 </table>
