@@ -41,13 +41,13 @@ For context, we are the team that created and maintains both DeepConsensus and
 DeepVariant. For variant calling with DeepVariant, we tested different models
 and found that the best performance is with DeepVariant v1.4 using the normal
 pacbio model rather than the model trained on DeepConsensus v0.1 output. We plan
-to include DeepConsensus v0.3 outputs when training the next DeepVariant model,
+to include DeepConsensus v1.1 outputs when training the next DeepVariant model,
 so if there is a DeepVariant version later than v1.4 when you read this, we
 recommend using that latest version.
 
 ### For assembly downstream
 
-We have confirmed that v0.3 outperforms v0.2 in terms of downstream assembly
+We have confirmed that v1.1 outperforms v0.3 in terms of downstream assembly
 contiguity and accuracy. See the
 [assembly metrics page](docs/assembly_metrics.md) for details.
 

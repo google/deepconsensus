@@ -58,7 +58,7 @@ mkdir "${TF_EXAMPLES_DIR}/eval"
 mkdir "${TF_EXAMPLES_DIR}/test"
 
 # Download the input PacBio Subread data.
-gsutil cp gs://brain-genomics-public/research/deepconsensus/quickstart/v1.0/n1000.subreads.bam "${BASE_DIR}"/
+gsutil cp gs://brain-genomics-public/research/deepconsensus/quickstart/v1.1/n1000.subreads.bam "${BASE_DIR}"/
 
 # Truth Reference
 gsutil cp gs://deepconsensus/pacbio/datasets/chm13/chm13v2.0_noY.fa "${BASE_DIR}"/
@@ -159,7 +159,7 @@ https://docs.docker.com/engine/install/ubuntu/ to install Docker.
 
 ```bash
 # Define DOCKER_IMAGE *once* depending on whether you will be using CPU or GPU:
-DOCKER_IMAGE=google/deepconsensus:1.0.0  # For CPU
+DOCKER_IMAGE=google/deepconsensus:1.1.0  # For CPU
 sudo docker pull ${DOCKER_IMAGE}
 ```
 

@@ -13,7 +13,7 @@ m64014_200920_132517 | HG002  | 2.2       | 24 kb
 
 ## Yield versus runtime
 
-![v1.0 runtime versus yield over ccs](images/runtime_yield.png)
+![v1.1 runtime versus yield over ccs](images/runtime_yield.png)
 <table border="1" class="dataframe">
   <thead>
     <tr style="text-align: right;">
@@ -107,5 +107,5 @@ this chart for m64014_200920_132517-chr20:
 
 ![runtime/yield tradeoff of --skip_windows_above](images/skip_windows_above_tradeoff.png).
 
-The default in v1.0 is Q45, but you can adjust this level using
+The default in v1.1 is Q45, but you can adjust this level using
 `--skip_windows_above`.
