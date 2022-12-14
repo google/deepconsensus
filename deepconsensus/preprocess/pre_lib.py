@@ -147,7 +147,7 @@ class Read(abc.Sequence):
 
   def setup_spacing(self):
     """Set up an array for storing spaced indices."""
-    self.seq_indices = np.zeros(len(self.bases), dtype=np.int)
+    self.seq_indices = np.zeros(len(self.bases), dtype=int)
     self.is_insertion = self.cigar == dc_constants.PYSAM_CINS
     self.seq_len = len(self.bases)
 
