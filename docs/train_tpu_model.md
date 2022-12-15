@@ -137,7 +137,7 @@ Get a Cloud TPU VM (`--accelerator-type=v2-8` specifies Cloud TPU v2):
 gcloud compute tpus tpu-vm create ${USER}-tpu-name \
 --zone=${ZONE} \
 --accelerator-type=v2-8 \
---version=tpu-vm-tf-2.10.0 \
+--version=tpu-vm-tf-2.11.0 \
 --project ${PROJECT} \
 --data-disk source=projects/${PROJECT}/zones/${ZONE}/disks/${USER}-tpu-disk,mode=read-write
 ```
@@ -166,7 +166,7 @@ git clone https://github.com/google/deepconsensus.git
 
 ```
 cd deepconsensus
-sed -i -e 's|python3 -m pip install --user "intel-tensorflow>=2.9.0"||' install.sh
+sed -i -e 's|python3 -m pip install --user "intel-tensorflow>=2.11.0"||' install.sh
 ./install.sh
 ```
 
