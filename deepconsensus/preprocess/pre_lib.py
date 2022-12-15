@@ -127,9 +127,9 @@ class Read(abc.Sequence):
 
   # base_quality_scores are only used for the ccs read.
   base_quality_scores: np.ndarray = np.empty(0, dtype=np.uint8)
-  ccs_idx: np.ndarray = np.empty(0, dtype=np.int)
+  ccs_idx: np.ndarray = np.empty(0, dtype=int)
   # truth_idx and truth_range only used with label reads.
-  truth_idx: np.ndarray = np.empty(0, np.int)
+  truth_idx: np.ndarray = np.empty(0, int)
   # truth range is a dict containing contig, begin, end.
   # It is not modified when slicing is performed.
   # The truth_range['contig'] and truth_idx are used calculate
@@ -138,7 +138,7 @@ class Read(abc.Sequence):
   truth_range: Union[Dict[str, Any], None] = None
 
   # Alignment Variables
-  seq_indices: np.ndarray = np.empty(0, dtype=np.int)
+  seq_indices: np.ndarray = np.empty(0, dtype=int)
   is_insertion: np.ndarray = np.empty(0, dtype=bool)
   seq_len: int = 0
   idx_seq: int = 0
