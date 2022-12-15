@@ -100,4 +100,4 @@ gcloud compute instances create "${USER}-gpu" \
 
 The 10k ZMW test dataset is available on Google Storage:
 
-`gs://brain-genomics-public/research/deepconsensus/quickstart/v0.3/n10000.subreads.bam`
+`gs://brain-genomics-public/research/deepconsensus/quickstart/v1.1/n10000.subreads.bam`
