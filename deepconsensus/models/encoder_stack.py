@@ -51,9 +51,14 @@ class PrePostProcessingWrapper(tf.keras.layers.Layer):
     self.postprocess_dropout = params["layer_postprocess_dropout"]
 
   def build(self, input_shape: Union[tf.TensorShape, Iterable[tf.TensorShape]]):
-    # Create normalization layer
-    self.layer_norm = tf.keras.layers.LayerNormalization(
-        epsilon=1e-6, dtype="float32")
+    if self.params["rezero"]:
+      # Variable used in ReZero (paper: https://arxiv.org/abs/2003.04887).
+      alpha_init = tf.zeros_initializer()
+      self.alpha = tf.Variable(
+          initial_value=alpha_init(shape=()), trainable=True)
+    else:
+      self.layer_norm = tf.keras.layers.LayerNormalization(
+          epsilon=1e-6, dtype="float32")
     super(PrePostProcessingWrapper, self).build(input_shape)
 
   def get_config(self) -> Dict[str, Any]:
@@ -63,10 +68,12 @@ class PrePostProcessingWrapper(tf.keras.layers.Layer):
 
   def call(self, x: tf.Tensor, *args, **kwargs) -> Dict[str, tf.Tensor]:
     """Calls wrapped layer with same parameters."""
-    # Preprocessing: apply layer normalization
     training = kwargs["training"]
 
-    y = self.layer_norm(x)
+    if self.params["rezero"]:
+      y = x
+    else:
+      y = self.layer_norm(x)
 
     # Get layer output.
     layer_output = self.layer(y, *args, **kwargs)
@@ -75,7 +82,11 @@ class PrePostProcessingWrapper(tf.keras.layers.Layer):
     # Postprocessing: apply dropout and residual connection
     if training:
       y = tf.nn.dropout(y, rate=self.postprocess_dropout)
-    layer_output["main_output"] = x + y
+    if self.params["rezero"]:
+      # Apply ReZero.
+      layer_output["main_output"] = x + self.alpha * y
+    else:
+      layer_output["main_output"] = x + y
     return layer_output
 
 

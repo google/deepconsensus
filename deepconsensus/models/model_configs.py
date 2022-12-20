@@ -88,6 +88,8 @@ def _set_base_transformer_hparams(params):
   # tuning.
   params.num_heads = 2
   params.layer_norm = False
+  # Whether to use ReZero instead of LayerNorms.
+  params.rezero = True
   params.condense_transformer_input = False
   params.transformer_model_size = 'base'
 

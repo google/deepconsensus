@@ -57,6 +57,7 @@
   "pw_hidden_size": 8,
   "relu_dropout": 0.1,
   "remove_label_gaps": false,
+  "rezero": true,
   "seed": 1,
   "sn_hidden_size": 8,
   "static_batch": false,

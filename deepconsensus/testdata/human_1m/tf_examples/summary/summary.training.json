@@ -5,6 +5,8 @@
  "zmw_trimmed_insertions_bp": 9421,
  "n_zmw_train": 7,
  "n_zmw_pass": 9,
+ "example_width_bucket_100": 1551,
+ "n_examples_skip_large_windows_keep": 1507,
  "n_examples_adjusted_label": 305,
  "n_examples_train": 1239,
  "n_examples": 1507,
@@ -24,5 +26,5 @@
  "truth_bed": "testdata/human_1m/truth.bed",
  "truth_split": "testdata/human_1m/truth_split.tsv",
  "ins_trim": "5",
- "version": "1.0.0"
+ "version": "1.1.0"
 }

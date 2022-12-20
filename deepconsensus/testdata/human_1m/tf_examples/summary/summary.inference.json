@@ -5,6 +5,8 @@
  "zmw_trimmed_insertions_bp": 9421,
  "n_zmw_inference": 10,
  "n_zmw_pass": 10,
+ "example_width_bucket_100": 1593,
+ "n_examples_skip_large_windows_keep": 1593,
  "n_examples_inference": 1593,
  "n_examples": 1593,
  "max_passes": "20",
@@ -17,5 +19,5 @@
  "truth_bed": "None",
  "truth_split": "None",
  "ins_trim": "5",
- "version": "1.0.0"
+ "version": "1.1.0"
 }
