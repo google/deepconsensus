@@ -156,6 +156,8 @@ def train_model(teacher_model: tf.keras.Model, out_dir: str,
   params = ml_collections.FrozenConfigDict(params)
   model_utils.save_params_as_json(out_dir, params)
   train_dataset, eval_dataset = model_utils.get_datasets(params, strategy)
+  train_iterator = iter(train_dataset)
+  eval_iterator = iter(eval_dataset)
   steps_per_epoch, steps_per_eval = model_utils.get_step_counts(
       params, _EVAL_AND_LOG_EVERY_STEP.value)
   # Number of steps this model will train for.
@@ -172,7 +174,7 @@ def train_model(teacher_model: tf.keras.Model, out_dir: str,
     model_utils.print_model_summary(model, input_shape)
     logging.info('Done building model.')
     # Initialize student model from teacher based on model params.
-    epoch_checkpoint = os.path.join(out_dir, 'epoch_checkpoint.txt')
+    eval_checkpoint = os.path.join(out_dir, 'eval_checkpoint.txt')
     model = init_student_from_teacher(model, teacher_model, params)
 
     # Calculate the number of steps to decay the learning rate over.
@@ -225,8 +227,8 @@ def train_model(teacher_model: tf.keras.Model, out_dir: str,
       return losses_dict
 
     # model, optimizer, and checkpoint must be created under `strategy.scope`.
-    checkpoint, initial_epoch = model_utils.get_checkpoint_and_initial_epoch(
-        model, optimizer, False, out_dir, steps_per_epoch, epoch_checkpoint)  # pytype: disable=wrong-arg-types  # typed-keras
+    checkpoint, initial_epoch, initial_step_train = model_utils.get_checkpoint_and_initial_epoch(
+        model, optimizer, out_dir, eval_checkpoint)  # pytype: disable=wrong-arg-types  # typed-keras
 
   # Create summary writers
   train_writer = tf.summary.create_file_writer(os.path.join(out_dir, 'train'))
@@ -317,8 +319,6 @@ def train_model(teacher_model: tf.keras.Model, out_dir: str,
   log_eval_steps = 3000
   if _EVAL_AND_LOG_EVERY_STEP.value:
     log_train_steps = 1
-  train_iterator = iter(train_dataset)
-  eval_iterator = iter(eval_dataset)
 
   # Decide the best checkpoiht using main eval metric.
   max_main_eval_metric = 0.0
@@ -332,7 +332,7 @@ def train_model(teacher_model: tf.keras.Model, out_dir: str,
   for epoch in range(initial_epoch, params['num_epochs']):
     logging.info('Starting to run epoch: %s', epoch)
     train_time_start = datetime.datetime.now()
-    for step_train in range(steps_per_epoch):
+    for step_train in range(initial_step_train, steps_per_epoch):
       distributed_train_step(train_iterator)
       # Log and reset train metrics.
       if optimizer.iterations % log_train_steps == 0:
@@ -365,6 +365,9 @@ def train_model(teacher_model: tf.keras.Model, out_dir: str,
         checkpoint_name = model_utils.save_checkpoint(
             checkpoint, out_dir, [eval_loss] + eval_metrics,
             write_checkpoint_metrics)
+        with tf.io.gfile.GFile(eval_checkpoint, 'w') as f:
+          f.write(f'{checkpoint_name}\t{epoch}\t{step_train}')
+
         # Record the best checkpoint based on the main eval metric.
         main_eval_metric_val = float(main_eval_metric.result())
         if main_eval_metric_val >= max_main_eval_metric:
@@ -386,16 +389,8 @@ def train_model(teacher_model: tf.keras.Model, out_dir: str,
               steps_per_second=eval_steps_per_second)
         # Reset timer
         train_time_start = datetime.datetime.now()
-    # At the end of an epoch, create a savepoint checkpoint
-    # which will be used to resume training in the event of preemption or
-    # crashes. Intermediate checkpoints can still be used to
-    # select the best checkpoint.
-    epoch_checkpoint_name = model_utils.save_checkpoint(
-        checkpoint, out_dir, [eval_loss] + eval_metrics,
-        write_checkpoint_metrics)
-    with tf.io.gfile.GFile(epoch_checkpoint, 'w') as f:
-      logging.info('Epoch checkpoint: %s %s', epoch_checkpoint_name, epoch + 1)
-      f.write(f'{epoch_checkpoint_name}\t{epoch}')
+
+    initial_step_train = 0
 
 
 def train(teacher_model_dir: str,

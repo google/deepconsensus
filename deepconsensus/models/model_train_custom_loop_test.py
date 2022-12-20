@@ -79,8 +79,6 @@ class ModelTrainTest(parameterized.TestCase):
     self.assertNotEmpty(json_params)
     best_checkpoint = glob.glob(os.path.join(out_dir, 'best_checkpoint.txt'))
     self.assertNotEmpty(best_checkpoint)
-    epoch_checkpoint = glob.glob(os.path.join(out_dir, 'epoch_checkpoint.txt'))
-    self.assertNotEmpty(epoch_checkpoint)
 
 
 if __name__ == '__main__':

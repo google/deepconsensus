@@ -454,32 +454,26 @@ def get_step_counts(params: ml_collections.ConfigDict,
 
 def get_checkpoint_and_initial_epoch(
     model: tf.keras.models.Model, optimizer: tf.keras.optimizers.Optimizer,
-    reload_from_epoch_start: bool, out_dir: str, steps_per_epoch: int,
-    epoch_checkpoint: str) -> Tuple[tf.train.Checkpoint, int]:
+    out_dir: str, eval_checkpoint: str) -> Tuple[tf.train.Checkpoint, int, int]:
   """Loads a checkpoint if available and sets epoch to start training."""
   initial_epoch = 0
+  initial_step_train = 0
   checkpoint = tf.train.Checkpoint(model=model, optimizer=optimizer)
-  if reload_from_epoch_start:
-    # Load the checkpoint that corresponds to the beginning of the epoch.
-    # TODO.
-    if tf.io.gfile.exists(epoch_checkpoint):
-      with tf.io.gfile.GFile(epoch_checkpoint, 'r') as f:
-        epoch_checkpoint, initial_epoch = f.readline().split('\t')
+  # Load from the latest checkpoint if it exists.
+  latest_checkpoint = tf.train.latest_checkpoint(out_dir)
+  if latest_checkpoint:
+    if tf.io.gfile.exists(eval_checkpoint):
+      with tf.io.gfile.GFile(eval_checkpoint, 'r') as f:
+        checkpoint.restore(latest_checkpoint)
+        eval_checkpoint, initial_epoch, initial_step_train = f.readline().split(
+            '\t')
         initial_epoch = int(initial_epoch)
-        checkpoint.restore(epoch_checkpoint)
-        logging.info('Loading checkpoint %s for epoch %s', epoch_checkpoint,
-                     initial_epoch)
-    else:
-      logging.info('No Epoch checkpoint. Starting from epoch %s', initial_epoch)
-      initial_epoch = 0
-  else:
-    # Load from the latest checkpoint if it exists.
-    latest_checkpoint = tf.train.latest_checkpoint(out_dir)
-    if latest_checkpoint:
-      checkpoint.restore(latest_checkpoint)
-      logging.info('Loaded checkpoint %s', latest_checkpoint)
-      initial_epoch = optimizer.iterations.numpy() // steps_per_epoch
-  return checkpoint, initial_epoch
+        initial_step_train = int(initial_step_train)
+        logging.info('Loaded checkpoint %s (%s) for epoch %s step %s',
+                     latest_checkpoint, eval_checkpoint, initial_epoch,
+                     initial_step_train)
+        initial_step_train += 1
+  return checkpoint, initial_epoch, initial_step_train
 
 
 def reset_all_metrics(metrics: List[tf.keras.metrics.Metric]) -> None:
