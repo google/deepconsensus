@@ -36,7 +36,6 @@ Usage:
     --truth_split=truth_split.tsv \
     --output=examples-@split.tfrecord.gz \
     --cpus=4
-
 """
 
 import collections
@@ -76,7 +75,7 @@ flags.DEFINE_string(
      'The output filename must end in .tfrecord.gz'))
 flags.DEFINE_string('truth_to_ccs', None, 'Input truth bam aligned to ccs.')
 flags.DEFINE_string('truth_bed', None, 'Input truth bedfile.')
-# TODO TODO
+# TODO
 flags.DEFINE_string('truth_split', None,
                     'Input file defining train/eval/test splits.')
 flags.DEFINE_integer(
@@ -122,6 +121,7 @@ def trace_exception(f):
     except:  # pylint: disable=bare-except
       logging.exception('Error in function %s.', f.__name__)
       raise Exception('Error in worker process')
+
   return wrap
 
 
@@ -310,6 +310,7 @@ def main(unused_argv) -> None:
     summary['version'] = dc_constants.__version__
     json_summary = json.dumps(summary, indent=True)
     summary_file.write(json_summary)
+
 
 if __name__ == '__main__':
   logging.use_python_logging()
