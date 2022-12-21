@@ -63,7 +63,8 @@ gcloud compute instances attach-disk "${USER}-disk-setup" \
 --project ${PROJECT}
 ```
 
-SSH to the newly created VM:
+SSH to the newly created VM: Please note that it takes couple of minutes for the
+VM to start up before you can SSH to it.
 
 ```bash
 gcloud compute ssh "${USER}-disk-setup" \
@@ -237,6 +238,43 @@ time python3 deepconsensus/models/model_train_custom_loop.py \
 
 `--tpu_topology=4x4` here should work for TPU v2 and v3.
 
+## Optionally launch training from a checkpoint (warm-start training)
+
+Beginning training from an existing model checkpoint will generally speed up
+most training sessions. In order to start from a checkpoint add `--checkpoint`
+parameter that points to the path + prefix of the checkpoint. DeepConsensus v1.1
+checkpoint can be copied from
+`gs://brain-genomics-public/research/deepconsensus/models/v1.1/model_checkpoint`
+This directory contains 3 files:
+
+```
+gs://brain-genomics-public/research/deepconsensus/models/v1.1/model_checkpoint/checkpoint.data-00000-of-00001
+gs://brain-genomics-public/research/deepconsensus/models/v1.1/model_checkpoint/checkpoint.index
+gs://brain-genomics-public/research/deepconsensus/models/v1.1/model_checkpoint/params.json
+```
+
+Copy DeepConsensus checkpoint locally:
+
+```bash
+mkdir /mnt/disks/persist/model_checkpoint
+gsutil cp gs://brain-genomics-public/research/deepconsensus/models/v1.1/model_checkpoint/* /mnt/disks/persist/model_checkpoint/
+```
+
+Add optional `--checkpoint` flag to
+`deepconsensus/models/model_train_custom_loop.py`
+
+```bash
+export PYTHONPATH=$PWD:$PYTHONPATH
+export CONFIG=deepconsensus/models/model_configs.py:transformer_learn_values+custom
+time python3 deepconsensus/models/model_train_custom_loop.py \
+  --checkpoint /mnt/disks/persist/model_checkpoint/checkpoint \
+  --params ${CONFIG} \
+  --out_dir ${DC_TRAIN_OUTPUT} \
+  --alsologtostderr \
+  --tpu=local \
+  --tpu_topology=4x4 2>&1 | tee /tmp/dc-tpu.log &
+```
+
 ## Runtime
 
 In the log, you can find what the batch size was set to. For example:
@@ -298,6 +336,13 @@ To delete the Cloud TPU VM:
 
 ```bash
 gcloud compute tpus tpu-vm delete ${USER}-tpu-name \
+  --zone ${ZONE} --project ${PROJECT}
+```
+
+To delete the Cloud VM used for persistent disk setup:
+
+```bash
+gcloud compute instances delete ${USER}-disk-setup \
   --zone ${ZONE} --project ${PROJECT}
 ```
 
