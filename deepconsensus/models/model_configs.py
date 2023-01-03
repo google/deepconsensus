@@ -31,7 +31,6 @@ import os
 
 from typing import Optional
 import ml_collections
-from deepconsensus.utils import dc_constants
 
 # Do not add any additional imports to the config.
 # It can lead to circular dependencies easily and should not be necessary
@@ -258,6 +257,9 @@ def get_config(config_name: Optional[str] = None) -> ml_collections.ConfigDict:
   """
   params = ml_collections.ConfigDict()
 
+  # Used for generating replicates.
+  params.trial = 1
+
   # Base config
   params.PW_MAX = 255
   params.IP_MAX = 255
@@ -265,7 +267,7 @@ def get_config(config_name: Optional[str] = None) -> ml_collections.ConfigDict:
   params.STRAND_MAX = 2
 
   # Specify common configs here.
-  params.vocab_size = len(dc_constants.VOCAB)
+  params.vocab_size = 5
   params.tensorboard_update_freq = 'batch'
   params.model_checkpoint_freq = 'epoch'
   params.seed = 1
