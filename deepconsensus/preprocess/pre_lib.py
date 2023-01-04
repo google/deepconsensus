@@ -100,8 +100,6 @@ def right_pad(arr: np.ndarray, length: int, value: Any) -> np.ndarray:
 
   Returns:
     A padded array
-
-
   """
   # This function does not check for valid padding lengths.
   pad_amt = length - len(arr)
@@ -219,7 +217,7 @@ class Read(abc.Sequence):
   def bases_encoded(self) -> np.ndarray:
     bases_encoded = np.ndarray(
         self.bases.shape, dtype=dc_constants.NP_DATA_TYPE)
-    for k, base in enumerate(dc_constants.VOCAB):
+    for k, base in enumerate(dc_constants.SEQ_VOCAB):
       bases_encoded[self.bases == base] = k
     return bases_encoded
 
@@ -718,7 +716,7 @@ def decode_bases(bases_encoded: np.ndarray) -> np.ndarray:
   """Reverses DcExample encode_bases."""
   n_subreads, max_length = bases_encoded.shape
   bases = np.stack([np.repeat(dc_constants.GAP, max_length)] * n_subreads)
-  for k, base in enumerate(dc_constants.VOCAB):
+  for k, base in enumerate(dc_constants.SEQ_VOCAB):
     bases[bases_encoded == k] = base
   return bases
 
@@ -984,7 +982,7 @@ def expand_clip_indent(read: pysam.AlignedSegment,
   Args:
       read: a pysam aligned segment representing a subread, ccs, or label aln.
       truth_range: truth genome alignment coordinates. If supplied, it is
-                   assumed this is the label alignment.
+        assumed this is the label alignment.
       ins_trim: insertions in the read are trimmed if true.
       counter: A counter object for tracking processing metrics.
 

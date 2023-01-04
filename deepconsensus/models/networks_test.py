@@ -39,6 +39,7 @@ import tensorflow as tf
 from deepconsensus.models import data_providers
 from deepconsensus.models import model_configs
 from deepconsensus.models import model_utils
+from deepconsensus.utils import dc_constants
 
 
 def get_tf_example_rows(params: ml_collections.ConfigDict,
@@ -87,8 +88,9 @@ class ModelsTest(parameterized.TestCase):
 
     # First dimension will always be equal to batch_size because test config
     # uses a batch size of 1.
-    self.assertEqual(softmax_output.shape,
-                     (params.batch_size, params.max_length, params.vocab_size))
+    self.assertEqual(
+        softmax_output.shape,
+        (params.batch_size, params.max_length, dc_constants.SEQ_VOCAB_SIZE))
     self.assertTrue(
         np.allclose(
             np.sum(softmax_output, axis=-1),
@@ -131,8 +133,9 @@ class ModelsTest(parameterized.TestCase):
       band = tf.linalg.band_part(ones, attn_win_size, attn_win_size)
       attn_maps_masked = attn_maps * (1.0 - band)
       self.assertTrue(np.allclose(attn_maps_masked.numpy(), 0.0, rtol=1e-05))
-    self.assertEqual(outputs['logits'].numpy().shape,
-                     (config.batch_size, config.max_length, config.vocab_size))
+    self.assertEqual(
+        outputs['logits'].numpy().shape,
+        (config.batch_size, config.max_length, dc_constants.SEQ_VOCAB_SIZE))
 
 
 if __name__ == '__main__':

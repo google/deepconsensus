@@ -38,10 +38,11 @@ __version__ = '1.1.0'
 # Vocab
 GAP = ' '
 ALLOWED_BASES = 'ATCG'
-VOCAB = GAP + ALLOWED_BASES
+SEQ_VOCAB = GAP + ALLOWED_BASES
+SEQ_VOCAB_SIZE = len(SEQ_VOCAB)
 
 # Value used to fill in empty rows in the tf.Examples.
-GAP_INT = VOCAB.index(GAP)
+GAP_INT = SEQ_VOCAB.index(GAP)
 
 PYSAM_READ_ADVANCING_OPS = list(
     map(int, [pysam.CMATCH, pysam.CINS, pysam.CEQUAL, pysam.CDIFF]))

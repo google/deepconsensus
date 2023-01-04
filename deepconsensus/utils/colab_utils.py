@@ -36,7 +36,6 @@ import tensorflow as tf
 from deepconsensus.models import data_providers
 from deepconsensus.utils import dc_constants
 
-
 WRITE_NORMAL = '\x1b[0m'
 WRITE_GREEN_BACKGROUND = '\x1b[102m'
 WRITE_RED_BACKGROUND = '\x1b[101m'
@@ -66,7 +65,7 @@ def check_has_errors(label: str, pred: str) -> bool:
 
 def ints_to_bases(bases_row: tf.Tensor) -> str:
   """Converts ints to bases based on order in the vocab."""
-  return ''.join([dc_constants.VOCAB[int(b)] for b in bases_row])
+  return ''.join([dc_constants.SEQ_VOCAB[int(b)] for b in bases_row])
 
 
 def convert_to_bases(rows: tf.Tensor, label: tf.Tensor,

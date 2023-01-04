@@ -193,7 +193,6 @@ class InferenceOptions:
 
   Attributes:
     example_height: Height of examples, which depends on max_passes.
-
     max_length: Length of window.
     max_passes: Max number of subreads to include in input shown to model.
     min_quality: Quality threshold to filter final reads.
@@ -339,7 +338,7 @@ def run_model_on_examples(
           rq=rq,
           rg=rg)
       y_pred_bases = ''.join(
-          np.vectorize(dc_constants.VOCAB.__getitem__)(y_pred))
+          np.vectorize(dc_constants.SEQ_VOCAB.__getitem__)(y_pred))
       quality_string = utils.quality_scores_to_string(qs)
       dc_output.sequence = y_pred_bases
       dc_output.quality_string = quality_string
@@ -382,8 +381,8 @@ def stream_bam(
   Args:
     subreads_to_ccs: Path to input BAM file with subreads aligned to template
       sequences.
-    ccs_bam: Path to the input CCS BAM with template sequences (e.g.
-      CCS or POA).
+    ccs_bam: Path to the input CCS BAM with template sequences (e.g. CCS or
+      POA).
     options: Inference options, used to initialize a DcConfig object.
 
   Yields:
@@ -525,8 +524,8 @@ def inference_on_n_zmws(
   """Runs the full inference process on a batch of ZMWs and writes to fastq.
 
   Args:
-    inputs: Iterable of inputs, one for each ZMW, each of which has
-        three elements: (name of zmw, aligned_subreads, DcConfig).
+    inputs: Iterable of inputs, one for each ZMW, each of which has three
+      elements (name of zmw, aligned_subreads, DcConfig).
     model: An initialized model that will be used to make predictions.
     model_params: Parameters for the model.
     output_writer: File writer where fastq or bam output will be written.
@@ -535,7 +534,7 @@ def inference_on_n_zmws(
     outcome_counter: Counts outcomes for each ZMW.
     stats_counter: Global counter to gather example statistics.
     pool: Process pool to run the preprocessing on. If None or empty,
-        preprocessing will be done sequentially on the main process.
+      preprocessing will be done sequentially on the main process.
   """
   before_batch = time.time()
 
@@ -842,6 +841,7 @@ def main(_):
     outcome_counter = run()
   if not outcome_counter.success:
     return 1  # indicating an error has occurred.
+
 
 if __name__ == '__main__':
   register_required_flags()

@@ -91,9 +91,8 @@ def left_shift_sequence(y_true: tf.Tensor) -> tf.int32:
 
   Returns:
     left shifted y_true
-
   """
-  gap_token = dc_constants.VOCAB.find(dc_constants.GAP)
+  gap_token = dc_constants.SEQ_VOCAB.find(dc_constants.GAP)
   shape = tf.shape(y_true)
   seq_length = shape[1]
 
@@ -195,7 +194,7 @@ def xentropy_ins_cost_fn(y_pred: tf.Tensor, eps=1e-7) -> tf.Tensor:
     A tf.Tensor<float>[batch, n] such that out[b][l] represents the
     cross-entropy loss between dc_constants.PAD and y_pred[b][l].
   """
-  gap_token = dc_constants.VOCAB.find(dc_constants.GAP)
+  gap_token = dc_constants.SEQ_VOCAB.find(dc_constants.GAP)
   ins_scores = tf.clip_by_value(y_pred[..., gap_token], eps, 1 - eps)
   return -tf.math.log(ins_scores)
 
@@ -322,10 +321,10 @@ class AlignmentLoss(tf.keras.losses.Loss):
     # Removes internal gaps, shifting sequences left.
     y_true = left_shift_sequence(y_true)
     # Computes per-example label sequence length.
-    pad_token = dc_constants.VOCAB.find(dc_constants.GAP)
+    pad_token = dc_constants.SEQ_VOCAB.find(dc_constants.GAP)
     seq_lens = tf.reduce_sum(tf.cast(y_true != pad_token, y_true.dtype), -1)
     # Converts y_true to one-hot.
-    n_tokens = len(dc_constants.VOCAB)
+    n_tokens = len(dc_constants.SEQ_VOCAB)
     y_true_oh = tf.one_hot(y_true, depth=n_tokens, dtype=dtype)
     return y_true_oh, seq_lens
 
@@ -602,7 +601,7 @@ def preprocess_y_true_metric(y_true: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
   # necessary.
   y_true = left_shift_sequence(y_true)
   # Computes per-example label sequence length, excluding padding.
-  pad_token = dc_constants.VOCAB.find(dc_constants.GAP)
+  pad_token = dc_constants.SEQ_VOCAB.find(dc_constants.GAP)
   y_true_lens = tf.reduce_sum(tf.cast(y_true != pad_token, y_true.dtype), -1)
   return y_true, y_true_lens
 
@@ -630,7 +629,7 @@ def preprocess_y_pred_metric(y_pred: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
   # Removes internal gaps, shifting sequences left when necessary.
   y_pred = left_shift_sequence(y_pred)
   # Computes per-example label sequence length, excluding padding.
-  pad_token = dc_constants.VOCAB.find(dc_constants.GAP)
+  pad_token = dc_constants.SEQ_VOCAB.find(dc_constants.GAP)
   y_pred_lens = tf.reduce_sum(tf.cast(y_pred != pad_token, y_pred.dtype), -1)
   return y_pred, y_pred_lens
 
@@ -1039,7 +1038,7 @@ def get_batch_identity_ccs_pred(
   ccs = tf.cast(ccs, tf.int32)
   # Convert CCS to one-hot to match the shape of expected alignment inputs.
   ccs_one_hot = tf.one_hot(
-      ccs, depth=len(dc_constants.VOCAB), dtype=dc_constants.TF_DATA_TYPE)
+      ccs, depth=len(dc_constants.SEQ_VOCAB), dtype=dc_constants.TF_DATA_TYPE)
 
   _, _, metric_values_ccs = alignment_metric.alignment(y_true, ccs_one_hot)
   identity_ccs = per_batch_identity(metric_values_ccs)

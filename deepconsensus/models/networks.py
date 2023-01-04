@@ -39,7 +39,6 @@ from official.nlp.modeling import layers
 from deepconsensus.utils import dc_constants
 
 
-# TODO: Looking into removing this eventually.
 class ModifiedOnDeviceEmbedding(layers.OnDeviceEmbedding):
   """Subclass of OnDeviceEmbedding, init similar to EmbeddingSharedWeights."""
 
@@ -79,8 +78,12 @@ def FullyConnectedNet(params: ml_collections.ConfigDict) -> tf.keras.Model:
             net)
     net = tf.keras.layers.Dropout(rate=params.fc_dropout)(net)
 
-  net = tf.keras.layers.Dense(units=params.max_length * params.vocab_size)(net)
-  net = tf.keras.layers.Reshape((params.max_length, params.vocab_size))(net)
+  net = tf.keras.layers.Dense(units=params.max_length *
+                              dc_constants.SEQ_VOCAB_SIZE)(
+                                  net)
+  net = tf.keras.layers.Reshape(
+      (params.max_length, dc_constants.SEQ_VOCAB_SIZE))(
+          net)
   net = tf.keras.layers.Softmax(axis=-1)(net)
   outputs = net
   return tf.keras.Model(inputs=inputs, outputs=outputs)
@@ -109,7 +112,7 @@ class ConvNet(tf.keras.Model):
     super(ConvNet, self).__init__(params, **kwargs)
     # Most conv models only accept 3 channels.
     self.resnet_input_shape = (params.hidden_size, params.max_length, 3)
-    self.dimensions = params.max_length * params.vocab_size
+    self.dimensions = params.max_length * dc_constants.SEQ_VOCAB_SIZE
 
     model, self.conv_preprocess = get_conv_sub_model(params.conv_model)
     self.model = model(
@@ -119,7 +122,6 @@ class ConvNet(tf.keras.Model):
         pooling='avg')
     self.use_sn = params.use_sn
     self.max_length = params.max_length
-    self.vocab_size = params.vocab_size
 
     # Define layers
     self.layer_dense = tf.keras.layers.Dense(units=self.dimensions)
@@ -145,7 +147,11 @@ class ConvNet(tf.keras.Model):
       net = tf.keras.layers.Flatten()(net)
 
     net = self.layer_dense(net)
-    net = tf.keras.layers.Reshape((self.max_length, self.vocab_size))(net)
+    net = tf.keras.layers.Reshape((
+        self.max_length,
+        dc_constants.SEQ_VOCAB_SIZE,
+    ))(
+        net)
     net = tf.keras.layers.Softmax(axis=-1)(net)
     output = net
     return output
@@ -183,7 +189,7 @@ class EncoderOnlyTransformer(tf.keras.Model):
           hidden_size=self.params['hidden_size'])
     self.encoder_stack = encoder_stack.EncoderStack(params)
     self.fc1 = tf.keras.layers.Dense(
-        units=(params['vocab_size']),
+        units=(dc_constants.SEQ_VOCAB_SIZE),
         activation=None,
         use_bias=True,
         kernel_initializer='glorot_uniform',
@@ -342,7 +348,7 @@ class EncoderOnlyLearnedValuesTransformer(EncoderOnlyTransformer):
     super(EncoderOnlyLearnedValuesTransformer, self).__init__(params, name=name)
     if params.use_bases:
       self.bases_embedding_layer = ModifiedOnDeviceEmbedding(
-          vocab_size=params['vocab_size'],
+          vocab_size=dc_constants.SEQ_VOCAB_SIZE,
           embedding_width=params['per_base_hidden_size'],
           name='bases_embedding')
     if params.use_pw:

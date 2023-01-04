@@ -112,11 +112,12 @@ def deepconsensus_testdata(filename):
 
 def get_one_hot(value: Union[int, np.ndarray]) -> np.ndarray:
   """Returns a one-hot vector for a given value."""
-  return np.eye(len(dc_constants.VOCAB), dtype=dc_constants.NP_DATA_TYPE)[value]
+  return np.eye(
+      len(dc_constants.SEQ_VOCAB), dtype=dc_constants.NP_DATA_TYPE)[value]
 
 
 def seq_to_array(seq: str) -> List[int]:
-  return [dc_constants.VOCAB.index(i) for i in seq]
+  return [dc_constants.SEQ_VOCAB.index(i) for i in seq]
 
 
 def multiseq_to_array(sequences: Union[Text, List[Text]]) -> np.ndarray:
@@ -142,7 +143,6 @@ def convert_seqs(sequences: List[str]) -> Tuple[np.ndarray, np.ndarray]:
   Returns:
     y_true as array
     y_pred_scores as probability array
-
   """
   y_true, y_pred_scores = sequences
   y_true = multiseq_to_array(y_true).astype(dc_constants.NP_DATA_TYPE)

@@ -221,7 +221,7 @@ class XentropySubsCostFn(parameterized.TestCase):
   def test_xentropy_subs_cost_fn(self, b, m, n, seed, dtype):
     """Checks that pointwise XEntropy values agree with tf.keras.losses."""
     # Generates random data.
-    n_tokens = len(dc_constants.VOCAB)
+    n_tokens = dc_constants.SEQ_VOCAB_SIZE
     n_base_tokens = len(dc_constants.ALLOWED_BASES)
 
     y_true = tf.argmax(
@@ -254,8 +254,8 @@ class XentropyInsCostFn(parameterized.TestCase):
   def test_xentropy_subs_cost_fn(self, b, n, seed, dtype):
     """Checks that pointwise XEntropy values agree with tf.keras.losses."""
     # Generates random data.
-    gap_token = dc_constants.VOCAB.find(dc_constants.GAP)
-    n_tokens = len(dc_constants.VOCAB)
+    gap_token = dc_constants.SEQ_VOCAB.find(dc_constants.GAP)
+    n_tokens = len(dc_constants.SEQ_VOCAB)
 
     y_pred = tf.random.stateless_uniform([b, n, n_tokens], [seed, 0],
                                          dtype=dtype)
@@ -732,13 +732,12 @@ class DistillationLossTest(parameterized.TestCase):
       seed_student = seed_teacher
     else:
       seed_student = seed_teacher + 1
-    vocab_size = len(dc_constants.VOCAB)
     np.random.seed(seed_teacher)
     teacher_logits = np.random.normal(
-        size=(batch_size, window_length, vocab_size))
+        size=(batch_size, window_length, dc_constants.SEQ_VOCAB_SIZE))
     np.random.seed(seed_student)
     student_logits = np.random.normal(
-        size=(batch_size, window_length, vocab_size))
+        size=(batch_size, window_length, dc_constants.SEQ_VOCAB_SIZE))
 
     distill_loss_fn = losses_and_metrics.DistillationLoss(
         temperature=temperature,

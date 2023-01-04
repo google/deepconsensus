@@ -240,7 +240,7 @@ class DataProvidersTest(parameterized.TestCase):
       self.assertNotEmpty(strand_rows)
       self.assertNotEmpty(ccs_rows)
       self.assertNotEmpty(sn_rows)
-      self.assertTrue(np.all(base_rows < params.vocab_size))
+      self.assertTrue(np.all(base_rows < dc_constants.SEQ_VOCAB_SIZE))
       self.assertTrue(np.all(ip_rows <= params.IP_MAX))
       self.assertTrue(np.all(pw_rows <= params.PW_MAX))
     self.assertTrue(check_not_empty)  # Used to fail on empty dataset.
@@ -296,10 +296,10 @@ class DataProvidersTest(parameterized.TestCase):
   def test_remove_internal_gaps_and_shift(self):
     label, expected = ('   GGGCGAG   ACATA   ACATA ATA ATA      ',
                        'GGGCGAGACATAACATAATAATA                 ')
-    label = [float(dc_constants.VOCAB.index(x)) for x in label]
+    label = [float(dc_constants.SEQ_VOCAB.index(x)) for x in label]
     label = tf.expand_dims(tf.constant(label), axis=0)
     shifted = data_providers.remove_internal_gaps_and_shift(label)
-    result = ''.join([dc_constants.VOCAB[int(x)] for x in shifted])
+    result = ''.join([dc_constants.SEQ_VOCAB[int(x)] for x in shifted])
     self.assertEqual(result, expected)
 
 
