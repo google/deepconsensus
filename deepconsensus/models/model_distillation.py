@@ -60,13 +60,11 @@ import ml_collections
 from ml_collections.config_flags import config_flags
 import tensorflow as tf
 
+
 from deepconsensus.models import data_providers
 from deepconsensus.models import losses_and_metrics
 from deepconsensus.models import model_utils
 from deepconsensus.utils import dc_constants
-
-
-# pylint: disable=unused-import
 
 FLAGS = flags.FLAGS
 config_flags.DEFINE_config_file('params', None, 'Training configuration.')
@@ -154,6 +152,10 @@ def train_model(teacher_model: tf.keras.Model, out_dir: str,
   """Trains the model under the given strategy and params."""
   # Freeze config dict here to ensure it is hashable.
   params = ml_collections.FrozenConfigDict(params)
+
+  if out_dir is None:
+    raise ValueError('--out_dir must be defined.')
+
   model_utils.save_params_as_json(out_dir, params)
   train_dataset, eval_dataset = model_utils.get_datasets(params, strategy)
   train_iterator = iter(train_dataset)
@@ -433,6 +435,5 @@ if __name__ == '__main__':
   flags.mark_flags_as_required([
       'teacher_model_dir',
       'params',
-      'out_dir',
   ])
   app.run(main)

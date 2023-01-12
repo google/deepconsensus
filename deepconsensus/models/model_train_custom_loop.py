@@ -36,7 +36,6 @@ OUT_DIR=/tmp
 time blaze run -c opt \
 //learning/genomics/deepconsensus/models:model_train_custom_loop -- \
   --params ${CONFIG} \
-  --out_dir ${OUT_DIR} \
   --xm_runlocal \
   --alsologtostderr
 """
@@ -58,7 +57,6 @@ from deepconsensus.models import losses_and_metrics
 from deepconsensus.models import model_utils
 from deepconsensus.utils import dc_constants
 
-# pylint: disable=unused-import g-import-not-at-top
 
 FLAGS = flags.FLAGS
 config_flags.DEFINE_config_file('params', None, 'Training configuration.')
@@ -84,6 +82,10 @@ def train_model(out_dir: str, params: ml_collections.ConfigDict,
   """Trains the model under the given strategy and params."""
   # Freeze config dict here to ensure it is hashable.
   params = ml_collections.FrozenConfigDict(params)
+
+  if out_dir is None:
+    raise ValueError('--out_dir must be defined.')
+
   model_utils.save_params_as_json(out_dir, params)
   train_dataset, eval_dataset = model_utils.get_datasets(params, strategy)
   train_iterator = iter(train_dataset)
@@ -300,6 +302,5 @@ def main(unused_args=None):
 if __name__ == '__main__':
   flags.mark_flags_as_required([
       'params',
-      'out_dir',
   ])
   app.run(main)
