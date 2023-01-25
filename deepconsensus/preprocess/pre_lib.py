@@ -32,7 +32,7 @@ from collections import abc
 import dataclasses
 import functools
 import itertools
-from typing import Any, Counter, Dict, List, Optional, Union
+from typing import Any, Counter, Dict, List, Optional, Tuple, Union
 
 from absl import logging
 import numpy as np
@@ -99,7 +99,7 @@ def right_pad(arr: np.ndarray, length: int, value: Any) -> np.ndarray:
     value: Pad value.
 
   Returns:
-    A padded array
+    A padded array.
   """
   # This function does not check for valid padding lengths.
   pad_amt = length - len(arr)
@@ -108,7 +108,34 @@ def right_pad(arr: np.ndarray, length: int, value: Any) -> np.ndarray:
 
 @dataclasses.dataclass
 class Read(abc.Sequence):
-  """Used to represent ccs alignments."""
+  """Represents sequence alignments.
+
+  The Read class is used to represent sequence alignments. This includes
+  subreads,
+  the circular consensus sequence (ccs), and the label sequence. Subread
+  sequences and label sequences should both be aligned to the CCS sequence. This
+  class is used to construct the DcExample class which in turn will generate
+  DeepConsensus tf.Example model inputs.
+
+  Attributes:
+    name: The name of the read.
+    bases: The sequence of the subread or CCS.
+    cigar: The cigar operations string.
+    pw: Pulse width.
+    ip: interpulse duration.
+    sn: Signal-to-noise ratio.
+    strand: Indicates alignment strand (0=Unknown, 1=Forward, 2=Reverse).
+    ec: Effective coverage.
+    np_num_passes: Number of passes.
+    rq: Predicted concordance.
+    rg: Read group.
+    ccs_idx: Positions in the sequence corresponding to CCS indices.
+    base_quality_scores: phred-scaled base quality scores.
+    truth_idx: The indices of label positions.
+    truth_range: The range of positions found in the label dataset.
+    idx_spaced: Indices of bases after they are spaced out.
+    spacing_done: Whether spacing has been completed.
+  """
   name: str
   bases: np.ndarray
   cigar: np.ndarray
@@ -118,14 +145,15 @@ class Read(abc.Sequence):
   strand: dc_constants.Strand
 
   # aux tags; from ccs read only.
-  ec: Optional[float] = None  # effective coverage
-  np_num_passes: Optional[int] = None  # number of passes
-  rq: Optional[float] = None  # predicted concordance
+  ec: Optional[float] = None
+  np_num_passes: Optional[int] = None
+  rq: Optional[float] = None
   rg: Optional[str] = None
 
   # base_quality_scores are only used for the ccs read.
-  base_quality_scores: np.ndarray = np.empty(0, dtype=np.uint8)
   ccs_idx: np.ndarray = np.empty(0, dtype=int)
+  base_quality_scores: np.ndarray = np.empty(0, dtype=np.uint8)
+
   # truth_idx and truth_range only used with label reads.
   truth_idx: np.ndarray = np.empty(0, int)
   # truth range is a dict containing contig, begin, end.
@@ -135,64 +163,69 @@ class Read(abc.Sequence):
   # truth_range bounds are [begin, end) in keeping with bed format.
   truth_range: Union[Dict[str, Any], None] = None
 
-  # Alignment Variables
-  seq_indices: np.ndarray = np.empty(0, dtype=int)
-  is_insertion: np.ndarray = np.empty(0, dtype=bool)
-  seq_len: int = 0
-  idx_seq: int = 0
+  # Alignment Variables.
+  _seq_indices: np.ndarray = np.empty(0, dtype=int)
+  _is_insertion: np.ndarray = np.empty(0, dtype=bool)
+  _seq_len: int = 0
+  _idx_seq: int = 0
   idx_spaced: int = 0
-  done: bool = False
+  spacing_done: bool = False
 
   def setup_spacing(self):
     """Set up an array for storing spaced indices."""
-    self.seq_indices = np.zeros(len(self.bases), dtype=int)
-    self.is_insertion = self.cigar == dc_constants.PYSAM_CINS
-    self.seq_len = len(self.bases)
+    self._seq_indices = np.zeros(len(self.bases), dtype=int)
+    self._is_insertion = self.cigar == dc_constants.PYSAM_CINS
+    self._seq_len = len(self.bases)
 
   def move(self):
     """For each position, track its spaced index.
 
     Example:
-      Sequence -> seq_indices   -> put_spacing().
-      'AAAA'   -> [0, 1, 3, 4]  -> 'AA AA'
+      Sequence -> _seq_indices   -> put_spacing().
+      'AAAA'   -> [0, 1, 3, 4]   -> 'AA AA'
       'MMIM'
     """
-    self.seq_indices[self.idx_seq] = self.idx_spaced
-    self.idx_seq += 1
+    self._seq_indices[self._idx_seq] = self.idx_spaced
+    self._idx_seq += 1
     self.idx_spaced += 1
 
   def add_gap(self):
     self.idx_spaced += 1
 
-  def is_out_of_bounds(self):
-    return self.idx_seq >= self.seq_len
+  def is_out_of_bounds(self) -> bool:
+    return self._idx_seq >= self._seq_len
 
-  def next_is_insertion(self):
-    # When insertions are encountered in the label, add them in
-    # to maintain spacing correctly.
+  def next_is_insertion(self) -> bool:
+    """Indicates if next position is an insertion.
+
+    When run on labels, spacing is added to maintain alignment between
+    subreads and ccs sequences.
+
+    Returns:
+      A boolean indicating whether the next position is an insertion.
+    """
     if self.truth_range:
-      while not self.is_out_of_bounds() and self.is_insertion[self.idx_seq]:
+      while not self.is_out_of_bounds() and self._is_insertion[self._idx_seq]:
         # For label insertions, insert bases.
-        self.seq_indices[self.idx_seq] = self.idx_spaced
-        self.idx_seq += 1
+        self._seq_indices[self._idx_seq] = self.idx_spaced
+        self._idx_seq += 1
         self.idx_spaced += 1
       return False
-    # pysam.CINS must be cast as an int or this block runs very slow.
-    return self.is_insertion[self.idx_seq]
+    return self._is_insertion[self._idx_seq]
 
-  def put_spacing(self, seq_len):
+  def put_spacing(self, seq_len: int):
     """Generate spaced sequences and replace the originals."""
     spaced_seq = np.repeat(dc_constants.GAP, seq_len)
     spaced_pw = np.zeros(seq_len, dtype=np.uint8)
     spaced_ip = np.zeros(seq_len, dtype=np.uint8)
     spaced_ccs_idx = np.repeat(-1, seq_len)
-    spaced_seq[self.seq_indices] = self.bases
-    spaced_pw[self.seq_indices] = self.pw
-    spaced_ip[self.seq_indices] = self.ip
-    spaced_ccs_idx[self.seq_indices] = self.ccs_idx
+    spaced_seq[self._seq_indices] = self.bases
+    spaced_pw[self._seq_indices] = self.pw
+    spaced_ip[self._seq_indices] = self.ip
+    spaced_ccs_idx[self._seq_indices] = self.ccs_idx
     if self.truth_range:
       spaced_cigar = np.repeat(dc_constants.PYSAM_CHARD_CLIP, seq_len)
-      spaced_cigar[self.seq_indices] = self.cigar
+      spaced_cigar[self._seq_indices] = self.cigar
       self.cigar = spaced_cigar
       truth_pos = np.repeat(-1, seq_len)
       truth_idx = np.arange(self.truth_range['begin'], self.truth_range['end'])
@@ -210,11 +243,12 @@ class Read(abc.Sequence):
     # Handle base quality scores. Only present with ccs reads.
     if self.base_quality_scores.any():
       spaced_base_quality_scores = np.repeat(-1, seq_len)
-      spaced_base_quality_scores[self.seq_indices] = self.base_quality_scores
+      spaced_base_quality_scores[self._seq_indices] = self.base_quality_scores
       self.base_quality_scores = spaced_base_quality_scores
 
   @property
   def bases_encoded(self) -> np.ndarray:
+    """Outputs bases as discrete integers, but cast as floats."""
     bases_encoded = np.ndarray(
         self.bases.shape, dtype=dc_constants.NP_DATA_TYPE)
     for k, base in enumerate(dc_constants.SEQ_VOCAB):
@@ -228,11 +262,12 @@ class Read(abc.Sequence):
 
   @property
   def zmw(self) -> int:
+    """Returns the zmw for the given read."""
     return int(self.name.split('/')[1])
 
   @property
   def label_coords(self) -> str:
-    # Reports reference coordinates as chr:begin-end.
+    """Reports reference coordinates as chr:begin-end."""
     if self.is_label:
       begin = self.label_bounds.start
       end = self.label_bounds.stop
@@ -241,6 +276,7 @@ class Read(abc.Sequence):
 
   @property
   def is_label(self) -> bool:
+    """Returns bool indicating if this read is a label."""
     return self.truth_range is not None
 
   @property
@@ -265,7 +301,7 @@ class Read(abc.Sequence):
     truth_end = np.max(truth_idx)
     return slice(truth_start, truth_end)
 
-  def ccs_slice(self, start, end) -> 'Read':
+  def ccs_slice(self, start: int, end: int) -> 'Read':
     """Perform slicing based on ccs coordinates. Coordinates are inclusive."""
     # Note that these bounds are inclusive by design.
     locs = np.where(np.logical_and(self.ccs_idx >= start,
@@ -291,8 +327,8 @@ class Read(abc.Sequence):
         truth_idx=self.truth_idx[ccs_slice],
         truth_range=self.truth_range)
 
-  def pad(self, pad_width):
-    # Skip padding when not necessary.
+  def pad(self, pad_width: int) -> 'Read':
+    """Skip padding when not necessary."""
     if len(self) >= pad_width:
       return self
     return Read(
@@ -374,16 +410,48 @@ class Read(abc.Sequence):
             self.label_coords).strip()
 
 
+def dc_config_from_shape(subreads_shape: Tuple[int, int, int],
+                         use_bq: bool = False) -> 'DcConfig':
+  """Creates a DcConfig object based on subread shape and base quality usage.
+
+  Args:
+    subreads_shape: The shape of a subreads input.
+    use_bq: Boolean indicating whether to use base quality scores.
+
+  Returns:
+    A DcConfig object.
+  """
+  height, width, _ = subreads_shape
+  if use_bq:
+    fixed_height = 6
+  else:
+    fixed_height = 5
+
+  max_passes, remainder = divmod(height - fixed_height,
+                                 len(DcConfig.n_subread_features))
+  if remainder != 0:
+    raise ValueError(f'Invalid subreads shape {subreads_shape!r}.')
+  return DcConfig(max_passes, width, use_bq)
+
+
 class DcConfig:
-  """Option for controlling DcExample configuration and calculating indices."""
+  """Option for controlling DcExample configuration and calculating indices.
+
+  Attributes:
+    max_passes: Number of passes to incorporate into examples.
+    max_length: Width of example.
+    feature_rows: A dictionary indicating features and corresponding height.
+    use_bq: Boolean indicating whether to incorporate base quality scores into
+      model input.
+    feature_indices: Calculated indices for each feature.
+  """
 
   _HAS_DYNAMIC_ATTRIBUTES = True
 
   # Features with n_rows = n_subreads.
   n_subread_features = ['bases', 'pw', 'ip', 'strand']
-  fixed_height = 5  # ccs + sn
 
-  def __init__(self, max_passes: int, max_length: int):
+  def __init__(self, max_passes: int, max_length: int, use_bq: bool = False):
     self.max_passes = max_passes
     self.max_length = max_length
     self.feature_rows = {
@@ -392,25 +460,29 @@ class DcConfig:
         'ip': max_passes,
         'strand': max_passes,
         'ccs': 1,
+        'ccs_bq': 1 if use_bq else 0,
         'sn': 4
     }
     # Sets slices indicating rows for each feature type.
     self.feature_indices = dict()
+    self.use_bq = use_bq
     i_rows = 0
     for k, v in self.feature_rows.items():
       self.feature_indices[k] = slice(i_rows, i_rows + self.feature_rows[k])
       setattr(self, k, i_rows)
       i_rows += v
 
-  @classmethod
-  def from_shape(cls, subreads_shape):
-    """Construct DcConfig from subreads shape."""
-    height, width, _ = subreads_shape
-    max_passes = (height - cls.fixed_height) // len(DcConfig.n_subread_features)
-    return DcConfig(max_passes, width)
-
   def indices(self, feature: str, n_subreads: int = 0) -> slice:
-    """Returns rows for a given feature."""
+    """Returns rows for a given feature.
+
+    Args:
+      feature: The feature to return indices for.
+      n_subreads: The number of subreads to return indices for, when getting
+        indices for features with variable height (ie, features with max_passes)
+
+    Returns:
+      A slice corresponding to the indices for a feature.
+    """
     if n_subreads:
       assert feature in DcConfig.n_subread_features
       n_rows = min(n_subreads, self.max_passes)
@@ -426,10 +498,10 @@ class DcConfig:
     """Returns total rows for tf.Example input."""
     return sum(self.feature_rows.values())
 
-  def to_dict(self):
+  def to_dict(self) -> Dict[str, str]:
     """Output configuration properties as dict."""
     return {
-        # Encode values as strings to prevent downstream aggregation.
+        # Encode values as strings to prevent aggregation across shards.
         'max_passes': str(self.max_passes),
         'max_length': str(self.max_length),
         'tensor_height': str(self.tensor_height),
@@ -452,14 +524,14 @@ class DcExample:
   _overflow: bool = False
 
   @property
-  def contig(self):
+  def contig(self) -> Optional[str]:
     if self.label:
       return self.label.truth_range['contig']
     return None
 
   @property
   def is_training(self) -> bool:
-    # If a label is in the last position we are in training mode.
+    """If a label is in the last position we are in training mode."""
     return self.reads[-1].is_label
 
   @property
@@ -491,12 +563,12 @@ class DcExample:
 
   @property
   def n_subreads(self) -> int:
-    # Returns the total number of subreads
+    """Returns the total number of subreads."""
     return len(self.subreads)
 
   @property
   def keep_subreads(self) -> int:
-    # Returns usable number of subreads.
+    """Returns usable number of subreads."""
     return min(self.config.max_passes, self.n_subreads)
 
   @property
@@ -604,13 +676,17 @@ class DcExample:
       # generator into different classes.
       yield DcExample(self.name, reads, self.config, _overflow=self._overflow)
 
-  def stack_subread_feature(self, name):
+  def stack_subread_feature(self, name: str) -> np.ndarray:
     """Extract read feature and stack."""
     max_passes = self.config.max_passes
     return np.stack([getattr(x, name) for x in self.subreads[:max_passes]])
 
-  def extract_features(self):
+  def extract_features(self) -> np.ndarray:
     """Convert features to a 2D array."""
+
+    def repeat(feature):
+      """Repeat a feature for the example width."""
+      return np.repeat(np.expand_dims(feature, -1), self.width, -1)
 
     # Get shape (example_rows, width)
     n_subreads = self.n_subreads
@@ -623,21 +699,27 @@ class DcExample:
     ip_idx = self.config.indices('ip', n_subreads)
     strand_idx = self.config.indices('strand', n_subreads)
     ccs_idx = self.config.indices('ccs')
+    ccs_bq_idx = self.config.indices('ccs_bq')
     sn_idx = self.config.indices('sn')
 
     # Set features.
     data[bases_idx] = self.stack_subread_feature('bases_encoded')
     data[pw_idx] = self.stack_subread_feature('pw')
     data[ip_idx] = self.stack_subread_feature('ip')
+
     # Format strand feature.
     strand = self.stack_subread_feature('strand')
     strand = strand.astype(dc_constants.NP_DATA_TYPE)
-    strand = np.repeat(np.expand_dims(strand, -1), self.width, -1)
+    strand = repeat(strand)
     data[strand_idx] = strand
+
+    # ccs features.
     data[ccs_idx] = self.ccs.bases_encoded
+    if self.config.use_bq:
+      data[ccs_bq_idx] = self.ccs.base_quality_scores
+
     # Format sn rows.
-    sn = np.repeat(np.expand_dims(self.subreads[0].sn, -1), self.width, -1)
-    data[sn_idx] = sn
+    data[sn_idx] = repeat(self.subreads[0].sn)
 
     return np.expand_dims(data, -1)
 
@@ -723,7 +805,7 @@ def decode_bases(bases_encoded: np.ndarray) -> np.ndarray:
 
 def from_features_dict(features_dict: Dict[str, Any]) -> DcExample:
   """Converts features_dict partially back to a DcExample object for tests."""
-  dc_config = DcConfig.from_shape(features_dict['subreads/shape'])
+  dc_config = dc_config_from_shape(features_dict['subreads/shape'])
   data = np.squeeze(features_dict['subreads'])
   name = features_dict['name']
   n_subreads = features_dict['subreads/num_passes']
@@ -809,7 +891,7 @@ def tf_example_to_features_dict(tf_example_proto_str, inference=False):
 
   features['subreads'] = set_feature(features['subreads/encoded'],
                                      features['subreads/shape'])
-  dc_config = DcConfig.from_shape(features['subreads/shape'])
+  dc_config = dc_config_from_shape(features['subreads/shape'])
   # Get a default config and overwrite with specified values
   params = model_configs.get_config()
   params.max_length = int(dc_config.max_length)
@@ -1080,18 +1162,18 @@ def space_out_subreads(subreads: List[Read]) -> List[Read]:
   """Spaces out subreads to make room for insertions in any subset of them."""
   for r in subreads:
     r.setup_spacing()
-  while not all([r.done for r in subreads]):
+  while not all([r.spacing_done for r in subreads]):
     # This loops over bases in all subreads at once, from left to right.
     any_insertions = False
     for r in subreads:
-      if r.done:
+      if r.spacing_done:
         continue
       if r.next_is_insertion():
         any_insertions = True
         break
 
     for r in subreads:
-      if r.done:
+      if r.spacing_done:
         continue
       if any_insertions and not r.next_is_insertion():
         # If other reads have insertions, but this one does NOT, add a gap to
@@ -1103,7 +1185,7 @@ def space_out_subreads(subreads: List[Read]) -> List[Read]:
           r.move()
         if r.is_out_of_bounds():
           # Finally, format reads with spacing.
-          r.done = True
+          r.spacing_done = True
 
   # Right pad all spaced sequences so they have the same length.
   max_len = max([r.idx_spaced for r in subreads])

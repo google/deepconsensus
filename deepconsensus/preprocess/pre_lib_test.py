@@ -926,29 +926,58 @@ class TestDcConfigFromShape(parameterized.TestCase):
 
   @parameterized.named_parameters(
       dict(
-          testcase_name='standard shape',
-          shape=(85, 120, -1),
+          testcase_name='standard shape use_bq=True',
+          shape=(86, 120, -1),
+          use_bq=True,
           expected_max_passes=20,
-          expected_strand_row=60,
+          expected_sn_rows=slice(82, 86),
       ),
       dict(
-          testcase_name='expanded shape',
-          shape=(105, 120, -1),
+          testcase_name='expanded shape use_bq=True',
+          shape=(106, 120, -1),
+          use_bq=True,
           expected_max_passes=25,
-          expected_strand_row=75,
+          expected_sn_rows=slice(102, 106),
+      ),
+      dict(
+          testcase_name='standard shape use_bq=False',
+          shape=(85, 120, -1),
+          use_bq=False,
+          expected_max_passes=20,
+          expected_sn_rows=slice(81, 85),
+      ),
+      dict(
+          testcase_name='expanded shape use_bq=False',
+          shape=(105, 120, -1),
+          use_bq=False,
+          expected_max_passes=25,
+          expected_sn_rows=slice(101, 105),
       ))
-  def test_dc_config_from_shape(self, shape, expected_max_passes,
-                                expected_strand_row):
-    dc_config = pre_lib.DcConfig.from_shape(shape)
+  def test_dc_config_from_shape(
+      self,
+      shape,
+      use_bq,
+      expected_max_passes,
+      expected_sn_rows,
+  ):
+    dc_config = pre_lib.dc_config_from_shape(shape, use_bq)
     self.assertEqual(dc_config.max_passes, expected_max_passes)
-    self.assertEqual(dc_config.strand, expected_strand_row)
+    self.assertEqual(dc_config.indices('sn'), expected_sn_rows)
+
+  def test_incompatible_shape(self):
+    with self.assertRaisesRegex(ValueError, 'Invalid subreads shape'):
+      pre_lib.dc_config_from_shape((7, 7, -1), use_bq=True)
 
 
 class TestDcExampleFunctionality(parameterized.TestCase):
 
   def test_dc_example_functions(self):
     max_length = 9
-    dc_config = pre_lib.DcConfig(max_passes=20, max_length=max_length)
+    dc_config = pre_lib.DcConfig(
+        max_passes=20,
+        max_length=max_length,
+        use_bq=True,
+    )
     # First, generate a bunch of reads
     read_set = []
     num_of_subreads = 10
@@ -964,6 +993,9 @@ class TestDcExampleFunctionality(parameterized.TestCase):
     read_set += [label]
     dc_example = pre_lib.subreads_to_dc_example(read_set, 'm0/1/ccs', dc_config,
                                                 None)
+
+    # Set CCS Base qualities
+    dc_example.ccs.base_quality_scores = np.repeat(1, 10)
 
     # contig
     self.assertEqual(
@@ -1014,7 +1046,7 @@ class TestDcExampleFunctionality(parameterized.TestCase):
     expected_bases_encoded = np.ones((dc_example.n_subreads, dc_example.width))
     calc_bases_encoded = dc_example.stack_subread_feature('bases_encoded')
     self.assertTrue((calc_bases_encoded == expected_bases_encoded).all())
-    self.assertTrue(dc_example.extract_features().shape, (85, 10))
+    self.assertTrue(dc_example.extract_features().shape, (86, 10))
 
     # Test extract features to 2D array.
     # Extract base rows and sum - because A=1 we should have 9 rows of 1 = 9.
@@ -1225,6 +1257,7 @@ class TestDcExampleFunctionality(parameterized.TestCase):
                                    window_widths)
     examples = [repr(example).strip() for example in dc_example.iter_examples()]
     self.assertCountEqual(examples, expected_examples)
+
 
 if __name__ == '__main__':
   absltest.main()
