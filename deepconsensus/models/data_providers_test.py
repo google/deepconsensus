@@ -303,5 +303,18 @@ class DataProvidersTest(parameterized.TestCase):
     self.assertEqual(result, expected)
 
 
+class GetTotalRowsTest(parameterized.TestCase):
+
+  @parameterized.parameters(
+      [20, False, 85],
+      [20, True, 86],
+      [25, False, 105],
+      [25, True, 106],
+  )
+  def test_get_total_rows(self, max_passes, use_ccs_bq, expected_total_rows):
+    total_rows = data_providers.get_total_rows(max_passes, use_ccs_bq)
+    self.assertEqual(total_rows, expected_total_rows)
+
+
 if __name__ == '__main__':
   absltest.main()

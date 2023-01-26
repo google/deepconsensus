@@ -37,7 +37,6 @@ import tensorflow.compat.v2 as tf
 
 from deepconsensus.utils import dc_constants
 
-
 # Define base fields for TFRecords.
 PROTO_FEATURES_INFERENCE = {
     'name': tf.io.FixedLenFeature(shape=[1], dtype=tf.string),
@@ -57,27 +56,24 @@ PROTO_FEATURES_TRAIN = dict(
     }, **PROTO_FEATURES_INFERENCE)
 
 
-def get_total_rows(max_passes: int) -> int:
-  """Returns total rows in input tf.Examples.
+def get_total_rows(max_passes: int, use_ccs_bq: bool) -> int:
+  """Calculates the number of rows in input examples.
 
-  Update if other signals added.
-
-  For each of `max_subreads`, we have four pieces of information: bases, PW, IP,
-  and strand. We also have one row for CCS, and four rows for SN (in that
-  order).
-  The information is structured as follows:
-  Bases: rows 0 to  (params.max_passes - 1)
-  PW: rows (params.max_passes) to (params.max_passes * 2 - 1)
-  IP: rows (params.max_passes * 2) to (params.max_passes * 3 - 1)
-  Strand: rows (params.max_passes * 3) to (params.max_passes * 4 - 1)
-  CCS+SN: rows (params.max_passes * 4) to (params.max_passes * 4 + 5)
+  The number of rows is based on max_passes which scales dynamic features
+  (Bases, PW, IP, Strand, etc) + rows for a number of fixed size features. CCS
+  Base Qualities are optionally included as a feature, which can modify the
+  number of fixed length rows.
 
   Args:
     max_passes: Maximum number of subreads to show. Space is made for them all
       even though few examples will have enough subreads to fill these rows.
-  Returns: Total number of rows in the full example.
+    use_ccs_bq: Bool indicating whether CCS Base Quality Scores are being used.
+
+  Returns:
+    Total number of rows in the full example.
   """
-  return (max_passes * 4) + 5
+  fixed_length = 6 if use_ccs_bq else 5
+  return (max_passes * 4) + fixed_length
 
 
 def get_indices(max_passes: int) -> Iterable[Tuple[int, int]]:
@@ -127,8 +123,7 @@ def format_rows(
         sn_rows, clip_value_min=0, clip_value_max=params.SN_MAX)
   rows = tf.concat(
       [base_rows, pw_rows, ip_rows, strand_rows, ccs_rows, sn_rows], axis=0)
-  num_rows = get_total_rows(params.max_passes)
-  rows.set_shape((num_rows, params.max_length, 1))
+  rows.set_shape((params.total_rows, params.max_length, 1))
   return rows
 
 
@@ -257,8 +252,8 @@ def get_dataset(file_pattern: str,
     inference: Whether to parse tf.Examples for inference or training.
     limit: Max number of examples to get. Set to -1 for no limit.
     drop_remainder: Passed to TFRecordDataset.batch
-    example_label_tuple: If True, output simplified format for training/eval
-      as (rows, label)
+    example_label_tuple: If True, output simplified format for training/eval as
+      (rows, label)
 
   Returns:
     A dataset for which each batch has the following elements:
@@ -272,9 +267,7 @@ def get_dataset(file_pattern: str,
 
   def _process_input_helper(proto_string: tf.Tensor) -> Dict[str, tf.Tensor]:
     return process_input(
-        proto_string=proto_string,
-        params=params,
-        inference=inference)
+        proto_string=proto_string, params=params, inference=inference)
 
   file_patterns = create_glob_list(file_pattern)
   ds = tf.data.TFRecordDataset(file_patterns, compression_type='GZIP')

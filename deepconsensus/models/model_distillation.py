@@ -90,8 +90,7 @@ def init_student_from_teacher(
     student_model: tf.keras.Model, teacher_model: tf.keras.Model,
     params: ml_collections.ConfigDict) -> tf.keras.Model:
   """Initialize student model using teacher model weights based on params."""
-  row_size = data_providers.get_total_rows(params.max_passes)
-  input_shape = (1, row_size, params.max_length, params.num_channels)
+  input_shape = (1, params.total_rows, params.max_length, params.num_channels)
   model_utils.print_model_summary(teacher_model, input_shape)
   if params.init_encoder_stack:
     teacher2student_encoder_map = dict(
@@ -137,8 +136,7 @@ def get_teacher_model(checkpoint_path: str,
     # If you don't do this, then  assert_existing_objects_matched will not
     # raise an error even if the wrong checkpoint is used.
     # Some context here: b/148023980.
-    row_size = data_providers.get_total_rows(params.max_passes)
-    input_shape = (1, row_size, params.max_length, params.num_channels)
+    input_shape = (1, params.total_rows, params.max_length, params.num_channels)
     model_utils.print_model_summary(model, input_shape)
     checkpoint.restore(
         checkpoint_path).expect_partial().assert_existing_objects_matched()
@@ -171,8 +169,7 @@ def train_model(teacher_model: tf.keras.Model, out_dir: str,
     model = model_utils.get_model(params)
     # Note that the `print_model_summary` is necessary because we need to run a
     # forward pass with the model to be able to initialize student from teacher.
-    row_size = data_providers.get_total_rows(params.max_passes)
-    input_shape = (1, row_size, params.max_length, params.num_channels)
+    input_shape = (1, params.total_rows, params.max_length, params.num_channels)
     model_utils.print_model_summary(model, input_shape)
     logging.info('Done building model.')
     # Initialize student model from teacher based on model params.

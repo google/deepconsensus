@@ -212,7 +212,7 @@ def load_dataset_summary(dataset_path: str) -> Tuple[str, Dict[str, Any]]:
   return dataset_summary_path, dataset_summary
 
 
-def del_param(params, name):
+def _del_param(params, name):
   if name in params:
     del params[name]
 
@@ -247,11 +247,11 @@ def modify_params(params: ml_collections.ConfigDict,
   with params.unlocked():
     if not is_training:
       # Only allow dataset specification in params when in training mode.
-      del_param(params, 'tf_dataset')
-      del_param(params, 'train_path')
-      del_param(params, 'eval_path')
-      del_param(params, 'test_path')
-      del_param(params, 'inference_path')
+      _del_param(params, 'tf_dataset')
+      _del_param(params, 'train_path')
+      _del_param(params, 'eval_path')
+      _del_param(params, 'test_path')
+      _del_param(params, 'inference_path')
     # Set dataset if tf_dataset is set.
     if 'tf_dataset' in params and params.tf_dataset:
       set_dataset(params)
@@ -287,16 +287,24 @@ def modify_params(params: ml_collections.ConfigDict,
     if not hasattr(params, 'max_length'):
       raise ValueError('No params.max_length provided.')
 
+    # Calculate the total number of rows.
+    params.total_rows = data_providers.get_total_rows(
+        params.max_passes,
+        params.use_ccs_bq,
+    )
+
     if 'transformer_learn_values' in params.model_name:
       dim = ((params.use_bases * params.per_base_hidden_size) +
              (params.use_pw * params.pw_hidden_size) +
              (params.use_ip * params.ip_hidden_size) +
-             (params.use_strand * params.strand_hidden_size))
+             (params.use_strand * params.strand_hidden_size) +
+             (params.use_ccs_bq * params.ccs_bq_hidden_size))
       params.hidden_size = ((params.max_passes * dim) +
-                            (params.use_sn * params.sn_hidden_size * 4) +
-                            (params.use_ccs * params.per_base_hidden_size))
+                            (params.use_ccs * params.per_base_hidden_size) +
+                            (params.use_ccs_bq * params.ccs_bq_hidden_size) +
+                            (params.use_sn * params.sn_hidden_size * 4))
     else:
-      params.hidden_size = data_providers.get_total_rows(params.max_passes)
+      params.hidden_size = params.total_rows
 
     if 'transformer' in params.model_name and params.hidden_size % 2 != 0:
       params.hidden_size += 1
@@ -410,6 +418,13 @@ def read_params_from_json(checkpoint_path: str) -> ml_collections.ConfigDict:
                        'that is not present in params.json'), b_param,
                       param_set[b_param])
   param_set.update(json_params)
+
+  # Calculate the total number of rows for backward compatibility.
+  param_set.total_rows = data_providers.get_total_rows(
+      param_set.max_passes,
+      param_set.use_ccs_bq,
+  )
+
   return param_set
 
 

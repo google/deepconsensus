@@ -35,7 +35,6 @@ from absl.testing import parameterized
 
 import tensorflow as tf
 
-from deepconsensus.models import data_providers
 from deepconsensus.models import losses_and_metrics
 from deepconsensus.models import model_configs
 from deepconsensus.models import model_utils
@@ -81,6 +80,35 @@ class ModifyParamsTest(parameterized.TestCase):
     elif config_name == 'transformer+test':
       self.assertEqual(params.batch_size, params.default_batch_size)
 
+  def test_inference_params_removed(self,):
+    params = model_configs.get_config('fc+test')
+    model_utils.modify_params(params, is_training=False)
+
+    with self.assertRaises(AttributeError):
+      _ = params.tf_dataset
+
+
+  @parameterized.parameters([('transformer+test', 86), ('fc+test', 85)])
+  def test_hidden_size(self, architecture, expected_hidden_size):
+    params = model_configs.get_config(architecture)
+    model_utils.modify_params(params)
+    self.assertEqual(params.hidden_size, expected_hidden_size)
+
+  def test_missing_max_length(self):
+    params = model_configs.get_config('fc+test')
+    with params.unlocked():
+      del params['max_length']
+
+    with self.assertRaisesRegex(ValueError, r'No params'):
+      model_utils.modify_params(params)
+
+  def test_consdense_input(self):
+    params = model_configs.get_config('transformer_learn_values+test')
+    with params.unlocked():
+      params.condense_transformer_input = True
+    model_utils.modify_params(params)
+    self.assertTrue(params.hidden_size, params.transformer_input_size)
+
 
 
 
@@ -125,6 +153,15 @@ class GetStepCountsTest(parameterized.TestCase):
     self.assertEqual(
         model_utils.get_step_counts(params, eval_and_log_every_step),
         expected_step_counts)
+
+
+class ReadParamsFromJsonTest(absltest.TestCase):
+
+  def test_read_params_from_json(self):
+    params_filename = test_utils.deepconsensus_testdata('model/params.json')
+    params = model_utils.read_params_from_json(params_filename)
+    self.assertFalse(params.use_ccs_bq)
+    self.assertEqual(params.total_rows, 85)
 
 
 if __name__ == '__main__':

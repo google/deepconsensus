@@ -50,7 +50,6 @@ from absl import app
 from absl import flags
 from absl import logging
 from ml_collections.config_dict import config_dict
-from ml_collections.config_flags import config_flags
 import numpy as np
 import pandas as pd
 import pysam
@@ -95,9 +94,6 @@ flags.DEFINE_string(
     '(e.g. "/path/to/model_directory/checkpoint-50"), '
     'or to a saved model directory, (e.g. "/path/to/model_directory") '
     'which is the directory that contains a saved_model.pb')
-config_flags.DEFINE_config_file(
-    'params', None, 'params.json configuration file. By default, '
-    '/path/to/model_directory/params.json is used.')
 
 # TODO Find out if this flag is needed here. Currently it is added to
 # avoid pipeline to fail. max_length should be correctly read from checkpoint.
@@ -439,8 +435,7 @@ def initialize_model(
     # If you don't do this, then  assert_existing_objects_matched will not
     # raise an error even if the wrong checkpoint is used.
     # Some context here: b/148023980.
-    row_size = data_providers.get_total_rows(params.max_passes)
-    input_shape = (1, row_size, params.max_length, params.num_channels)
+    input_shape = (1, params.total_rows, params.max_length, params.num_channels)
     model_utils.print_model_summary(model, input_shape)
     checkpoint.restore(
         checkpoint_path).expect_partial().assert_existing_objects_matched()
@@ -698,10 +693,7 @@ def run() -> stitch_utils.OutcomeCounter:
       tf.io.gfile.exists(f'{FLAGS.checkpoint}/saved_model.pb'))
 
   # Load model parameters
-  if not FLAGS.params:
-    params = model_utils.read_params_from_json(checkpoint_path=FLAGS.checkpoint)
-  else:
-    params = FLAGS.params
+  params = model_utils.read_params_from_json(checkpoint_path=FLAGS.checkpoint)
 
   dc_config = pre_lib.DcConfig(params.max_passes, params.max_length)
 

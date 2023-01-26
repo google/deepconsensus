@@ -31,6 +31,7 @@ import os
 
 from typing import Optional
 import ml_collections
+from ml_collections import config_dict
 
 # Do not add any additional imports to the config.
 # It can lead to circular dependencies easily and should not be necessary
@@ -46,18 +47,13 @@ def _set_base_fc_hparams(params):
   params.fc_size = [256, 512, 256, 128]
   params.fc_dropout = 0.0
 
-  params.use_bases = True
-  params.use_pw = True
-  params.use_ip = True
-  params.use_strand = True
-  params.use_ccs = True
-  params.use_sn = True
   params.num_channels = 1
 
   params.per_base_hidden_size = 1
   params.pw_hidden_size = 1
   params.ip_hidden_size = 1
   params.strand_hidden_size = 1
+  params.ccs_bq_hidden_size = 1
   params.sn_hidden_size = 1
 
   # Training
@@ -97,16 +93,11 @@ def _set_base_transformer_hparams(params):
   params.attn_win_size = 12
 
   params.num_channels = 1
-  params.use_bases = True
-  params.use_pw = True
-  params.use_ip = True
-  params.use_ccs = True
-  params.use_strand = True
-  params.use_sn = True
   params.per_base_hidden_size = 1
   params.pw_hidden_size = 1
   params.ip_hidden_size = 1
   params.sn_hidden_size = 1
+  params.ccs_bq_hidden_size = 1
   params.strand_hidden_size = 1
 
   # Dropout values (only used when training).
@@ -135,8 +126,6 @@ def _set_base_transformer_hparams(params):
 
 def _set_transformer_learned_embeddings_hparams(params):
   """Updates given config with values for the learned embeddings transformer."""
-  # TODO: As we migrate off the legacy code, we might need to
-  # adjust the params below. For now just making a copy of the previous params.
   _set_base_transformer_hparams(params)
   params.model_name = 'transformer_learn_values'
   params.per_base_hidden_size = 8
@@ -144,6 +133,8 @@ def _set_transformer_learned_embeddings_hparams(params):
   params.ip_hidden_size = 8
   params.strand_hidden_size = 2
   params.sn_hidden_size = 8
+  params.ccs_bq_hidden_size = 8
+
   params.condense_transformer_input = True
   params.transformer_input_size = 280
 
@@ -260,11 +251,34 @@ def get_config(config_name: Optional[str] = None) -> ml_collections.ConfigDict:
   # Used for generating replicates.
   params.trial = 1
 
+  # Defaults for backward compatibilitiy
+  # Older models initiate with the default config, so initialize those values
+  # here to set for older models.
+  params.rezero = False
+
   # Base config
   params.PW_MAX = 255
   params.IP_MAX = 255
   params.SN_MAX = 500
+  params.CCS_BQ_MAX = 95
   params.STRAND_MAX = 2
+
+  # Features
+  params.use_bases = True
+  params.use_pw = True
+  params.use_ip = True
+  params.use_strand = True
+  params.use_sn = True
+  params.use_ccs = True
+  params.use_ccs_bq = False
+  params.per_base_hidden_size = 1
+  params.pw_hidden_size = 1
+  params.ip_hidden_size = 1
+  params.sn_hidden_size = 1
+  params.strand_hidden_size = 1
+  params.ccs_bq_hidden_size = 1
+
+  params.total_rows = config_dict.placeholder(int)
 
   # Specify common configs here.
   params.vocab_size = 5
