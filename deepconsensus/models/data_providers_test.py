@@ -226,8 +226,15 @@ class DataProvidersTest(parameterized.TestCase):
     for data in dataset.as_numpy_iterator():
       rows = data['rows']
       check_not_empty = True
-      base_indices, pw_indices, ip_indices, strand_indices, ccs_indices, sn_indices = data_providers.get_indices(
-          params.max_passes)
+      (
+          base_indices,
+          pw_indices,
+          ip_indices,
+          strand_indices,
+          ccs_indices,
+          _,
+          sn_indices,
+      ) = data_providers.get_indices(params.max_passes, params.use_ccs_bq)
       base_rows = rows[:, slice(*base_indices), :, :]
       pw_rows = rows[:, slice(*pw_indices), :, :]
       ip_rows = rows[:, slice(*ip_indices), :, :]
@@ -314,6 +321,35 @@ class GetTotalRowsTest(parameterized.TestCase):
   def test_get_total_rows(self, max_passes, use_ccs_bq, expected_total_rows):
     total_rows = data_providers.get_total_rows(max_passes, use_ccs_bq)
     self.assertEqual(total_rows, expected_total_rows)
+
+
+class GetIndicesTest(parameterized.TestCase):
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='use_ccs_bq',
+          use_ccs_bq=True,
+          expected_ccs_bq_rows=(81, 82),
+          expected_sn_rows=(82, 86)),
+      dict(
+          testcase_name='no_use_ccs_bq',
+          use_ccs_bq=False,
+          expected_ccs_bq_rows=(0, 0),
+          expected_sn_rows=(81, 85)),
+  )
+  def test_get_indices(self, use_ccs_bq, expected_ccs_bq_rows,
+                       expected_sn_rows):
+    (
+        _,
+        _,
+        _,
+        _,
+        _,
+        ccs_bq_rows,
+        sn_rows,
+    ) = data_providers.get_indices(20, use_ccs_bq)
+    self.assertEqual(ccs_bq_rows, expected_ccs_bq_rows)
+    self.assertEqual(sn_rows, expected_sn_rows)
 
 
 if __name__ == '__main__':

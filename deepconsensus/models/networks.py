@@ -398,8 +398,18 @@ class EncoderOnlyLearnedValuesTransformer(EncoderOnlyTransformer):
     # [batch_size, length, embedding_size]. Embed each row of the input
     # separately and then concatenate.
     embedded_inputs = []
-    base_indices, pw_indices, ip_indices, strand_indices, ccs_indices, sn_indices = data_providers.get_indices(
-        self.params['max_passes'])
+    (
+        base_indices,
+        pw_indices,
+        ip_indices,
+        strand_indices,
+        ccs_indices,
+        _,
+        sn_indices,
+    ) = data_providers.get_indices(
+        self.params.max_passes,
+        self.params.use_ccs_bq,
+    )
     if self.params.use_bases:
       for i in range(*base_indices):
         # Shape: [batch_size, length, per_base_hidden_size]
@@ -431,8 +441,6 @@ class EncoderOnlyLearnedValuesTransformer(EncoderOnlyTransformer):
             tf.cast(inputs[:, :, i], tf.int32))
         embedded_inputs.append(embedded)
 
-    # TODO: experiment with computing a weighted average using snr as
-    # weights to aggregate subread-level embeddings (instead of concatenating).
     if self.params.use_sn:
       # The last four elements in the last dimension in the inputs tensor
       # correspond to the four signal-to-noise ratio scores for A, G, C, T.

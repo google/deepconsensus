@@ -75,7 +75,10 @@ def convert_to_bases(rows: tf.Tensor, label: tf.Tensor,
   rows = tf.squeeze(rows)
   label = tf.squeeze(label)
   deepconsensus_pred = tf.squeeze(deepconsensus_pred)
-  base_indices, _, _, _, _, _ = data_providers.get_indices(max_passes)
+  base_indices, _, _, _, _, _, _ = data_providers.get_indices(
+      max_passes,
+      use_ccs_bq=False,
+  )
   subread_rows_range = range(*base_indices)
   subread_rows = [rows[i, :].numpy() for i in subread_rows_range]
   subread_rows = [row for row in subread_rows if np.sum(row) != 0]

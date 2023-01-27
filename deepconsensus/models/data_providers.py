@@ -76,15 +76,39 @@ def get_total_rows(max_passes: int, use_ccs_bq: bool) -> int:
   return (max_passes * 4) + fixed_length
 
 
-def get_indices(max_passes: int) -> Iterable[Tuple[int, int]]:
-  """Return row indices for bases/PW/IP/SN in tf.Example subreads array."""
+def get_indices(max_passes: int, use_ccs_bq: bool) -> Iterable[Tuple[int, int]]:
+  """Returns row indices for bases/PW/IP/SN in tf.Example subreads array.
+
+  This function returns tuples of the start/end rows for each feature in an
+  input example.
+
+  Arguments:
+    max_passes: The number of passes used to construct input example.
+    use_ccs_bq: Whether to use CCS Base Quality scores.
+
+  Returns:
+    A list of tuples with the (start, end) of each feature.
+  """
   base_indices = (0, max_passes)
   pw_indices = (max_passes, max_passes * 2)
   ip_indices = (max_passes * 2, max_passes * 3)
   strand_indices = (max_passes * 3, max_passes * 4)
   ccs_indices = (max_passes * 4, max_passes * 4 + 1)
-  sn_indices = (max_passes * 4 + 1, max_passes * 4 + 5)
-  return base_indices, pw_indices, ip_indices, strand_indices, ccs_indices, sn_indices
+  if use_ccs_bq:
+    ccs_bq_indices = (max_passes * 4 + 1, max_passes * 4 + 2)
+    sn_indices = (max_passes * 4 + 2, max_passes * 4 + 6)
+  else:
+    ccs_bq_indices = (0, 0)
+    sn_indices = (max_passes * 4 + 1, max_passes * 4 + 5)
+  return (
+      base_indices,
+      pw_indices,
+      ip_indices,
+      strand_indices,
+      ccs_indices,
+      ccs_bq_indices,
+      sn_indices,
+  )
 
 
 @tf.function
@@ -103,13 +127,22 @@ def format_rows(
                                        config_dict.FrozenConfigDict]
 ) -> tf.Tensor:
   """Returns model input matrix formatted based on input args."""
-  base_indices, pw_indices, ip_indices, strand_indices, ccs_indices, sn_indices = get_indices(
-      params.max_passes)
+  (
+      base_indices,
+      pw_indices,
+      ip_indices,
+      strand_indices,
+      ccs_indices,
+      ccs_bq_indices,
+      sn_indices,
+  ) = get_indices(params.max_passes, params.use_ccs_bq)
+
   base_rows = subreads[slice(*base_indices)]
   pw_rows = subreads[slice(*pw_indices)]
   ip_rows = subreads[slice(*ip_indices)]
   strand_rows = subreads[slice(*strand_indices)]
   ccs_rows = subreads[slice(*ccs_indices)]
+  ccs_bq_rows = subreads[slice(*ccs_bq_indices)]
   sn_rows = subreads[slice(*sn_indices)]
 
   if params.PW_MAX:
@@ -121,8 +154,26 @@ def format_rows(
   if params.SN_MAX:
     sn_rows = tf.clip_by_value(
         sn_rows, clip_value_min=0, clip_value_max=params.SN_MAX)
-  rows = tf.concat(
-      [base_rows, pw_rows, ip_rows, strand_rows, ccs_rows, sn_rows], axis=0)
+  if params.use_ccs_bq:
+    features = [
+        base_rows,
+        pw_rows,
+        ip_rows,
+        strand_rows,
+        ccs_rows,
+        ccs_bq_rows,
+        sn_rows,
+    ]
+  else:
+    features = [
+        base_rows,
+        pw_rows,
+        ip_rows,
+        strand_rows,
+        ccs_rows,
+        sn_rows,
+    ]
+  rows = tf.concat(features, axis=0)
   rows.set_shape((params.total_rows, params.max_length, 1))
   return rows
 

@@ -120,7 +120,10 @@ def extract_example_height(dataset_sharded_path: str) -> int:
 def get_ccs_from_example(features: tf.Tensor,
                          params: ml_collections.ConfigDict) -> tf.Tensor:
   """Gets CCS sequence from model input features."""
-  _, _, _, _, ccs_index, _ = data_providers.get_indices(params['max_passes'])
+  _, _, _, _, ccs_index, _, _ = data_providers.get_indices(
+      params.max_passes,
+      params.use_ccs_bq,
+  )
   # CCS tensor with shape [batch_size, 1, max_length, 1].
   ccs = tf.gather(features, tf.range(*ccs_index), axis=1)
   # Return CCS tensor with shape [batch_size, max_length].
