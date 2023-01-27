@@ -332,23 +332,24 @@ def train_model(teacher_model: tf.keras.Model, out_dir: str,
     logging.info('Starting to run epoch: %s', epoch)
     train_time_start = datetime.datetime.now()
     for step_train in range(initial_step_train, steps_per_epoch):
-      distributed_train_step(train_iterator)
-      # Log and reset train metrics.
-      if optimizer.iterations % log_train_steps == 0:
-        train_time_end = datetime.datetime.now()
-        train_steps_per_second = log_train_steps / (
-            train_time_end - train_time_start).total_seconds()
-        with train_writer.as_default():
-          model_utils.log_and_save_metrics(
-              epoch=epoch,
-              num_epochs=params['num_epochs'],
-              step=step_train,
-              total_steps=steps_per_epoch,
-              optimizer=optimizer,
-              metrics=[train_loss] + train_metrics,
-              training=True,
-              steps_per_second=train_steps_per_second)
-          train_time_start = datetime.datetime.now()
+      with tf.profiler.experimental.Trace('train', step_num=step_train, _r=1):
+        distributed_train_step(train_iterator)
+        # Log and reset train metrics.
+        if optimizer.iterations % log_train_steps == 0:
+          train_time_end = datetime.datetime.now()
+          train_steps_per_second = log_train_steps / (
+              train_time_end - train_time_start).total_seconds()
+          with train_writer.as_default():
+            model_utils.log_and_save_metrics(
+                epoch=epoch,
+                num_epochs=params['num_epochs'],
+                step=step_train,
+                total_steps=steps_per_epoch,
+                optimizer=optimizer,
+                metrics=[train_loss] + train_metrics,
+                training=True,
+                steps_per_second=train_steps_per_second)
+            train_time_start = datetime.datetime.now()
       # Log eval metrics, save checkpoint, and reset eval metrics every
       # log_eval_steps and at the end of training.
       if (optimizer.iterations % log_eval_steps == 0) or (optimizer.iterations
@@ -356,7 +357,8 @@ def train_model(teacher_model: tf.keras.Model, out_dir: str,
         # Run evalution on the whole eval dataset and collect metrics.
         eval_time_start = datetime.datetime.now()
         for step_eval in range(steps_per_eval):
-          distributed_eval_step(eval_iterator)
+          with tf.profiler.experimental.Trace('eval', step_num=step_eval, _r=1):
+            distributed_eval_step(eval_iterator)
         eval_time_end = datetime.datetime.now()
         eval_steps_per_second = steps_per_eval / (
             eval_time_end - eval_time_start).total_seconds()
