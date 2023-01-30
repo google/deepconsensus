@@ -411,18 +411,18 @@ class Read(abc.Sequence):
 
 
 def dc_config_from_shape(subreads_shape: Tuple[int, int, int],
-                         use_bq: bool = False) -> 'DcConfig':
+                         use_ccs_bq: bool = False) -> 'DcConfig':
   """Creates a DcConfig object based on subread shape and base quality usage.
 
   Args:
     subreads_shape: The shape of a subreads input.
-    use_bq: Boolean indicating whether to use base quality scores.
+    use_ccs_bq: Boolean indicating whether to use base quality scores.
 
   Returns:
     A DcConfig object.
   """
   height, width, _ = subreads_shape
-  if use_bq:
+  if use_ccs_bq:
     fixed_height = 6
   else:
     fixed_height = 5
@@ -431,7 +431,7 @@ def dc_config_from_shape(subreads_shape: Tuple[int, int, int],
                                  len(DcConfig.n_subread_features))
   if remainder != 0:
     raise ValueError(f'Invalid subreads shape {subreads_shape!r}.')
-  return DcConfig(max_passes, width, use_bq)
+  return DcConfig(max_passes, width, use_ccs_bq)
 
 
 class DcConfig:
@@ -441,8 +441,8 @@ class DcConfig:
     max_passes: Number of passes to incorporate into examples.
     max_length: Width of example.
     feature_rows: A dictionary indicating features and corresponding height.
-    use_bq: Boolean indicating whether to incorporate base quality scores into
-      model input.
+    use_ccs_bq: Boolean indicating whether to incorporate base quality scores
+      into model input.
     feature_indices: Calculated indices for each feature.
   """
 
@@ -451,7 +451,12 @@ class DcConfig:
   # Features with n_rows = n_subreads.
   n_subread_features = ['bases', 'pw', 'ip', 'strand']
 
-  def __init__(self, max_passes: int, max_length: int, use_bq: bool = False):
+  def __init__(
+      self,
+      max_passes: int,
+      max_length: int,
+      use_ccs_bq: bool = False,
+  ):
     self.max_passes = max_passes
     self.max_length = max_length
     self.feature_rows = {
@@ -460,12 +465,12 @@ class DcConfig:
         'ip': max_passes,
         'strand': max_passes,
         'ccs': 1,
-        'ccs_bq': 1 if use_bq else 0,
+        'ccs_bq': 1 if use_ccs_bq else 0,
         'sn': 4
     }
     # Sets slices indicating rows for each feature type.
     self.feature_indices = dict()
-    self.use_bq = use_bq
+    self.use_ccs_bq = use_ccs_bq
     i_rows = 0
     for k, v in self.feature_rows.items():
       self.feature_indices[k] = slice(i_rows, i_rows + self.feature_rows[k])
@@ -715,7 +720,7 @@ class DcExample:
 
     # ccs features.
     data[ccs_idx] = self.ccs.bases_encoded
-    if self.config.use_bq:
+    if self.config.use_ccs_bq:
       data[ccs_bq_idx] = self.ccs.base_quality_scores
 
     # Format sn rows.
@@ -872,10 +877,26 @@ def set_feature(feature, shape):
   return feature
 
 
-def tf_example_to_features_dict(tf_example_proto_str, inference=False):
-  """Convert tf.Example to features_dict."""
+def tf_example_to_features_dict(tf_example_proto_str: Dict[str, Any],
+                                inference: bool = False,
+                                use_ccs_bq: bool = False,
+                                max_length: int = 100) -> Dict[str, Any]:
+  """Converts tf.Example to features_dict.
+
+  Args:
+    tf_example_proto_str: Input str-encoded tf.Example.
+    inference: Bool indicating whether to only load inference-relevant fields.
+    use_ccs_bq: Bool indicating whether subreads contain base quality scores.
+    max_length: The width of the tf.Example.
+
+  Returns:
+    A dictionary containing tf.Example Tensor elements.
+  """
   features = data_providers.parse_example(
-      tf_example_proto_str, inference=inference)
+      tf_example_proto_str,
+      inference=inference,
+      max_length=max_length,
+  )
 
   for key, val in features.items():
     if tf.executing_eagerly():
@@ -891,13 +912,22 @@ def tf_example_to_features_dict(tf_example_proto_str, inference=False):
 
   features['subreads'] = set_feature(features['subreads/encoded'],
                                      features['subreads/shape'])
-  dc_config = dc_config_from_shape(features['subreads/shape'])
+  dc_config = dc_config_from_shape(
+      features['subreads/shape'],
+      use_ccs_bq,
+  )
   # Get a default config and overwrite with specified values
   params = model_configs.get_config()
-  params.max_length = int(dc_config.max_length)
-  params.max_passes = int(dc_config.max_passes)
-  features['subreads'] = data_providers.format_rows(
-      features['subreads'], params=params)
+  with params.unlocked():
+    params.use_ccs_bq = use_ccs_bq
+    params.max_length = int(dc_config.max_length)
+    params.max_passes = int(dc_config.max_passes)
+    params.total_rows = data_providers.get_total_rows(
+        params.max_passes,
+        use_ccs_bq,
+    )
+  features['subreads'] = data_providers.format_rows(features['subreads'],
+                                                    params)
   del features['subreads/encoded']
   if not inference:
     features['label'] = set_feature(features['label/encoded'],

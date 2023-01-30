@@ -95,6 +95,9 @@ flags.DEFINE_bool(
     'use_ccs_smart_windows', False,
     'If true, CCS smart window widths are used to partition '
     'subreads into windows.')
+_USE_CCS_BQ = flags.DEFINE_bool(
+    'use_ccs_bq', False,
+    'If true, incorporate CCS Base Quality scores into tf.examples.')
 # The following just need to match the training parameters.
 _MAX_PASSES = flags.DEFINE_integer('max_passes', 20,
                                    'Maximum subreads in each input.')
@@ -118,9 +121,9 @@ def trace_exception(f):
     try:
       result = f(*args, **kwargs)
       return result
-    except:  # pylint: disable=bare-except
+    except Exception as exc:
       logging.exception('Error in function %s.', f.__name__)
-      raise Exception('Error in worker process')
+      raise exc
 
   return wrap
 
@@ -240,7 +243,10 @@ def main(unused_argv) -> None:
   queue = manager.Queue()
 
   dc_config = pre_lib.DcConfig(
-      max_passes=_MAX_PASSES.value, max_length=_EXAMPLE_WIDTH.value)
+      max_passes=_MAX_PASSES.value,
+      max_length=_EXAMPLE_WIDTH.value,
+      use_ccs_bq=_USE_CCS_BQ.value,
+  )
 
   proc_feeder, main_counter = pre_lib.create_proc_feeder(
       subreads_to_ccs=FLAGS.subreads_to_ccs,

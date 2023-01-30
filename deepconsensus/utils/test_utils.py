@@ -28,11 +28,12 @@
 """Utilities to help with testing code."""
 
 import os
-from typing import List, Text, Tuple, Union
+from typing import Dict, List, Text, Tuple, Union
 
 from absl import flags
 from absl.testing import absltest
 import numpy as np
+import tensorflow as tf
 
 from deepconsensus.utils import dc_constants
 from tensorflow.python.platform import gfile
@@ -148,3 +149,11 @@ def convert_seqs(sequences: List[str]) -> Tuple[np.ndarray, np.ndarray]:
   y_true = multiseq_to_array(y_true).astype(dc_constants.NP_DATA_TYPE)
   y_pred_scores = seq_to_one_hot(y_pred_scores)
   return y_true, y_pred_scores
+
+
+def load_dataset(output: str, dataset: str) -> List[Dict[str, np.ndarray]]:
+  # Load inference, train, eval, or test tfrecord.gz files.
+  tf_record = output.replace('@split', dataset)
+  dataset = tf.data.TFRecordDataset(tf_record, compression_type='GZIP')
+  examples = list(dataset.as_numpy_iterator())
+  return examples

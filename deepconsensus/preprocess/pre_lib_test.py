@@ -926,47 +926,47 @@ class TestDcConfigFromShape(parameterized.TestCase):
 
   @parameterized.named_parameters(
       dict(
-          testcase_name='standard shape use_bq=True',
+          testcase_name='standard shape use_ccs_bq=True',
           shape=(86, 120, -1),
-          use_bq=True,
+          use_ccs_bq=True,
           expected_max_passes=20,
           expected_sn_rows=slice(82, 86),
       ),
       dict(
-          testcase_name='expanded shape use_bq=True',
+          testcase_name='expanded shape use_ccs_bq=True',
           shape=(106, 120, -1),
-          use_bq=True,
+          use_ccs_bq=True,
           expected_max_passes=25,
           expected_sn_rows=slice(102, 106),
       ),
       dict(
-          testcase_name='standard shape use_bq=False',
+          testcase_name='standard shape use_ccs_bq=False',
           shape=(85, 120, -1),
-          use_bq=False,
+          use_ccs_bq=False,
           expected_max_passes=20,
           expected_sn_rows=slice(81, 85),
       ),
       dict(
-          testcase_name='expanded shape use_bq=False',
+          testcase_name='expanded shape use_ccs_bq=False',
           shape=(105, 120, -1),
-          use_bq=False,
+          use_ccs_bq=False,
           expected_max_passes=25,
           expected_sn_rows=slice(101, 105),
       ))
   def test_dc_config_from_shape(
       self,
       shape,
-      use_bq,
+      use_ccs_bq,
       expected_max_passes,
       expected_sn_rows,
   ):
-    dc_config = pre_lib.dc_config_from_shape(shape, use_bq)
+    dc_config = pre_lib.dc_config_from_shape(shape, use_ccs_bq)
     self.assertEqual(dc_config.max_passes, expected_max_passes)
     self.assertEqual(dc_config.indices('sn'), expected_sn_rows)
 
   def test_incompatible_shape(self):
     with self.assertRaisesRegex(ValueError, 'Invalid subreads shape'):
-      pre_lib.dc_config_from_shape((7, 7, -1), use_bq=True)
+      pre_lib.dc_config_from_shape((7, 7, -1), use_ccs_bq=True)
 
 
 class TestDcExampleFunctionality(parameterized.TestCase):
@@ -976,7 +976,7 @@ class TestDcExampleFunctionality(parameterized.TestCase):
     dc_config = pre_lib.DcConfig(
         max_passes=20,
         max_length=max_length,
-        use_bq=True,
+        use_ccs_bq=True,
     )
     # First, generate a bunch of reads
     read_set = []
@@ -1127,13 +1127,19 @@ class TestDcExampleFunctionality(parameterized.TestCase):
     # Serialize tf example and reverse.
     tf_example_str = tf_example.SerializePartialToString()
     parsed_example = data_providers.parse_example(
-        tf_example_str, inference=False, max_length=dc_config.max_length)
+        tf_example_str,
+        inference=False,
+        max_length=dc_config.max_length,
+    )
     self.assertSetEqual(
         set(parsed_example.keys()),
         set(data_providers.PROTO_FEATURES_TRAIN.keys()))
 
     # Compare tf example converted back to DcExample
-    features = pre_lib.tf_example_to_features_dict(tf_example_str)
+    features = pre_lib.tf_example_to_features_dict(
+        tf_example_str,
+        max_length=dc_config.max_length,
+    )
     window_2_rev = pre_lib.from_features_dict(features)
 
     # Compare reversed values.
@@ -1257,6 +1263,29 @@ class TestDcExampleFunctionality(parameterized.TestCase):
                                    window_widths)
     examples = [repr(example).strip() for example in dc_example.iter_examples()]
     self.assertCountEqual(examples, expected_examples)
+
+
+class TestTfExamplesToFeaturesDict(parameterized.TestCase):
+
+  def test_tf_examples_to_features_dict(self):
+    tf_examples = test_utils.deepconsensus_testdata(
+        'human_1m/tf_examples/@split/@split.tfrecord.gz')
+    examples = test_utils.load_dataset(tf_examples, 'train')
+    feature_dicts = pre_lib.tf_example_to_features_dict(
+        examples[0], inference=False, use_ccs_bq=False)
+    self.assertListEqual(
+        list(feature_dicts['subreads/shape']),
+        list(feature_dicts['subreads'].shape))
+
+  def test_tf_examples_bq_to_features_dict(self):
+    tf_examples = test_utils.deepconsensus_testdata(
+        'human_1m/tf_examples_bq/@split/@split.tfrecord.gz')
+    examples = test_utils.load_dataset(tf_examples, 'train')
+    feature_dicts = pre_lib.tf_example_to_features_dict(
+        examples[0], inference=False, use_ccs_bq=True)
+    self.assertListEqual(
+        list(feature_dicts['subreads/shape']),
+        list(feature_dicts['subreads'].shape))
 
 
 if __name__ == '__main__':

@@ -32,10 +32,12 @@ import os
 
 from absl import flags
 from absl.testing import absltest
+from absl.testing import flagsaver
 from absl.testing import parameterized
-import tensorflow as tf
+
 from deepconsensus.preprocess import pre_lib
 from deepconsensus.preprocess import preprocess
+from deepconsensus.utils import test_utils
 from deepconsensus.utils.test_utils import deepconsensus_testdata
 from absl import app
 
@@ -48,14 +50,6 @@ FLAGS = flags.FLAGS
 def load_summary(tmp_dir, path):
   summary_path = os.path.join(tmp_dir, path)
   return json.load(open(summary_path, 'r'))
-
-
-def load_dataset(output, dataset):
-  # Load inference, train, eval, or test tfrecord.gz files.
-  tf_record = output.replace('@split', dataset)
-  dataset = tf.data.TFRecordDataset(tf_record, compression_type='GZIP')
-  examples = list(dataset.as_numpy_iterator())
-  return examples
 
 
 def get_unique_zmws(examples):
@@ -80,7 +74,7 @@ class PreprocessE2E(parameterized.TestCase):
     output = os.path.join(tmp_dir, 'tf-@split.tfrecord.gz')
     FLAGS.output = output
     preprocess.main([])
-    examples = load_dataset(output, 'inference')
+    examples = test_utils.load_dataset(output, 'inference')
     features = pre_lib.tf_example_to_features_dict(examples[0], inference=True)
 
     # Check that window_pos incr. monotonically for each ZMW.
@@ -117,9 +111,9 @@ class PreprocessE2E(parameterized.TestCase):
     output = os.path.join(tmp_dir, 'tf-@split.tfrecord.gz')
     FLAGS.output = output
     preprocess.main([])
-    train_examples = load_dataset(output, 'train')
-    eval_examples = load_dataset(output, 'eval')
-    test_examples = load_dataset(output, 'test')
+    train_examples = test_utils.load_dataset(output, 'train')
+    eval_examples = test_utils.load_dataset(output, 'eval')
+    test_examples = test_utils.load_dataset(output, 'test')
     all_examples = train_examples + eval_examples + test_examples
 
     # Check that window_pos incr. monotonically for each ZMW.
@@ -162,6 +156,43 @@ class PreprocessE2E(parameterized.TestCase):
     self.assertIn('label/shape', features)
     self.assertSameElements(features['subreads'].shape,
                             features['subreads/shape'])
+
+  def test_invalid_tf_examples(self):
+    """Tests for proper error thrown when loading improprer tf example."""
+    output = os.path.join(self.create_tempdir(), 'tf-@split.tfrecord.gz')
+    with flagsaver.flagsaver(
+        subreads_to_ccs=testdata('human_1m/subreads_to_ccs.bam'),
+        ccs_bam=testdata('human_1m/ccs.bam'),
+        use_ccs_bq=True,
+        cpus=0,
+        limit=1,
+        output=output):
+      preprocess.main([])
+      examples = test_utils.load_dataset(output, 'train')
+      with self.assertRaisesRegex(ValueError, 'Invalid subreads shape'):
+        _ = pre_lib.tf_example_to_features_dict(
+            examples[0], inference=True, use_ccs_bq=False)
+
+  def test_bq_tf_examples(self):
+    """Tests preprocessing inference with base quality score features."""
+    output = os.path.join(self.create_tempdir(), 'tf-@split.tfrecord.gz')
+    with flagsaver.flagsaver(
+        subreads_to_ccs=testdata('human_1m/subreads_to_ccs.bam'),
+        ccs_bam=testdata('human_1m/ccs.bam'),
+        use_ccs_bq=True,
+        cpus=0,
+        limit=1,
+        output=output):
+      preprocess.main([])
+      examples = test_utils.load_dataset(output, 'inference')
+
+      features = pre_lib.tf_example_to_features_dict(
+          examples[0],
+          inference=True,
+          use_ccs_bq=True,
+      )
+      self.assertEqual(list(features['subreads/shape']), [86, 100, 1])
+      self.assertEqual(list(features['subreads'].shape), [86, 100, 1])
 
 
 if __name__ == '__main__':

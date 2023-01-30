@@ -225,7 +225,10 @@ def parse_example(proto_string: Dict[str, tf.Tensor],
     proto_features = PROTO_FEATURES_INFERENCE
   else:
     proto_features = PROTO_FEATURES_TRAIN
-  if not proto_features['ccs_base_quality_scores'].shape:
+  # Set the correct dimensionality for ccs_base_quality scores.
+  if not proto_features['ccs_base_quality_scores'].shape or proto_features[
+      'ccs_base_quality_scores'].shape[0] != max_length:
+    proto_features['ccs_base_quality_scores'].shape.clear()
     proto_features['ccs_base_quality_scores'].shape.append(max_length)
   parsed_features = tf.io.parse_single_example(
       serialized=proto_string, features=proto_features)
