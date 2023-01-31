@@ -351,18 +351,28 @@ class EncoderOnlyLearnedValuesTransformer(EncoderOnlyTransformer):
           vocab_size=dc_constants.SEQ_VOCAB_SIZE,
           embedding_width=params['per_base_hidden_size'],
           name='bases_embedding')
+
     if params.use_pw:
       pw_vocab_size = params.PW_MAX + 1
       self.pw_embedding_layer = ModifiedOnDeviceEmbedding(
           vocab_size=pw_vocab_size,
           embedding_width=params['pw_hidden_size'],
           name='pw_embedding')
+
     if params.use_ip:
       ip_vocab_size = params.IP_MAX + 1
       self.ip_embedding_layer = ModifiedOnDeviceEmbedding(
           vocab_size=ip_vocab_size,
           embedding_width=params['ip_hidden_size'],
           name='ip_embedding')
+
+    if params.use_ccs_bq:
+      # Values range from -1 to 93; So 95 distinct values.
+      ccs_bq_scores_vocab_size = params.CCS_BQ_MAX
+      self.ccs_base_quality_scores_embedding_layer = ModifiedOnDeviceEmbedding(
+          vocab_size=ccs_bq_scores_vocab_size,
+          embedding_width=params['ccs_bq_hidden_size'],
+          name='ccs_base_quality_scores_embedding')
 
     if params.use_sn:
       sn_vocab_size = params.SN_MAX + 1
@@ -404,7 +414,7 @@ class EncoderOnlyLearnedValuesTransformer(EncoderOnlyTransformer):
         ip_indices,
         strand_indices,
         ccs_indices,
-        _,
+        ccs_bq_indices,
         sn_indices,
     ) = data_providers.get_indices(
         self.params.max_passes,
@@ -427,6 +437,13 @@ class EncoderOnlyLearnedValuesTransformer(EncoderOnlyTransformer):
       for i in range(*ip_indices):
         # Shape: [batch_size, length, ip_hidden_size]
         embedded = self.ip_embedding_layer(tf.cast(inputs[:, :, i], tf.int32))
+        embedded_inputs.append(embedded)
+
+    if self.params.use_ccs_bq:
+      for i in range(*ccs_bq_indices):
+        # Add 1 to ccs base quality scores to shift gaps from -1 to 0.
+        embedded = self.ccs_base_quality_scores_embedding_layer(
+            tf.cast(inputs[:, :, i] + 1, tf.int32))
         embedded_inputs.append(embedded)
 
     if self.params.use_strand:

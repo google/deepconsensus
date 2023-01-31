@@ -1,0 +1,5 @@
+checkpoint_name	group	name	value
+/tmp/deepconsensus/model/20230130204511/checkpoint-1	eval	eval/loss	168.41236877441406
+/tmp/deepconsensus/model/20230130204511/checkpoint-1	eval	eval/per_example_accuracy	0.0
+/tmp/deepconsensus/model/20230130204511/checkpoint-1	eval	eval/per_batch_alignment_identity	0.3844282031059265
+/tmp/deepconsensus/model/20230130204511/checkpoint-1	eval	eval/yield_over_ccs	0.0

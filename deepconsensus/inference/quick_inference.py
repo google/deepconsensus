@@ -194,6 +194,7 @@ class InferenceOptions:
     min_quality: Quality threshold to filter final reads.
     min_length: Length threshold to filter final reads.
     batch_size: Number of examples passed through model at once.
+    use_ccs_bq: Use CCS Base Quality Scores as a feature.
     cpus: Number of processes to use for multiprocessing. Must be positive (for
       multiprocessing) or 0 (for serial execution).
     skip_windows_above: Run the model only when the avg(ccs_base_qual) of the
@@ -211,6 +212,7 @@ class InferenceOptions:
   min_quality: int
   min_length: int
   batch_size: int
+  use_ccs_bq: bool
   cpus: int
   skip_windows_above: int
   use_saved_model: bool
@@ -386,7 +388,9 @@ def stream_bam(
   """
 
   dc_config = pre_lib.DcConfig(
-      max_passes=options.max_passes, max_length=options.max_length)
+      max_passes=options.max_passes,
+      max_length=options.max_length,
+      use_ccs_bq=options.use_ccs_bq)
 
   # Temporarily disable unused-variable.
   # pylint: disable=unused-variable
@@ -421,6 +425,12 @@ def initialize_model(
   if FLAGS.end_after_stage in [DebugStage.TF_EXAMPLES, DebugStage.DC_INPUT]:
     return None, None
 
+  model_utils.modify_params(
+      params=params,
+      speedy=True,
+      max_length=options.max_length,
+      is_training=False)
+
   logging.info('Loading %s', checkpoint_path)
   if options.use_saved_model:
     model = tf.saved_model.load(checkpoint_path)
@@ -440,11 +450,6 @@ def initialize_model(
     checkpoint.restore(
         checkpoint_path).expect_partial().assert_existing_objects_matched()
 
-  model_utils.modify_params(
-      params=params,
-      speedy=True,
-      max_length=options.max_length,
-      is_training=False)
   logging.info('Finished initialize_model.')
   return model, params
 
@@ -485,7 +490,9 @@ def process_skipped_window(
     options: InferenceOptions) -> stitch_utils.DCModelOutput:
   """Process a window by simply adopting the CCS sequence and base qualities."""
   rows = feature_dict['subreads']
-  ccs = rows[-5, :, 0]
+  _, _, _, _, ccs_index, _, _ = data_providers.get_indices(
+      options.max_passes, options.use_ccs_bq)
+  ccs = rows[ccs_index[0], :, 0]
   ccs_seq = utils.encoded_sequence_to_string(ccs)
   ccs_quality_scores = feature_dict['ccs_base_quality_scores']
   if options.ccs_calibration_values.enabled:
@@ -694,8 +701,11 @@ def run() -> stitch_utils.OutcomeCounter:
 
   # Load model parameters
   params = model_utils.read_params_from_json(checkpoint_path=FLAGS.checkpoint)
-
-  dc_config = pre_lib.DcConfig(params.max_passes, params.max_length)
+  dc_config = pre_lib.DcConfig(
+      params.max_passes,
+      params.max_length,
+      params.use_ccs_bq,
+  )
 
   # Attempt to read default calibration values from model params.json.
   # If not found, set to 'skip'.
@@ -726,6 +736,7 @@ def run() -> stitch_utils.OutcomeCounter:
       skip_windows_above=FLAGS.skip_windows_above,
       use_saved_model=use_saved_model,
       dc_calibration_values=dc_calibration_values,
+      use_ccs_bq=params.use_ccs_bq,
       ccs_calibration_values=ccs_calibration_values)
   outcome_counter = stitch_utils.OutcomeCounter()
   stats_counter = collections.Counter()

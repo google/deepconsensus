@@ -217,6 +217,31 @@ def _set_test_data_hparams(params):
     params.fc_size = [4, 4]
 
 
+def _set_test_bq_data_hparams(params):
+  """Updates the given config with values for a test dataset."""
+  curr_dir = os.path.dirname(__file__)
+  params.use_ccs_bq = True
+  params.train_path = [
+      os.path.join(curr_dir, '../testdata/human_1m/tf_examples_bq/train/*')
+  ]
+  # Use same data for train/eval/hard eval because the eval test data is empty.
+  params.eval_path = params.train_path
+  params.test_path = params.train_path
+  params.inference_path = os.path.join(
+      curr_dir, '../testdata/human_1m/tf_examples_bq/inference/*')
+  params.n_examples_train = 253
+  params.n_examples_eval = 253
+  params.max_passes = 20
+
+  # The test dataset uniquely sets these model-level parameters because the test
+  # dataset is small and we want to keep model files small.
+  params.batch_size = 1
+  params.num_epochs = 1
+  params.buffer_size = 10
+  if params.model_name == 'fc':
+    params.fc_size = [4, 4]
+
+
 ############### Core function for setting all config values ###############
 
 
@@ -338,6 +363,8 @@ def get_config(config_name: Optional[str] = None) -> ml_collections.ConfigDict:
     _set_ecoli_data_hparams(params)
   elif dataset_config_name == 'test':
     _set_test_data_hparams(params)
+  elif dataset_config_name == 'test_bq':
+    _set_test_bq_data_hparams(params)
   elif dataset_config_name == 'custom':
     _set_custom_data_hparams(params)
   else:
