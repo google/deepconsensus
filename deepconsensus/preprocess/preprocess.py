@@ -119,7 +119,7 @@ def trace_exception(f):
   @functools.wraps(f)
   def wrap(*args, **kwargs):
     try:
-      result = f(*args, **kwargs)
+      result = f(*args, **kwargs)  # pytype: disable=wrong-arg-types  # always-use-return-annotations
       return result
     except Exception as exc:
       logging.exception('Error in function %s.', f.__name__)

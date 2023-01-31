@@ -535,7 +535,7 @@ def inference_on_n_zmws(
 
   if options.cpus == 0:
     # Preprocess ZMWs one at a time in the main process without multiprocessing.
-    outputs = [preprocess(one_zmw=one_zmw) for one_zmw in inputs]
+    outputs = [preprocess(one_zmw=one_zmw) for one_zmw in inputs]  # pytype: disable=wrong-arg-types  # always-use-return-annotations
   else:
     assert pool
     # Each call to preprocess gets one ZMW from inputs.
