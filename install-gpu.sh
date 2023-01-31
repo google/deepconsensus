@@ -57,4 +57,4 @@ echo "$(pip --version)"
 # Install python packages used by DeepConsensus.
 ################################################################################
 python3 -m pip install --user -r requirements.txt
-python3 -m pip install --user "tensorflow-gpu>=2.11.0"
+python3 -m pip install --user "tensorflow-gpu==2.9.1"
