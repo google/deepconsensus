@@ -439,13 +439,6 @@ class EncoderOnlyLearnedValuesTransformer(EncoderOnlyTransformer):
         embedded = self.ip_embedding_layer(tf.cast(inputs[:, :, i], tf.int32))
         embedded_inputs.append(embedded)
 
-    if self.params.use_ccs_bq:
-      for i in range(*ccs_bq_indices):
-        # Add 1 to ccs base quality scores to shift gaps from -1 to 0.
-        embedded = self.ccs_base_quality_scores_embedding_layer(
-            tf.cast(inputs[:, :, i] + 1, tf.int32))
-        embedded_inputs.append(embedded)
-
     if self.params.use_strand:
       for i in range(*strand_indices):
         embedded = self.strand_embedding_layer(
@@ -456,6 +449,13 @@ class EncoderOnlyLearnedValuesTransformer(EncoderOnlyTransformer):
       for i in range(*ccs_indices):
         embedded = self.bases_embedding_layer(
             tf.cast(inputs[:, :, i], tf.int32))
+        embedded_inputs.append(embedded)
+
+    if self.params.use_ccs_bq:
+      for i in range(*ccs_bq_indices):
+        # Add 1 to ccs base quality scores to shift gaps from -1 to 0.
+        embedded = self.ccs_base_quality_scores_embedding_layer(
+            tf.cast(inputs[:, :, i] + 1, tf.int32))
         embedded_inputs.append(embedded)
 
     if self.params.use_sn:
