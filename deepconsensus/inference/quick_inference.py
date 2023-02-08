@@ -152,8 +152,12 @@ flags.DEFINE_integer(
     'on the 3rd GPU, you can set this to 2. By default, if you have GPUs, the '
     'lowest index one would be used.')
 
-# The following parameters are for quality score calibration
-
+# The following parameters are for base qualities and their calibration.
+flags.DEFINE_integer(
+    'max_base_quality',
+    93,
+    'Base qualities will be capped at this quality value.',
+)
 flags.DEFINE_string(
     'dc_calibration', None, 'If set to None, base quality values will be read '
     'from model params.json if available. Set to "skip" to perform no quality '
@@ -201,6 +205,7 @@ class InferenceOptions:
       window is below this value.
     use_saved_model: True if the given checkpoint is a saved model, false if it
       is a regular checkpoint.
+    max_base_quality: The maximum base quality value allowed.
     dc_calibration_values: QualityCalibrationValues defining values to be used
       for deepconsensus quality calibration.
     ccs_calibration_values: QualityCalibrationValues defining values to be used
@@ -216,6 +221,7 @@ class InferenceOptions:
   cpus: int
   skip_windows_above: int
   use_saved_model: bool
+  max_base_quality: int
   dc_calibration_values: calibration_lib.QualityCalibrationValues
   ccs_calibration_values: calibration_lib.QualityCalibrationValues
 
@@ -322,9 +328,12 @@ def run_model_on_examples(
     if options.dc_calibration_values.enabled:
       quality_scores = calibration_lib.calibrate_quality_scores(
           quality_scores, options.dc_calibration_values)
-    quality_scores = np.minimum(quality_scores, dc_constants.MAX_QUAL)
+    # The maximum value for base quality scores is max_base_quality.
+    quality_scores = np.minimum(quality_scores, options.max_base_quality)
     quality_scores = np.round(quality_scores, decimals=0)
     quality_scores = quality_scores.astype(dtype=np.int32)
+    # The minimum value for base quality scores is 0.
+    quality_scores = np.maximum(quality_scores, 0)
     for y_pred, qs, window_pos, molecule_name, ec, np_, rq, rg in zip(
         y_preds, quality_scores, window_pos_arr, molecule_name_arr, ec_arr,
         np_num_passes_arr, rq_arr, rg_arr):
@@ -498,7 +507,7 @@ def process_skipped_window(
   if options.ccs_calibration_values.enabled:
     ccs_quality_scores = calibration_lib.calibrate_quality_scores(
         ccs_quality_scores, options.ccs_calibration_values)
-  ccs_quality_scores = np.minimum(ccs_quality_scores, dc_constants.MAX_QUAL)
+  ccs_quality_scores = np.minimum(ccs_quality_scores, options.max_base_quality)
   ccs_quality_scores = ccs_quality_scores.astype(dtype=np.int32)
   dc_output = stitch_utils.DCModelOutput(
       window_pos=feature_dict['window_pos'],
@@ -707,6 +716,11 @@ def run() -> stitch_utils.OutcomeCounter:
       params.use_ccs_bq,
   )
 
+  if not FLAGS.max_base_quality:
+    raise ValueError(
+        '--max_base_quality should be set to a valid number. If unset bases'
+        ' with error probability of 0, will result in invalid quality scores.'
+    )
   # Attempt to read default calibration values from model params.json.
   # If not found, set to 'skip'.
   if FLAGS.dc_calibration is None:
@@ -735,9 +749,11 @@ def run() -> stitch_utils.OutcomeCounter:
       cpus=FLAGS.cpus,
       skip_windows_above=FLAGS.skip_windows_above,
       use_saved_model=use_saved_model,
+      max_base_quality=FLAGS.max_base_quality,
       dc_calibration_values=dc_calibration_values,
       use_ccs_bq=params.use_ccs_bq,
-      ccs_calibration_values=ccs_calibration_values)
+      ccs_calibration_values=ccs_calibration_values,
+  )
   outcome_counter = stitch_utils.OutcomeCounter()
   stats_counter = collections.Counter()
 

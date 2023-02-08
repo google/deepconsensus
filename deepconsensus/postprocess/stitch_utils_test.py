@@ -164,7 +164,9 @@ class IsQualityAboveThresholdTest(parameterized.TestCase):
 
 class ConvertToFastqStrDoFnTest(absltest.TestCase):
 
-  def assert_correct_fastq_str(self, molecule_name, fasta_str):
+  def assert_correct_fastq_str(
+      self, molecule_name, fasta_str, max_base_quality
+  ):
     fasta_str_parts = fasta_str.split('\n')
     contig_name = fasta_str_parts[0]
     # Check that the contig name is formatted correctly.
@@ -179,7 +181,8 @@ class ConvertToFastqStrDoFnTest(absltest.TestCase):
     # Not all values in this range are allowed, since we are binning, but we
     # do not consider that for this test.
     possible_quals = utils.quality_scores_to_string(
-        np.array(range(dc_constants.EMPTY_QUAL, dc_constants.MAX_QUAL + 1)))
+        np.array(range(dc_constants.EMPTY_QUAL, max_base_quality + 1))
+    )
     self.assertContainsSubset(quality_string_line, possible_quals)
     self.assertLen(quality_string_line, len(sequence_line))
 
@@ -192,9 +195,12 @@ class ConvertToFastqStrDoFnTest(absltest.TestCase):
     output = stitch_utils.format_as_fastq(
         molecule_name=molecule_name,
         sequence=sequence,
-        quality_string=quality_string)
+        quality_string=quality_string,
+    )
 
-    self.assert_correct_fastq_str(molecule_name=molecule_name, fasta_str=output)
+    self.assert_correct_fastq_str(
+        molecule_name=molecule_name, fasta_str=output, max_base_quality=93
+    )
 
 
 if __name__ == '__main__':

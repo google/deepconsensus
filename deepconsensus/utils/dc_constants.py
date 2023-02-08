@@ -105,7 +105,6 @@ DC_FEATURES = [
     'ccs_base_quality_scores', 'ec', 'np_num_passes', 'rq', 'rg'
 ]
 
-MAX_QUAL = 40
 EMPTY_QUAL = 0
 
 # The name of the eval metric to optimize (choosing checkpoints and vizier).
