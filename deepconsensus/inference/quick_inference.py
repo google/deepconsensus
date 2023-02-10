@@ -68,6 +68,7 @@ from tensorflow.python.platform import gfile
 @enum.unique
 class DebugStage(enum.Enum):
   """Stage to end after for debugging and runtime testing purposes."""
+
   DC_INPUT = 1
   TF_EXAMPLES = 2
   RUN_MODEL = 3
@@ -77,32 +78,46 @@ class DebugStage(enum.Enum):
 FLAGS = flags.FLAGS
 
 # Inputs:
-flags.DEFINE_string('subreads_to_ccs', None,
-                    'Input BAM containing subreads aligned to ccs.')
+flags.DEFINE_string(
+    'subreads_to_ccs', None, 'Input BAM containing subreads aligned to ccs.'
+)
 flags.DEFINE_string('ccs_fasta', None, 'Input FASTA containing ccs sequences.')
 flags.DEFINE_string('ccs_bam', None, 'Input BAM containing ccs sequences.')
 
 # Outputs:
 flags.DEFINE_string(
-    'output', None,
-    'Filename of output. Use .fq or .fastq suffix to output FASTQ, '
-    'or use .bam to output bam file.')
+    'output',
+    None,
+    (
+        'Filename of output. Use .fq or .fastq suffix to output FASTQ, '
+        'or use .bam to output bam file.'
+    ),
+)
 
 # Model checkpoint:
 flags.DEFINE_string(
-    'checkpoint', None, 'Path to either a checkpoint directory + prefix '
-    '(e.g. "/path/to/model_directory/checkpoint-50"), '
-    'or to a saved model directory, (e.g. "/path/to/model_directory") '
-    'which is the directory that contains a saved_model.pb')
+    'checkpoint',
+    None,
+    (
+        'Path to either a checkpoint directory + prefix '
+        '(e.g. "/path/to/model_directory/checkpoint-50"), '
+        'or to a saved model directory, (e.g. "/path/to/model_directory") '
+        'which is the directory that contains a saved_model.pb'
+    ),
+)
 
 # TODO Find out if this flag is needed here. Currently it is added to
 # avoid pipeline to fail. max_length should be correctly read from checkpoint.
 flags.DEFINE_integer('max_length', 100, 'Number of bases in each input.')
 
 flags.DEFINE_bool(
-    'use_ccs_smart_windows', False,
-    'If true, CCS smart window widths are used to partition '
-    'subreads into windows.')
+    'use_ccs_smart_windows',
+    False,
+    (
+        'If true, CCS smart window widths are used to partition '
+        'subreads into windows.'
+    ),
+)
 
 # The following parameters are used at the end for filtering the final output.
 flags.DEFINE_integer('min_length', 0, 'Minimum length for reads output.')
@@ -110,47 +125,70 @@ flags.DEFINE_integer('min_quality', 20, 'Minimum quality for reads output.')
 
 # The following parameters affect performance of this script.
 flags.DEFINE_integer(
-    'batch_size', 1024,
-    'Number of examples to batch together for TensorFlow model prediction.')
+    'batch_size',
+    1024,
+    'Number of examples to batch together for TensorFlow model prediction.',
+)
 flags.DEFINE_integer(
-    'batch_zmws', 100, 'Number of ZMWs to process at the same time. '
-    'If 0, process all ZMWs in one batch.')
+    'batch_zmws',
+    100,
+    (
+        'Number of ZMWs to process at the same time. '
+        'If 0, process all ZMWs in one batch.'
+    ),
+)
 flags.DEFINE_integer(
-    'skip_windows_above', 45,
-    'Average CCS Base Quality used to skip individual windows from being '
-    'processed by the neural network. This can help speed up DeepConsensus. '
-    'Use 0 for no skipping.')
+    'skip_windows_above',
+    45,
+    (
+        'Average CCS Base Quality used to skip individual windows from being'
+        ' processed by the neural network. This can help speed up'
+        ' DeepConsensus. Use 0 for no skipping.'
+    ),
+)
 flags.DEFINE_integer(
-    'ins_trim', 5, 'Trim insertions in subreads.'
-    'No trimming if flag is set to 0')
+    'ins_trim', 5, 'Trim insertions in subreads.No trimming if flag is set to 0'
+)
 
 # The following parameters are for debugging.
 flags.DEFINE_integer('limit', None, 'Only process this many ZMWs. ')
 
 flags.DEFINE_enum_class(
-    'end_after_stage', 'full', DebugStage,
-    'For debugging and runtime measurement purposes, '
-    'end after this stage for each ZMW.')
+    'end_after_stage',
+    'full',
+    DebugStage,
+    (
+        'For debugging and runtime measurement purposes, '
+        'end after this stage for each ZMW.'
+    ),
+)
 flags.DEFINE_integer(
     'cpus',
     multiprocessing.cpu_count() - 1,
-    'Number of processes to use during preprocessing stage. '
-    'Uses CPU count - 1 by default. '
-    'If 0, then preprocessing will be done in the main process '
-    'instead of using multiple processes. '
-    'This flag does not control how many CPUs the model prediction '
-    '(TensorFlow) uses. If you need to control that, please consider using '
-    'numactl in Linux. Or if you are using Docker, considering using '
-    'https://docs.docker.com/config/containers/resource_constraints/'
-    '#configure-the-default-cfs-scheduler.')
+    (
+        'Number of processes to use during preprocessing stage. '
+        'Uses CPU count - 1 by default. '
+        'If 0, then preprocessing will be done in the main process '
+        'instead of using multiple processes. '
+        'This flag does not control how many CPUs the model prediction '
+        '(TensorFlow) uses. If you need to control that, please consider using '
+        'numactl in Linux. Or if you are using Docker, considering using '
+        'https://docs.docker.com/config/containers/resource_constraints/'
+        '#configure-the-default-cfs-scheduler.'
+    ),
+)
 
 # The following parameters are for TensorFlow ops device placement.
 flags.DEFINE_integer(
-    'use_only_gpu_index', None,
-    'If set, this flag will be used for `tf.device` to specify which GPU '
-    'to place the ops on. For example, if you have 3 GPU and only want to run '
-    'on the 3rd GPU, you can set this to 2. By default, if you have GPUs, the '
-    'lowest index one would be used.')
+    'use_only_gpu_index',
+    None,
+    (
+        'If set, this flag will be used for `tf.device` to specify which GPU to'
+        ' place the ops on. For example, if you have 3 GPU and only want to run'
+        ' on the 3rd GPU, you can set this to 2. By default, if you have GPUs,'
+        ' the lowest index one would be used.'
+    ),
+)
 
 # The following parameters are for base qualities and their calibration.
 flags.DEFINE_integer(
@@ -159,23 +197,33 @@ flags.DEFINE_integer(
     'Base qualities will be capped at this quality value.',
 )
 flags.DEFINE_string(
-    'dc_calibration', None, 'If set to None, base quality values will be read '
-    'from model params.json if available. Set to "skip" to perform no quality '
-    'calibration. Otherwise, calibration values can be directly supplied as a '
-    'comma separated set of values of the linear transformation model\'s '
-    'calibration values for deepconsensus base qualities. The values are set as'
-    ' \"threshold,w,b\" where threshold is minimum base quality threshold '
-    'after which  the linear transformation will be applied, w is the '
-    'co-efficient value and b is the bias term for linear transformation. '
-    'Default: None [read from params.json if available].')
+    'dc_calibration',
+    None,
+    (
+        'If set to None, base quality values will be read from model'
+        ' params.json if available. Set to "skip" to perform no quality'
+        ' calibration. Otherwise, calibration values can be directly supplied'
+        ' as a comma separated set of values of the linear transformation'
+        " model's calibration values for deepconsensus base qualities. The"
+        ' values are set as "threshold,w,b" where threshold is minimum base'
+        ' quality threshold after which  the linear transformation will be'
+        ' applied, w is the co-efficient value and b is the bias term for'
+        ' linear transformation. Default: None [read from params.json if'
+        ' available].'
+    ),
+)
 flags.DEFINE_string(
-    'ccs_calibration', 'skip', 'Comma separated values of '
-    'linear transformation model\'s calibration values for deepconsensus base '
-    'qualities. The values are set as \"threshold,w,b\" where threshold is '
-    'minimum base quality threshold after which  the linear transformation '
-    'will be applied, w is the co-efficient value and b is the bias term for '
-    'linear transformation. Set to "skip" to perform no quality '
-    'calibration. Default: "skip".')
+    'ccs_calibration',
+    'skip',
+    (
+        "Comma separated values of linear transformation model's calibration"
+        ' values for deepconsensus base qualities. The values are set as'
+        ' "threshold,w,b" where threshold is minimum base quality threshold'
+        ' after which  the linear transformation will be applied, w is the'
+        ' co-efficient value and b is the bias term for linear transformation.'
+        ' Set to "skip" to perform no quality calibration. Default: "skip".'
+    ),
+)
 
 
 def register_required_flags():
@@ -211,6 +259,7 @@ class InferenceOptions:
     ccs_calibration_values: QualityCalibrationValues defining values to be used
       for ccs quality calibration.
   """
+
   max_length: int
   example_height: int
   max_passes: int
@@ -229,12 +278,14 @@ class InferenceOptions:
 timing = []
 
 
-def timelog(stage: str,
-            item: str,
-            before: float,
-            num_examples: Optional[int] = None,
-            num_subreads: Optional[int] = None,
-            num_zmws: Optional[int] = None) -> None:
+def timelog(
+    stage: str,
+    item: str,
+    before: float,
+    num_examples: Optional[int] = None,
+    num_subreads: Optional[int] = None,
+    num_zmws: Optional[int] = None,
+) -> None:
   """Catalogue time elapsed for a given stage relative to "before"."""
   after = time.time()
   datum = {
@@ -243,18 +294,18 @@ def timelog(stage: str,
       'runtime': after - before,
       'num_zmws': num_zmws,
       'num_examples': num_examples,
-      'num_subreads': num_subreads
+      'num_subreads': num_subreads,
   }
   timing.append(datum)
 
 
 # TODO Add unit test for this function. We need to create unit test
 # infrastructure that allows to easily create input data for unit tests.
-def batch_examples(feature_dicts: List[Tuple[str, Union[np.ndarray, int, bytes,
-                                                        float]]],
-                   model_params: Union[config_dict.ConfigDict,
-                                       config_dict.FrozenConfigDict],
-                   options: InferenceOptions):
+def batch_examples(
+    feature_dicts: List[Tuple[str, Union[np.ndarray, int, bytes, float]]],
+    model_params: Union[config_dict.ConfigDict, config_dict.FrozenConfigDict],
+    options: InferenceOptions,
+):
   """Stack values for each feature.
 
   Args:
@@ -268,11 +319,12 @@ def batch_examples(feature_dicts: List[Tuple[str, Union[np.ndarray, int, bytes,
 
   def process_feature_dicts(features):
     return data_providers.process_feature_dict(
-        features=features, params=model_params)
+        features=features, params=model_params
+    )
 
   def split_list(l, batch_size):
     for i in range(0, len(l), batch_size):
-      yield l[i:i + batch_size]
+      yield l[i : i + batch_size]
 
   processed_feature_dicts = list(map(process_feature_dicts, feature_dicts))
   for one_batch in split_list(processed_feature_dicts, options.batch_size):
@@ -327,7 +379,8 @@ def run_model_on_examples(
     quality_scores = -10 * np.log10(error_prob)
     if options.dc_calibration_values.enabled:
       quality_scores = calibration_lib.calibrate_quality_scores(
-          quality_scores, options.dc_calibration_values)
+          quality_scores, options.dc_calibration_values
+      )
     # The maximum value for base quality scores is max_base_quality.
     quality_scores = np.minimum(quality_scores, options.max_base_quality)
     quality_scores = np.round(quality_scores, decimals=0)
@@ -335,17 +388,26 @@ def run_model_on_examples(
     # The minimum value for base quality scores is 0.
     quality_scores = np.maximum(quality_scores, 0)
     for y_pred, qs, window_pos, molecule_name, ec, np_, rq, rg in zip(
-        y_preds, quality_scores, window_pos_arr, molecule_name_arr, ec_arr,
-        np_num_passes_arr, rq_arr, rg_arr):
+        y_preds,
+        quality_scores,
+        window_pos_arr,
+        molecule_name_arr,
+        ec_arr,
+        np_num_passes_arr,
+        rq_arr,
+        rg_arr,
+    ):
       dc_output = stitch_utils.DCModelOutput(
           window_pos=window_pos,
           molecule_name=molecule_name,
           ec=ec,
           np_num_passes=np_,
           rq=rq,
-          rg=rg)
+          rg=rg,
+      )
       y_pred_bases = ''.join(
-          np.vectorize(dc_constants.SEQ_VOCAB.__getitem__)(y_pred))
+          np.vectorize(dc_constants.SEQ_VOCAB.__getitem__)(y_pred)
+      )
       quality_string = utils.quality_scores_to_string(qs)
       dc_output.sequence = y_pred_bases
       dc_output.quality_string = quality_string
@@ -357,7 +419,8 @@ def stitch_predictions_for_one_zmw(
     predictions: Iterable[stitch_utils.DCModelOutput],
     zmw: str,
     options: InferenceOptions,
-    outcome_counter=stitch_utils.OutcomeCounter) -> Optional[str]:
+    outcome_counter=stitch_utils.OutcomeCounter,
+) -> Optional[str]:
   """Stitches together predictions into one sequence.
 
   Args:
@@ -375,7 +438,8 @@ def stitch_predictions_for_one_zmw(
       max_length=options.max_length,
       min_quality=options.min_quality,
       min_length=options.min_length,
-      outcome_counter=outcome_counter)
+      outcome_counter=outcome_counter,
+  )
 
   return fastq_string
 
@@ -399,7 +463,8 @@ def stream_bam(
   dc_config = pre_lib.DcConfig(
       max_passes=options.max_passes,
       max_length=options.max_length,
-      use_ccs_bq=options.use_ccs_bq)
+      use_ccs_bq=options.use_ccs_bq,
+  )
 
   # Temporarily disable unused-variable.
   # pylint: disable=unused-variable
@@ -408,7 +473,8 @@ def stream_bam(
       ccs_bam=ccs_bam,
       dc_config=dc_config,
       ins_trim=FLAGS.ins_trim,
-      use_ccs_smart_windows=FLAGS.use_ccs_smart_windows)
+      use_ccs_smart_windows=FLAGS.use_ccs_smart_windows,
+  )
   # pylint: enable=unused_variable
 
   for input_data in proc_feeder():
@@ -417,8 +483,9 @@ def stream_bam(
 
 
 def initialize_model(
-    checkpoint_path: str, params: config_dict.ConfigDict,
-    options: InferenceOptions
+    checkpoint_path: str,
+    params: config_dict.ConfigDict,
+    options: InferenceOptions,
 ) -> Tuple[Optional[tf.keras.Model], Optional[config_dict.ConfigDict]]:
   """Initializes the model and gathers parameters.
 
@@ -438,7 +505,8 @@ def initialize_model(
       params=params,
       speedy=True,
       max_length=options.max_length,
-      is_training=False)
+      is_training=False,
+  )
 
   logging.info('Loading %s', checkpoint_path)
   if options.use_saved_model:
@@ -457,7 +525,8 @@ def initialize_model(
     input_shape = (1, params.total_rows, params.max_length, params.num_channels)
     model_utils.print_model_summary(model, input_shape)
     checkpoint.restore(
-        checkpoint_path).expect_partial().assert_existing_objects_matched()
+        checkpoint_path
+    ).expect_partial().assert_existing_objects_matched()
 
   logging.info('Finished initialize_model.')
   return model, params
@@ -485,7 +554,8 @@ def preprocess(
       subreads=subreads,
       ccs_seqname=zmw,
       dc_config=dc_config,
-      window_widths=window_widths)
+      window_widths=window_widths,
+  )
   if dc_whole_zmw is None or FLAGS.end_after_stage == DebugStage.DC_INPUT:
     return ([], None)
 
@@ -495,18 +565,20 @@ def preprocess(
 
 
 def process_skipped_window(
-    feature_dict: Dict[str, Any],
-    options: InferenceOptions) -> stitch_utils.DCModelOutput:
+    feature_dict: Dict[str, Any], options: InferenceOptions
+) -> stitch_utils.DCModelOutput:
   """Process a window by simply adopting the CCS sequence and base qualities."""
   rows = feature_dict['subreads']
   _, _, _, _, ccs_index, _, _ = data_providers.get_indices(
-      options.max_passes, options.use_ccs_bq)
+      options.max_passes, options.use_ccs_bq
+  )
   ccs = rows[ccs_index[0], :, 0]
   ccs_seq = utils.encoded_sequence_to_string(ccs)
   ccs_quality_scores = feature_dict['ccs_base_quality_scores']
   if options.ccs_calibration_values.enabled:
     ccs_quality_scores = calibration_lib.calibrate_quality_scores(
-        ccs_quality_scores, options.ccs_calibration_values)
+        ccs_quality_scores, options.ccs_calibration_values
+    )
   ccs_quality_scores = np.minimum(ccs_quality_scores, options.max_base_quality)
   ccs_quality_scores = ccs_quality_scores.astype(dtype=np.int32)
   dc_output = stitch_utils.DCModelOutput(
@@ -517,7 +589,8 @@ def process_skipped_window(
       ec=feature_dict['ec'],
       np_num_passes=feature_dict['np_num_passes'],
       rq=feature_dict['rq'],
-      rg=feature_dict['rg'])
+      rg=feature_dict['rg'],
+  )
   return dc_output
 
 
@@ -531,7 +604,8 @@ def inference_on_n_zmws(
     batch_name: str,
     outcome_counter: stitch_utils.OutcomeCounter,
     stats_counter: Any,
-    pool: Optional[concurrent.futures.ProcessPoolExecutor] = None) -> None:
+    pool: Optional[concurrent.futures.ProcessPoolExecutor] = None,
+) -> None:
   """Runs the full inference process on a batch of ZMWs and writes to fastq.
 
   Args:
@@ -570,7 +644,8 @@ def inference_on_n_zmws(
       before=before_batch,
       num_examples=batch_total_examples,
       num_subreads=batch_total_subreads,
-      num_zmws=num_zmws)
+      num_zmws=num_zmws,
+  )
   if FLAGS.end_after_stage in [DebugStage.TF_EXAMPLES, DebugStage.DC_INPUT]:
     return
 
@@ -591,7 +666,8 @@ def inference_on_n_zmws(
       # quality score is above the threshold.
       if options.skip_windows_above and not skip_example:
         avg_ccs_base_quality = utils.avg_phred(
-            window['ccs_base_quality_scores'])
+            window['ccs_base_quality_scores']
+        )
         if avg_ccs_base_quality > options.skip_windows_above:
           dc_output_for_window = process_skipped_window(window, options)
           predictions_for_skipped_windows.append(dc_output_for_window)
@@ -602,8 +678,9 @@ def inference_on_n_zmws(
   time_to_skip = time.time() - before_skipping
 
   before_run_model = time.time()
-  predictions_from_model = run_model_on_examples(feature_dicts_for_model, model,
-                                                 model_params, options)
+  predictions_from_model = run_model_on_examples(
+      feature_dicts_for_model, model, model_params, options
+  )
   time_to_run_model = time.time() - before_run_model
 
   predictions = predictions_from_model + predictions_for_skipped_windows
@@ -614,12 +691,18 @@ def inference_on_n_zmws(
     return 100 * (numerator / len(predictions))
 
   logging.info(
-      'Example summary: ran model=%d (%0.2f%%; %0.3fs) skip=%d (%0.2f%%; %0.3fs) total=%d.',
+      (
+          'Example summary: ran model=%d (%0.2f%%; %0.3fs) skip=%d (%0.2f%%;'
+          ' %0.3fs) total=%d.'
+      ),
       len(predictions_from_model),
-      percent_of_examples(len(predictions_from_model)), time_to_run_model,
+      percent_of_examples(len(predictions_from_model)),
+      time_to_run_model,
       len(predictions_for_skipped_windows),
-      percent_of_examples(len(predictions_for_skipped_windows)), time_to_skip,
-      len(predictions))
+      percent_of_examples(len(predictions_for_skipped_windows)),
+      time_to_skip,
+      len(predictions),
+  )
 
   timelog(
       stage='run_model',
@@ -627,7 +710,8 @@ def inference_on_n_zmws(
       before=before,
       num_examples=batch_total_examples,
       num_subreads=batch_total_subreads,
-      num_zmws=num_zmws)
+      num_zmws=num_zmws,
+  )
   if FLAGS.end_after_stage == DebugStage.RUN_MODEL:
     return
 
@@ -635,10 +719,12 @@ def inference_on_n_zmws(
   # Sort predictions prior to grouping
   # pylint: disable=g-long-lambda
   predictions = sorted(
-      predictions, key=lambda dc: (dc.molecule_name, dc.window_pos))
+      predictions, key=lambda dc: (dc.molecule_name, dc.window_pos)
+  )
 
-  for zmw, predictions_for_zmw in itertools.groupby(predictions,
-                                                    lambda p: p.molecule_name):
+  for zmw, predictions_for_zmw in itertools.groupby(
+      predictions, lambda p: p.molecule_name
+  ):
     predictions_for_zmw = list(predictions_for_zmw)
     fastq_string = stitch_utils.stitch_to_fastq(
         molecule_name=zmw,
@@ -646,7 +732,8 @@ def inference_on_n_zmws(
         max_length=options.max_length,
         min_quality=options.min_quality,
         min_length=options.min_length,
-        outcome_counter=outcome_counter)
+        outcome_counter=outcome_counter,
+    )
 
     if fastq_string:
       # FASTQs are written with gfile, bams are written with pysam.
@@ -678,9 +765,13 @@ def inference_on_n_zmws(
       before=before,
       num_examples=batch_total_examples,
       num_subreads=batch_total_subreads,
-      num_zmws=num_zmws)
-  logging.info('Processed a batch of %d ZMWs in %0.3f seconds', len(inputs),
-               time.time() - before_batch)
+      num_zmws=num_zmws,
+  )
+  logging.info(
+      'Processed a batch of %d ZMWs in %0.3f seconds',
+      len(inputs),
+      time.time() - before_batch,
+  )
 
 
 def save_runtime(time_points, output_prefix):
@@ -704,9 +795,9 @@ def run() -> stitch_utils.OutcomeCounter:
   """Performs an inference run."""
 
   # Determine if --checkpoint is a saved model.
-  use_saved_model = (
-      tf.io.gfile.exists(FLAGS.checkpoint) and
-      tf.io.gfile.exists(f'{FLAGS.checkpoint}/saved_model.pb'))
+  use_saved_model = tf.io.gfile.exists(FLAGS.checkpoint) and tf.io.gfile.exists(
+      f'{FLAGS.checkpoint}/saved_model.pb'
+  )
 
   # Load model parameters
   params = model_utils.read_params_from_json(checkpoint_path=FLAGS.checkpoint)
@@ -727,17 +818,25 @@ def run() -> stitch_utils.OutcomeCounter:
     dc_calibration_values = params.get('dc_calibration', 'skip')
     if dc_calibration_values != 'skip':
       logging.info(
-          'DeepConsensus base calibration values read from '
-          'model params.json: %s', dc_calibration_values)
+          (
+              'DeepConsensus base calibration values read from '
+              'model params.json: %s'
+          ),
+          dc_calibration_values,
+      )
   else:
     dc_calibration_values = FLAGS.dc_calibration
   dc_calibration_values = calibration_lib.parse_calibration_string(
-      dc_calibration_values)
+      dc_calibration_values
+  )
   if not FLAGS.ccs_calibration:
-    raise ValueError('--ccs_calibration should be set to "skip" '
-                     'or to base calibration scores.')
+    raise ValueError(
+        '--ccs_calibration should be set to "skip" '
+        'or to base calibration scores.'
+    )
   ccs_calibration_values = calibration_lib.parse_calibration_string(
-      FLAGS.ccs_calibration)
+      FLAGS.ccs_calibration
+  )
 
   options = InferenceOptions(
       max_length=params.max_length,
@@ -763,19 +862,25 @@ def run() -> stitch_utils.OutcomeCounter:
     pool = concurrent.futures.ProcessPoolExecutor(max_workers=options.cpus)
     logging.info('Using multiprocessing: cpus is %s.', options.cpus)
   elif options.cpus < 0:
-    raise ValueError('Number of processes must be positive '
-                     '(for multiprocessing) or 0 (for serial execution).')
+    raise ValueError(
+        'Number of processes must be positive '
+        '(for multiprocessing) or 0 (for serial execution).'
+    )
 
   # Set up model.
   before_model_setup = time.time()
   loaded_model, model_params = initialize_model(
-      checkpoint_path=FLAGS.checkpoint, params=params, options=options)
+      checkpoint_path=FLAGS.checkpoint, params=params, options=options
+  )
   logging.info('Model setup took %s seconds.', time.time() - before_model_setup)
 
   # Initialize output fastq writer.
   output_fname = FLAGS.output
-  correct_suffix = output_fname.endswith('.fq') or output_fname.endswith(
-      '.fastq') or output_fname.endswith('.bam')
+  correct_suffix = (
+      output_fname.endswith('.fq')
+      or output_fname.endswith('.fastq')
+      or output_fname.endswith('.bam')
+  )
   if not correct_suffix:
     raise NameError('Filename must end in .fq, .fastq, or .bam')
 
@@ -788,12 +893,14 @@ def run() -> stitch_utils.OutcomeCounter:
   else:
     ccs_bam_header = pysam.AlignmentFile(FLAGS.ccs_bam, check_sq=False).header
     output_writer = pysam.AlignmentFile(
-        output_fname, 'wb', header=ccs_bam_header)
+        output_fname, 'wb', header=ccs_bam_header
+    )
 
   input_file_generator = stream_bam(
       subreads_to_ccs=FLAGS.subreads_to_ccs,
       ccs_bam=FLAGS.ccs_bam,
-      options=options)
+      options=options,
+  )
 
   num_zmws_to_batch = FLAGS.batch_zmws
 
@@ -817,11 +924,15 @@ def run() -> stitch_utils.OutcomeCounter:
           batch_name=str(batch_count),
           outcome_counter=outcome_counter,
           stats_counter=stats_counter,
-          pool=pool)
+          pool=pool,
+      )
       batch_count += 1
       stored_n_zmws = []
-      logging.info('Processed %s ZMWs in %0.3f seconds', zmw_counter,
-                   time.time() - before_all_zmws)
+      logging.info(
+          'Processed %s ZMWs in %0.3f seconds',
+          zmw_counter,
+          time.time() - before_all_zmws,
+      )
 
   if stored_n_zmws:
     inference_on_n_zmws(
@@ -833,15 +944,19 @@ def run() -> stitch_utils.OutcomeCounter:
         batch_name=str(batch_count),
         outcome_counter=outcome_counter,
         stats_counter=stats_counter,
-        pool=pool)
+        pool=pool,
+    )
 
   if pool:
     pool.shutdown(wait=True)
 
   output_writer.close()
 
-  logging.info('Processed %s ZMWs in %0.3f seconds', zmw_counter,
-               time.time() - before_all_zmws)
+  logging.info(
+      'Processed %s ZMWs in %0.3f seconds',
+      zmw_counter,
+      time.time() - before_all_zmws,
+  )
   logging.info('Outcome counts: %s', outcome_counter)
   save_runtime(time_points=timing, output_prefix=f'{output_fname}.runtime')
   save_counters(stats_counter, output_prefix=f'{output_fname}.inference')
@@ -851,8 +966,10 @@ def run() -> stitch_utils.OutcomeCounter:
 def main(_):
   """Main entry point."""
   if FLAGS.ccs_fasta:
-    raise NotImplementedError('The --ccs_fasta flag has been deprecated. '
-                              'Please use --ccs_bam instead.')
+    raise NotImplementedError(
+        'The --ccs_fasta flag has been deprecated. '
+        'Please use --ccs_bam instead.'
+    )
   if FLAGS.use_only_gpu_index:
     with tf.device(f'GPU:{FLAGS.use_only_gpu_index}'):
       outcome_counter = run()

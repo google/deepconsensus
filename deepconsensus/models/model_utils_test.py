@@ -80,7 +80,9 @@ class ModifyParamsTest(parameterized.TestCase):
     elif config_name == 'transformer+test':
       self.assertEqual(params.batch_size, params.default_batch_size)
 
-  def test_inference_params_removed(self,):
+  def test_inference_params_removed(
+      self,
+  ):
     params = model_configs.get_config('fc+test')
     model_utils.modify_params(params, is_training=False)
 
@@ -122,7 +124,8 @@ class GetStepCountsTest(parameterized.TestCase):
           batch_size=10,
           limit=-1,
           eval_and_log_every_step=False,
-          expected_step_counts=(100, 10)),
+          expected_step_counts=(100, 10),
+      ),
       dict(
           testcase_name='with_limit',
           n_examples_train=1000,
@@ -130,7 +133,8 @@ class GetStepCountsTest(parameterized.TestCase):
           batch_size=10,
           limit=100,
           eval_and_log_every_step=False,
-          expected_step_counts=(10, 10)),
+          expected_step_counts=(10, 10),
+      ),
       dict(
           testcase_name='simple_eval_log_every_step',
           n_examples_train=1000,
@@ -138,11 +142,18 @@ class GetStepCountsTest(parameterized.TestCase):
           batch_size=10,
           limit=-1,
           eval_and_log_every_step=True,
-          expected_step_counts=(1, 1)),
+          expected_step_counts=(1, 1),
+      ),
   )
-  def test_get_step_counts(self, n_examples_train, n_examples_eval, batch_size,
-                           limit, eval_and_log_every_step,
-                           expected_step_counts):
+  def test_get_step_counts(
+      self,
+      n_examples_train,
+      n_examples_eval,
+      batch_size,
+      limit,
+      eval_and_log_every_step,
+      expected_step_counts,
+  ):
     params = model_configs.get_config('fc+test')
     with params.unlocked():
       params.n_examples_train = n_examples_train
@@ -152,7 +163,8 @@ class GetStepCountsTest(parameterized.TestCase):
 
     self.assertEqual(
         model_utils.get_step_counts(params, eval_and_log_every_step),
-        expected_step_counts)
+        expected_step_counts,
+    )
 
 
 class ReadParamsFromJsonTest(absltest.TestCase):

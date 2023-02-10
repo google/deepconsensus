@@ -42,15 +42,17 @@ from deepconsensus.models import model_utils
 from deepconsensus.utils import dc_constants
 
 
-def get_tf_example_rows(params: ml_collections.ConfigDict,
-                        inference: bool) -> np.ndarray:
+def get_tf_example_rows(
+    params: ml_collections.ConfigDict, inference: bool
+) -> np.ndarray:
   """Returns one example from the training dataset for given params."""
   dataset = data_providers.get_dataset(
       file_pattern=params.train_path,
       num_epochs=params.num_epochs,
       batch_size=params.batch_size,
       params=params,
-      inference=inference)
+      inference=inference,
+  )
   tf_example = next(dataset.as_numpy_iterator())
   return tf_example['rows']
 
@@ -65,7 +67,9 @@ class ModelsTest(parameterized.TestCase):
               'transformer+test',
               'transformer_learn_values+test',
           ],
-          [True, False]))
+          [True, False],
+      )
+  )
   def test_outputs(self, training, config_name, use_predict):
     """Checks that softmax distribution and final predictions are valid.
 
@@ -90,11 +94,14 @@ class ModelsTest(parameterized.TestCase):
     # uses a batch size of 1.
     self.assertEqual(
         softmax_output.shape,
-        (params.batch_size, params.max_length, dc_constants.SEQ_VOCAB_SIZE))
+        (params.batch_size, params.max_length, dc_constants.SEQ_VOCAB_SIZE),
+    )
     self.assertTrue(
         np.allclose(
             np.sum(softmax_output, axis=-1),
-            np.ones(shape=[params.batch_size, params.max_length])))
+            np.ones(shape=[params.batch_size, params.max_length]),
+        )
+    )
     self.assertEqual(predictions.shape, (params.batch_size, params.max_length))
 
   @parameterized.parameters(
@@ -104,7 +111,9 @@ class ModelsTest(parameterized.TestCase):
               'transformer+test',
               'transformer_learn_values+test',
           ],
-          [True, False]))
+          [True, False],
+      )
+  )
   def test_predict_and_model_fn_equal(self, config_name, inference):
     """Checks that model.predict and calling model as a function are equal."""
     config = model_configs.get_config(config_name)
@@ -114,11 +123,14 @@ class ModelsTest(parameterized.TestCase):
     softmax_output_predict = model.predict(rows)
     softmax_output = model(rows, training=False).numpy()
     self.assertTrue(
-        np.allclose(softmax_output_predict, softmax_output, rtol=1e-05))
+        np.allclose(softmax_output_predict, softmax_output, rtol=1e-05)
+    )
 
   @parameterized.parameters(
-      itertools.product(['transformer_learn_values+test'], [True, False],
-                        [6, 12]))
+      itertools.product(
+          ['transformer_learn_values+test'], [True, False], [6, 12]
+      )
+  )
   def test_attn_win_sizes(self, config_name, inference, attn_win_size):
     """Checks that attention scores are zero outside attention mask."""
     config = model_configs.get_config(config_name)
@@ -135,7 +147,8 @@ class ModelsTest(parameterized.TestCase):
       self.assertTrue(np.allclose(attn_maps_masked.numpy(), 0.0, rtol=1e-05))
     self.assertEqual(
         outputs['logits'].numpy().shape,
-        (config.batch_size, config.max_length, dc_constants.SEQ_VOCAB_SIZE))
+        (config.batch_size, config.max_length, dc_constants.SEQ_VOCAB_SIZE),
+    )
 
 
 if __name__ == '__main__':

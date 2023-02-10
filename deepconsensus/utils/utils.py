@@ -36,7 +36,8 @@ from deepconsensus.utils import dc_constants
 def encoded_sequence_to_string(encoded_sequence: np.ndarray) -> str:
   encoded_sequence = encoded_sequence.astype(int)
   return ''.join(
-      np.vectorize(dc_constants.SEQ_VOCAB.__getitem__)(encoded_sequence))
+      np.vectorize(dc_constants.SEQ_VOCAB.__getitem__)(encoded_sequence)
+  )
 
 
 def quality_score_to_string(score: int) -> str:
@@ -99,7 +100,7 @@ def avg_phred(base_qualities: Union[np.ndarray, List[int]]) -> float:
   base_qualities = base_qualities[base_qualities >= 0]
   if not base_qualities.any():
     return 0.0
-  probs = 10**(base_qualities / -10.)
+  probs = 10 ** (base_qualities / -10.0)
   avg_prob = probs.sum() / len(probs)
   avg_q = -10 * np.log10(avg_prob)
   return avg_q
@@ -108,7 +109,8 @@ def avg_phred(base_qualities: Union[np.ndarray, List[int]]) -> float:
 def left_shift_seq(seq: np.ndarray) -> np.ndarray:
   """Left shift a numeric-encoded sequence."""
   return np.concatenate(
-      [seq[seq != dc_constants.GAP_INT], seq[seq == dc_constants.GAP_INT]])
+      [seq[seq != dc_constants.GAP_INT], seq[seq == dc_constants.GAP_INT]]
+  )
 
 
 def left_shift(batch_seq: np.ndarray, axis: int = 1) -> np.ndarray:

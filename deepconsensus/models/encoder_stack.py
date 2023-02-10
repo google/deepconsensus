@@ -43,8 +43,9 @@ from deepconsensus.models import ffn_layer
 class PrePostProcessingWrapper(tf.keras.layers.Layer):
   """Wrapper class that applies layer pre-processing and post-processing."""
 
-  def __init__(self, layer: tf.keras.layers.Layer,
-               params: ml_collections.ConfigDict):
+  def __init__(
+      self, layer: tf.keras.layers.Layer, params: ml_collections.ConfigDict
+  ):
     super(PrePostProcessingWrapper, self).__init__()
     self.layer = layer
     self.params = params
@@ -55,10 +56,12 @@ class PrePostProcessingWrapper(tf.keras.layers.Layer):
       # Variable used in ReZero (paper: https://arxiv.org/abs/2003.04887).
       alpha_init = tf.zeros_initializer()
       self.alpha = tf.Variable(
-          initial_value=alpha_init(shape=()), trainable=True)
+          initial_value=alpha_init(shape=()), trainable=True
+      )
     else:
       self.layer_norm = tf.keras.layers.LayerNormalization(
-          epsilon=1e-6, dtype="float32")
+          epsilon=1e-6, dtype="float32"
+      )
     super(PrePostProcessingWrapper, self).build(input_shape)
 
   def get_config(self) -> Dict[str, Any]:
@@ -110,19 +113,24 @@ class EncoderStack(tf.keras.layers.Layer):
     for _ in range(params["num_hidden_layers"]):
       # Create sublayers for each layer.
       self_attention_layer = attention_layer.SelfAttention(
-          params["hidden_size"], params["num_heads"],
-          params["attention_dropout"], params["attn_win_size"])
+          params["hidden_size"],
+          params["num_heads"],
+          params["attention_dropout"],
+          params["attn_win_size"],
+      )
       feed_forward_network = ffn_layer.FeedForwardNetwork(
-          params["hidden_size"], params["filter_size"], params["relu_dropout"])
+          params["hidden_size"], params["filter_size"], params["relu_dropout"]
+      )
 
       self.layers.append([
           PrePostProcessingWrapper(self_attention_layer, params),
-          PrePostProcessingWrapper(feed_forward_network, params)
+          PrePostProcessingWrapper(feed_forward_network, params),
       ])
 
     # Create final layer normalization layer.
     self.output_normalization = tf.keras.layers.LayerNormalization(
-        epsilon=1e-6, dtype="float32")
+        epsilon=1e-6, dtype="float32"
+    )
     super(EncoderStack, self).build(input_shape)
 
   def get_config(self) -> Dict[str, Any]:
@@ -130,8 +138,13 @@ class EncoderStack(tf.keras.layers.Layer):
         "params": self.params,
     }
 
-  def call(self, encoder_inputs: tf.Tensor, attention_bias: tf.Tensor,
-           inputs_padding: tf.Tensor, training: bool) -> Dict[str, tf.Tensor]:
+  def call(
+      self,
+      encoder_inputs: tf.Tensor,
+      attention_bias: tf.Tensor,
+      inputs_padding: tf.Tensor,
+      training: bool,
+  ) -> Dict[str, tf.Tensor]:
     """Return the output of the encoder layer stacks.
 
     Args:
@@ -164,15 +177,18 @@ class EncoderStack(tf.keras.layers.Layer):
       with tf.name_scope("layer_%d" % n):
         with tf.name_scope("self_attention"):
           layer_outputs = self_attention_layer(
-              encoder_inputs, attention_bias, training=training)
+              encoder_inputs, attention_bias, training=training
+          )
           encoder_inputs = layer_outputs["main_output"]
           # Add attention layer outputs and attention map scores to outputs.
           outputs_dict[f"self_attention_layer_{n}"] = encoder_inputs
           outputs_dict[f"attention_scores_{n}"] = layer_outputs[
-              "attention_scores"]
+              "attention_scores"
+          ]
         with tf.name_scope("ffn"):
           layer_outputs = feed_forward_network(
-              encoder_inputs, training=training)
+              encoder_inputs, training=training
+          )
           encoder_inputs = layer_outputs["main_output"]
           # Add output of the feedforward network to outputs.
           outputs_dict[f"ffn_layer_{n}"] = encoder_inputs

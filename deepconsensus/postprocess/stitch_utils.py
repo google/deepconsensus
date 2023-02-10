@@ -48,9 +48,11 @@ class DCModelOutput:
   quality_string: Optional[str] = None
 
 
-def get_full_sequence(deepconsensus_outputs: Iterable[DCModelOutput],
-                      max_length: int,
-                      fill_n: bool = False):
+def get_full_sequence(
+    deepconsensus_outputs: Iterable[DCModelOutput],
+    max_length: int,
+    fill_n: bool = False,
+):
   """Stitch together windows of predictions into a full sequence."""
   # Build up the full sequence from the sorted windows.
   full_sequence_parts = []
@@ -67,7 +69,8 @@ def get_full_sequence(deepconsensus_outputs: Iterable[DCModelOutput],
         full_sequence_parts.append('N' * max_length)
         empty_quality_scores = np.array([dc_constants.EMPTY_QUAL] * max_length)
         empty_quality_string = utils.quality_scores_to_string(
-            empty_quality_scores)
+            empty_quality_scores
+        )
         quality_string_parts.append(empty_quality_string)
         start += max_length
     full_sequence_parts.append(dc_output.sequence)
@@ -106,8 +109,9 @@ def is_quality_above_threshold(quality_string, min_quality):
   return rounded_avg_phred >= min_quality
 
 
-def format_as_fastq(molecule_name: str, sequence: str,
-                    quality_string: str) -> str:
+def format_as_fastq(
+    molecule_name: str, sequence: str, quality_string: str
+) -> str:
   formatted_for_fastq = f'@{molecule_name}\n'
   formatted_for_fastq += f'{sequence}\n'
   formatted_for_fastq += '+\n'
@@ -124,48 +128,62 @@ class OutcomeCounter:
   success: int = 0
 
 
-def stitch_to_fastq(molecule_name: str, predictions: Iterable[DCModelOutput],
-                    max_length: int, min_quality: int, min_length: int,
-                    outcome_counter: OutcomeCounter) -> Optional[str]:
+def stitch_to_fastq(
+    molecule_name: str,
+    predictions: Iterable[DCModelOutput],
+    max_length: int,
+    min_quality: int,
+    min_length: int,
+    outcome_counter: OutcomeCounter,
+) -> Optional[str]:
   """Stitch windows of predictions together, filter, and make FASTQ string."""
   full_sequence, full_quality_string = get_full_sequence(
-      deepconsensus_outputs=predictions, max_length=max_length)
+      deepconsensus_outputs=predictions, max_length=max_length
+  )
   # Filter out the read if it is empty after stitching.
   if not full_sequence:
     outcome_counter.empty_sequence += 1
-    logging.vlog(1, 'Filtered out read that was empty after stitching: %s',
-                 molecule_name)
+    logging.vlog(
+        1, 'Filtered out read that was empty after stitching: %s', molecule_name
+    )
 
     return None
 
   final_sequence, final_quality_string = remove_gaps(
-      sequence=full_sequence, quality_string=full_quality_string)
+      sequence=full_sequence, quality_string=full_quality_string
+  )
   # Filter out the read if it contains only gaps and no bases.
   if not final_sequence:
     outcome_counter.only_gaps += 1
-    logging.vlog(1,
-                 'Filtered out read that contained only gaps and no bases: %s',
-                 molecule_name)
+    logging.vlog(
+        1,
+        'Filtered out read that contained only gaps and no bases: %s',
+        molecule_name,
+    )
     return None
 
   # Filter out the read if its quality scores are too low.
   if not is_quality_above_threshold(
-      quality_string=final_quality_string, min_quality=min_quality):
+      quality_string=final_quality_string, min_quality=min_quality
+  ):
     outcome_counter.failed_quality_filter += 1
-    logging.vlog(1, 'Filtered out read below quality threshold: %s',
-                 molecule_name)
+    logging.vlog(
+        1, 'Filtered out read below quality threshold: %s', molecule_name
+    )
     return None
 
   # Filter out the read if it is too short.
   if len(final_sequence) < min_length:
     outcome_counter.failed_length_filter += 1
-    logging.vlog(1, 'Filtered out read below length threshold: %s',
-                 molecule_name)
+    logging.vlog(
+        1, 'Filtered out read below length threshold: %s', molecule_name
+    )
     return None
 
   fastq = format_as_fastq(
       molecule_name=molecule_name,
       sequence=final_sequence,
-      quality_string=final_quality_string)
+      quality_string=final_quality_string,
+  )
   outcome_counter.success += 1
   return fastq

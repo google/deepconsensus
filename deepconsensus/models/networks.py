@@ -49,9 +49,11 @@ class ModifiedOnDeviceEmbedding(layers.OnDeviceEmbedding):
         vocab_size,
         embedding_width,
         initializer=tf.random_normal_initializer(
-            mean=0., stddev=embedding_width**-0.5),
+            mean=0.0, stddev=embedding_width**-0.5
+        ),
         scale_factor=embedding_width**0.5,
-        **kwargs)
+        **kwargs,
+    )
 
   def call(self, inputs):
     # make sure 0 ids match to zero emebeddings.
@@ -66,7 +68,8 @@ def FullyConnectedNet(params: ml_collections.ConfigDict) -> tf.keras.Model:
   """Fully connected neural network architecture."""
 
   inputs = tf.keras.Input(
-      shape=(params.hidden_size, params.max_length, params.num_channels))
+      shape=(params.hidden_size, params.max_length, params.num_channels)
+  )
   l2_reg = tf.keras.regularizers.l2
   net = inputs
   net = tf.keras.layers.Flatten()(net)
@@ -74,32 +77,42 @@ def FullyConnectedNet(params: ml_collections.ConfigDict) -> tf.keras.Model:
     net = tf.keras.layers.Dense(
         units=params.fc_size[i],
         activation=tf.nn.relu,
-        kernel_regularizer=l2_reg(params.l2))(
-            net)
+        kernel_regularizer=l2_reg(params.l2),
+    )(net)
     net = tf.keras.layers.Dropout(rate=params.fc_dropout)(net)
 
-  net = tf.keras.layers.Dense(units=params.max_length *
-                              dc_constants.SEQ_VOCAB_SIZE)(
-                                  net)
+  net = tf.keras.layers.Dense(
+      units=params.max_length * dc_constants.SEQ_VOCAB_SIZE
+  )(net)
   net = tf.keras.layers.Reshape(
-      (params.max_length, dc_constants.SEQ_VOCAB_SIZE))(
-          net)
+      (params.max_length, dc_constants.SEQ_VOCAB_SIZE)
+  )(net)
   net = tf.keras.layers.Softmax(axis=-1)(net)
   outputs = net
   return tf.keras.Model(inputs=inputs, outputs=outputs)
 
 
 def get_conv_sub_model(
-    conv_model
-) -> Tuple[Callable[..., tf.Tensor], Callable[[tf.keras.Model],
-                                              tf.keras.Model]]:
+    conv_model,
+) -> Tuple[
+    Callable[..., tf.Tensor], Callable[[tf.keras.Model], tf.keras.Model]
+]:
   """Returns a predefined convolutional architecture."""
   if conv_model == 'resnet50':
-    return tf.keras.applications.ResNet50V2, tf.keras.applications.resnet_v2.preprocess_input
+    return (
+        tf.keras.applications.ResNet50V2,
+        tf.keras.applications.resnet_v2.preprocess_input,
+    )
   elif conv_model == 'resnet101':
-    return tf.keras.applications.ResNet101V2, tf.keras.applications.resnet_v2.preprocess_input
+    return (
+        tf.keras.applications.ResNet101V2,
+        tf.keras.applications.resnet_v2.preprocess_input,
+    )
   elif conv_model == 'resnet152':
-    return tf.keras.applications.ResNet152V2, tf.keras.applications.resnet_v2.preprocess_input
+    return (
+        tf.keras.applications.ResNet152V2,
+        tf.keras.applications.resnet_v2.preprocess_input,
+    )
   else:
     raise NotImplementedError(f'conv model "{conv_model}" not found')
 
@@ -119,7 +132,8 @@ class ConvNet(tf.keras.Model):
         include_top=False,
         weights=None,
         input_shape=self.resnet_input_shape,
-        pooling='avg')
+        pooling='avg',
+    )
     self.use_sn = params.use_sn
     self.max_length = params.max_length
 
@@ -150,8 +164,7 @@ class ConvNet(tf.keras.Model):
     net = tf.keras.layers.Reshape((
         self.max_length,
         dc_constants.SEQ_VOCAB_SIZE,
-    ))(
-        net)
+    ))(net)
     net = tf.keras.layers.Softmax(axis=-1)(net)
     output = net
     return output
@@ -178,22 +191,26 @@ class EncoderOnlyTransformer(tf.keras.Model):
   classification task.
   """
 
-  def __init__(self,
-               params: ml_collections.ConfigDict,
-               name: Optional[str] = None,
-               **kwargs):
+  def __init__(
+      self,
+      params: ml_collections.ConfigDict,
+      name: Optional[str] = None,
+      **kwargs,
+  ):
     super().__init__(**kwargs)
     self.params = params
     if self.params.add_pos_encoding:
       self.position_embedding = layers.RelativePositionEmbedding(
-          hidden_size=self.params['hidden_size'])
+          hidden_size=self.params['hidden_size']
+      )
     self.encoder_stack = encoder_stack.EncoderStack(params)
     self.fc1 = tf.keras.layers.Dense(
         units=(dc_constants.SEQ_VOCAB_SIZE),
         activation=None,
         use_bias=True,
         kernel_initializer='glorot_uniform',
-        bias_initializer='zeros')
+        bias_initializer='zeros',
+    )
     self.softmax = tf.keras.layers.Softmax()
 
   def get_config(self) -> Dict[str, Any]:
@@ -215,13 +232,15 @@ class EncoderOnlyTransformer(tf.keras.Model):
     """
     with tf.name_scope('Transformer'):
       intermediate_outputs_dict = self.get_intermediate_outputs(
-          inputs, training=training)
+          inputs, training=training
+      )
       logits = intermediate_outputs_dict['logits']
       preds = self.softmax(logits)
       return preds
 
-  def get_intermediate_outputs(self, inputs: tf.Tensor,
-                               training: bool) -> Dict[str, tf.Tensor]:
+  def get_intermediate_outputs(
+      self, inputs: tf.Tensor, training: bool
+  ) -> Dict[str, tf.Tensor]:
     """Get intermediate outputs of the model.
 
     Args:
@@ -264,12 +283,12 @@ class EncoderOnlyTransformer(tf.keras.Model):
     intermediate_outputs_dict = self.encode(inputs, attention_bias, training)
     return intermediate_outputs_dict
 
-  def encode(self, inputs: tf.Tensor, attention_bias: tf.Tensor,
-             training: bool) -> Dict[str, tf.Tensor]:
+  def encode(
+      self, inputs: tf.Tensor, attention_bias: tf.Tensor, training: bool
+  ) -> Dict[str, tf.Tensor]:
     """Runs the input through Encoder stack and problem-specific layers."""
 
     with tf.name_scope('encode'):
-
       # The input for each position is already a vector, so we do not use
       # embeddings here, unlike the base model. Base model input is a token at
       # each position, which must first be embedded as a vector. In the future,
@@ -281,7 +300,8 @@ class EncoderOnlyTransformer(tf.keras.Model):
       # hidden_size. If hidden_size is odd, add an empty row to make it even.
       if self.params.add_pos_encoding and encoder_inputs.shape[2] % 2 != 0:
         empty_row = tf.zeros(
-            shape=(encoder_inputs.shape[0], encoder_inputs.shape[1], 1))
+            shape=(encoder_inputs.shape[0], encoder_inputs.shape[1], 1)
+        )
         encoder_inputs = tf.concat([encoder_inputs, empty_row], axis=-1)
         assert self.params.hidden_size == encoder_inputs.shape[2]
 
@@ -305,7 +325,8 @@ class EncoderOnlyTransformer(tf.keras.Model):
       # Add dropout when training.
       if training:
         encoder_inputs = tf.nn.dropout(
-            encoder_inputs, rate=self.params['layer_postprocess_dropout'])
+            encoder_inputs, rate=self.params['layer_postprocess_dropout']
+        )
 
       # Pass inputs through the encoder. As mentioned above, `inputs_padding` is
       # not actually used by EncoderStack.call. Encoder stack output is a
@@ -313,7 +334,8 @@ class EncoderOnlyTransformer(tf.keras.Model):
       # (batch_size, input_length, hidden_size) as well as intermediate outputs
       # of each of the attention and feed forward network layers in the stack.
       encoder_outputs_dict = self.encoder_stack(
-          encoder_inputs, attention_bias, inputs_padding, training=training)
+          encoder_inputs, attention_bias, inputs_padding, training=training
+      )
 
       # Pass the final output of the encoder stack through dense layer and
       # output logits over vocab for each position.
@@ -322,8 +344,12 @@ class EncoderOnlyTransformer(tf.keras.Model):
       encoder_outputs_dict['logits'] = encoder_outputs
       return encoder_outputs_dict
 
-  def decode(self, encoder_outputs: tf.Tensor, attention_bias: tf.Tensor,
-             training: bool) -> tf.Tensor:
+  def decode(
+      self,
+      encoder_outputs: tf.Tensor,
+      attention_bias: tf.Tensor,
+      training: bool,
+  ) -> tf.Tensor:
     """Returns the outputs from the encoder."""
 
     raise NotImplementedError
@@ -342,29 +368,32 @@ class EncoderOnlyTransformer(tf.keras.Model):
 class EncoderOnlyLearnedValuesTransformer(EncoderOnlyTransformer):
   """Modified transformer that learns embeddings for the bases."""
 
-  def __init__(self,
-               params: ml_collections.ConfigDict,
-               name: Optional[str] = None):
+  def __init__(
+      self, params: ml_collections.ConfigDict, name: Optional[str] = None
+  ):
     super(EncoderOnlyLearnedValuesTransformer, self).__init__(params, name=name)
     if params.use_bases:
       self.bases_embedding_layer = ModifiedOnDeviceEmbedding(
           vocab_size=dc_constants.SEQ_VOCAB_SIZE,
           embedding_width=params['per_base_hidden_size'],
-          name='bases_embedding')
+          name='bases_embedding',
+      )
 
     if params.use_pw:
       pw_vocab_size = params.PW_MAX + 1
       self.pw_embedding_layer = ModifiedOnDeviceEmbedding(
           vocab_size=pw_vocab_size,
           embedding_width=params['pw_hidden_size'],
-          name='pw_embedding')
+          name='pw_embedding',
+      )
 
     if params.use_ip:
       ip_vocab_size = params.IP_MAX + 1
       self.ip_embedding_layer = ModifiedOnDeviceEmbedding(
           vocab_size=ip_vocab_size,
           embedding_width=params['ip_hidden_size'],
-          name='ip_embedding')
+          name='ip_embedding',
+      )
 
     if params.use_ccs_bq:
       # Values range from -1 to 93; So 95 distinct values.
@@ -372,21 +401,24 @@ class EncoderOnlyLearnedValuesTransformer(EncoderOnlyTransformer):
       self.ccs_base_quality_scores_embedding_layer = ModifiedOnDeviceEmbedding(
           vocab_size=ccs_bq_scores_vocab_size,
           embedding_width=params['ccs_bq_hidden_size'],
-          name='ccs_base_quality_scores_embedding')
+          name='ccs_base_quality_scores_embedding',
+      )
 
     if params.use_sn:
       sn_vocab_size = params.SN_MAX + 1
       self.sn_embedding_layer = ModifiedOnDeviceEmbedding(
           vocab_size=sn_vocab_size,
           embedding_width=params['sn_hidden_size'],
-          name='sn_embedding')
+          name='sn_embedding',
+      )
 
     if params.use_strand:
       strand_vocab_size = params.STRAND_MAX + 1
       self.strand_embedding_layer = ModifiedOnDeviceEmbedding(
           vocab_size=strand_vocab_size,
           embedding_width=params['strand_hidden_size'],
-          name='strand_embedding')
+          name='strand_embedding',
+      )
 
     # Define a dense layer to linearly map the concatenated embeddings of
     # all subreads at a given position to a smaller dimension
@@ -398,10 +430,12 @@ class EncoderOnlyLearnedValuesTransformer(EncoderOnlyTransformer):
           activation=None,
           use_bias=False,
           kernel_initializer='glorot_uniform',
-          bias_initializer='zeros')
+          bias_initializer='zeros',
+      )
 
-  def encode(self, inputs: tf.Tensor, attention_bias: tf.Tensor,
-             training: bool) -> Dict[str, tf.Tensor]:
+  def encode(
+      self, inputs: tf.Tensor, attention_bias: tf.Tensor, training: bool
+  ) -> Dict[str, tf.Tensor]:
     """Runs the input through Encoder stack and problem-specific layers."""
 
     # Input to embedding layer is [batch_size, length] and output will be
@@ -424,7 +458,8 @@ class EncoderOnlyLearnedValuesTransformer(EncoderOnlyTransformer):
       for i in range(*base_indices):
         # Shape: [batch_size, length, per_base_hidden_size]
         embedded = self.bases_embedding_layer(
-            tf.cast(inputs[:, :, i], tf.int32))
+            tf.cast(inputs[:, :, i], tf.int32)
+        )
         embedded_inputs.append(embedded)
 
     if self.params.use_pw:
@@ -442,20 +477,23 @@ class EncoderOnlyLearnedValuesTransformer(EncoderOnlyTransformer):
     if self.params.use_strand:
       for i in range(*strand_indices):
         embedded = self.strand_embedding_layer(
-            tf.cast(inputs[:, :, i], tf.int32))
+            tf.cast(inputs[:, :, i], tf.int32)
+        )
         embedded_inputs.append(embedded)
 
     if self.params.use_ccs:
       for i in range(*ccs_indices):
         embedded = self.bases_embedding_layer(
-            tf.cast(inputs[:, :, i], tf.int32))
+            tf.cast(inputs[:, :, i], tf.int32)
+        )
         embedded_inputs.append(embedded)
 
     if self.params.use_ccs_bq:
       for i in range(*ccs_bq_indices):
         # Add 1 to ccs base quality scores to shift gaps from -1 to 0.
         embedded = self.ccs_base_quality_scores_embedding_layer(
-            tf.cast(inputs[:, :, i] + 1, tf.int32))
+            tf.cast(inputs[:, :, i] + 1, tf.int32)
+        )
         embedded_inputs.append(embedded)
 
     if self.params.use_sn:
@@ -477,5 +515,6 @@ class EncoderOnlyLearnedValuesTransformer(EncoderOnlyTransformer):
     else:
       transformer_input = embedded_inputs
 
-    return super(EncoderOnlyLearnedValuesTransformer,
-                 self).encode(transformer_input, attention_bias, training)
+    return super(EncoderOnlyLearnedValuesTransformer, self).encode(
+        transformer_input, attention_bias, training
+    )

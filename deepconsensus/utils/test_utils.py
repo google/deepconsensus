@@ -108,13 +108,15 @@ def deepconsensus_testdata(filename):
     The absolute path to a testdata file.
   """
   return genomics_testdata(
-      os.path.join('deepconsensus/testdata', filename), DEEPCONSENSUS_DATADIR)
+      os.path.join('deepconsensus/testdata', filename), DEEPCONSENSUS_DATADIR
+  )
 
 
 def get_one_hot(value: Union[int, np.ndarray]) -> np.ndarray:
   """Returns a one-hot vector for a given value."""
-  return np.eye(
-      len(dc_constants.SEQ_VOCAB), dtype=dc_constants.NP_DATA_TYPE)[value]
+  return np.eye(len(dc_constants.SEQ_VOCAB), dtype=dc_constants.NP_DATA_TYPE)[
+      value
+  ]
 
 
 def seq_to_array(seq: str) -> List[int]:

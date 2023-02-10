@@ -47,7 +47,6 @@ def edit_distance(s1: str, s2: str) -> int:
 
   Returns:
     The Levenstein edit distance.
-
   """
   if len(s1) > len(s2):
     s1, s2 = s2, s1
@@ -63,8 +62,9 @@ def edit_distance(s1: str, s2: str) -> int:
       if c1 == c2:
         distances_.append(distances[i1])
       else:
-        distances_.append(1 + min((distances[i1], distances[i1 + 1],
-                                   distances_[-1])))
+        distances_.append(
+            1 + min((distances[i1], distances[i1 + 1], distances_[-1]))
+        )
     distances = distances_
   return distances[-1]
 

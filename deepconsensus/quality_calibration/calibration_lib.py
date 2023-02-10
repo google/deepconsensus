@@ -42,6 +42,7 @@ class QualityCalibrationValues:
     w: Coefficient for linear transformation.
     b: Bias term for linear transformation.
   """
+
   enabled: bool
   threshold: float
   w: float
@@ -57,20 +58,25 @@ def parse_calibration_string(calibration: str) -> QualityCalibrationValues:
   parsed_list = calibration.split(',')
   if len(parsed_list) != 3:
     raise ValueError(
-        'Malformed calibration string. Expected 3 values (or set '
-        'to "skip" to perform no quality calibration).', calibration)
+        (
+            'Malformed calibration string. Expected 3 values (or set '
+            'to "skip" to perform no quality calibration).'
+        ),
+        calibration,
+    )
 
   calibration_values = QualityCalibrationValues(
       enabled=True,
       threshold=float(parsed_list[0]),
       w=float(parsed_list[1]),
-      b=float(parsed_list[2]))
+      b=float(parsed_list[2]),
+  )
   return calibration_values
 
 
 def calibrate_quality_scores(
-    quality_scores: np.ndarray,
-    calibration_values: QualityCalibrationValues) -> np.ndarray:
+    quality_scores: np.ndarray, calibration_values: QualityCalibrationValues
+) -> np.ndarray:
   """Calibrate the quality score using linear transformation.
 
   Args:
@@ -84,8 +90,10 @@ def calibrate_quality_scores(
     # Skip O(n) operations of np.where when we need to calibrate the entire list
     return quality_scores * calibration_values.w + calibration_values.b
 
-  w_values = np.where(quality_scores > calibration_values.threshold,
-                      calibration_values.w, 1.0)
-  b_values = np.where(quality_scores > calibration_values.threshold,
-                      calibration_values.b, 0.0)
+  w_values = np.where(
+      quality_scores > calibration_values.threshold, calibration_values.w, 1.0
+  )
+  b_values = np.where(
+      quality_scores > calibration_values.threshold, calibration_values.b, 0.0
+  )
   return quality_scores * w_values + b_values

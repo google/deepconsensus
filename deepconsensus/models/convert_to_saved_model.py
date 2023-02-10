@@ -29,6 +29,7 @@ r"""Convert a Checkpoint to a SavedModel.
 
 Example command:
   convert_to_saved_model --checkpoint=/path/to/checkpoint --output=/tmp/output
+
 """
 
 import os
@@ -47,8 +48,13 @@ _OUTPUT = flags.DEFINE_string('output', None, 'Output SavedModel name.')
 
 # Model checkpoint:
 _CHECKPOINT = flags.DEFINE_string(
-    'checkpoint', None, 'Path to checkpoint directory + prefix. '
-    'For example: <path/to/model>/checkpoint-50.')
+    'checkpoint',
+    None,
+    (
+        'Path to checkpoint directory + prefix. '
+        'For example: <path/to/model>/checkpoint-50.'
+    ),
+)
 
 
 def register_required_flags():
@@ -81,7 +87,8 @@ def initialize_model(checkpoint_path: str) -> Optional[tf.keras.Model]:
   input_shape = (1, params.total_rows, params.max_length, params.num_channels)
   model_utils.print_model_summary(model, input_shape)
   checkpoint.restore(
-      checkpoint_path).expect_partial().assert_existing_objects_matched()
+      checkpoint_path
+  ).expect_partial().assert_existing_objects_matched()
 
   logging.info('Finished initialize_model.')
   return model
@@ -94,7 +101,8 @@ def main(_):
   # Copy over the params.json. At this point, we know params.json exists.
   json_path = os.path.join(os.path.dirname(_CHECKPOINT.value), 'params.json')
   gfile.Copy(
-      json_path, os.path.join(_OUTPUT.value, 'params.json'), overwrite=True)
+      json_path, os.path.join(_OUTPUT.value, 'params.json'), overwrite=True
+  )
 
 
 if __name__ == '__main__':

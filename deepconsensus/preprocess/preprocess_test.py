@@ -140,8 +140,9 @@ class PreprocessE2E(parameterized.TestCase):
     n_zmw_eval = get_unique_zmws(eval_examples)
     n_zmw_test = get_unique_zmws(test_examples)
     self.assertLessEqual(summary['n_zmw_pass'], n_zmws)
-    self.assertEqual(n_zmw_train + n_zmw_eval + n_zmw_test,
-                     summary['n_zmw_pass'])
+    self.assertEqual(
+        n_zmw_train + n_zmw_eval + n_zmw_test, summary['n_zmw_pass']
+    )
     self.assertEqual(n_zmw_train, summary['n_zmw_train'])
     self.assertEqual(n_zmw_eval, summary['n_zmw_eval'])
     self.assertEqual(n_zmw_test, summary['n_zmw_test'])
@@ -154,8 +155,9 @@ class PreprocessE2E(parameterized.TestCase):
     features = pre_lib.tf_example_to_features_dict(train_examples[0])
     self.assertIn('label', features)
     self.assertIn('label/shape', features)
-    self.assertSameElements(features['subreads'].shape,
-                            features['subreads/shape'])
+    self.assertSameElements(
+        features['subreads'].shape, features['subreads/shape']
+    )
 
   def test_invalid_tf_examples(self):
     """Tests for proper error thrown when loading improprer tf example."""
@@ -166,12 +168,14 @@ class PreprocessE2E(parameterized.TestCase):
         use_ccs_bq=True,
         cpus=0,
         limit=1,
-        output=output):
+        output=output,
+    ):
       preprocess.main([])
       examples = test_utils.load_dataset(output, 'train')
       with self.assertRaisesRegex(ValueError, 'Invalid subreads shape'):
         _ = pre_lib.tf_example_to_features_dict(
-            examples[0], inference=True, use_ccs_bq=False)
+            examples[0], inference=True, use_ccs_bq=False
+        )
 
   def test_bq_tf_examples(self):
     """Tests preprocessing inference with base quality score features."""
@@ -182,7 +186,8 @@ class PreprocessE2E(parameterized.TestCase):
         use_ccs_bq=True,
         cpus=0,
         limit=1,
-        output=output):
+        output=output,
+    ):
       preprocess.main([])
       examples = test_utils.load_dataset(output, 'inference')
 

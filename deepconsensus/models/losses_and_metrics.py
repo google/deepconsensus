@@ -40,10 +40,12 @@ class PerExampleAccuracy(tf.keras.metrics.Accuracy):
   def __init__(self, name: str = 'per_example_accuracy', **kwargs):
     super(PerExampleAccuracy, self).__init__(name=name, **kwargs)
 
-  def update_state(self,
-                   y_true: tf.Tensor,
-                   y_pred_scores: tf.Tensor,
-                   sample_weight: Optional[tf.Tensor] = None) -> None:
+  def update_state(
+      self,
+      y_true: tf.Tensor,
+      y_pred_scores: tf.Tensor,
+      sample_weight: Optional[tf.Tensor] = None,
+  ) -> None:
     """Accumulates running per-example accuracy."""
     del sample_weight  # We use the mask calculated here instead.
 
@@ -51,7 +53,8 @@ class PerExampleAccuracy(tf.keras.metrics.Accuracy):
     y_true = tf.cast(left_shift_sequence(y_true), dc_constants.TF_DATA_TYPE)
     # Convert pred scores and left shift.
     y_pred = tf.cast(
-        tf.argmax(y_pred_scores, axis=-1), dc_constants.TF_DATA_TYPE)
+        tf.argmax(y_pred_scores, axis=-1), dc_constants.TF_DATA_TYPE
+    )
     y_pred = left_shift_sequence(y_pred)
 
     # Count matching positions per row.
@@ -69,16 +72,20 @@ class PerClassAccuracy(tf.keras.metrics.Accuracy):
     self.class_value = class_value
     super(PerClassAccuracy, self).__init__(name=name, **kwargs)
 
-  def update_state(self,
-                   y_true: tf.Tensor,
-                   y_pred_scores: tf.Tensor,
-                   sample_weight: Optional[tf.Tensor] = None) -> None:
+  def update_state(
+      self,
+      y_true: tf.Tensor,
+      y_pred_scores: tf.Tensor,
+      sample_weight: Optional[tf.Tensor] = None,
+  ) -> None:
     """Accumulates running per-position accuracy for the given class."""
     del sample_weight  # We use the mask calculated here instead.
     y_pred = tf.cast(
-        tf.argmax(y_pred_scores, axis=-1), dc_constants.TF_DATA_TYPE)
+        tf.argmax(y_pred_scores, axis=-1), dc_constants.TF_DATA_TYPE
+    )
     mask = tf.cast(
-        tf.equal(y_true, self.class_value), dc_constants.TF_DATA_TYPE)
+        tf.equal(y_true, self.class_value), dc_constants.TF_DATA_TYPE
+    )
     super().update_state(y_true, y_pred, sample_weight=mask)
 
 
@@ -101,8 +108,9 @@ def left_shift_sequence(y_true: tf.Tensor) -> tf.int32:
   # an index by the seq length, perform sort, then subtract to return
   # original index.
   sort_order = tf.sort(tf.where(y_true != gap_token, ixs, seq_length + ixs))
-  sort_order = tf.where(sort_order < seq_length, sort_order,
-                        sort_order - seq_length)
+  sort_order = tf.where(
+      sort_order < seq_length, sort_order, sort_order - seq_length
+  )
   y_true_left_aligned = tf.gather(y_true, sort_order, axis=1, batch_dims=-1)
   return y_true_left_aligned
 
@@ -112,9 +120,9 @@ SubsCostFn = Callable[[tf.Tensor, tf.Tensor], tf.Tensor]
 InsCostFn = Callable[[tf.Tensor], tf.Tensor]
 
 
-def xentropy_subs_cost_fn(y_true: tf.Tensor,
-                          y_pred: tf.Tensor,
-                          eps: float = 1e-7) -> tf.Tensor:
+def xentropy_subs_cost_fn(
+    y_true: tf.Tensor, y_pred: tf.Tensor, eps: float = 1e-7
+) -> tf.Tensor:
   """Pointwise cross-entropy substitution cost function for alignment loss.
 
   Args:
@@ -286,7 +294,8 @@ class AlignmentLoss(tf.keras.losses.Loss):
       del_cost: float = 1.0,
       loss_reg: Optional[float] = 1.0,
       width: Optional[int] = None,
-      reduction: tf.keras.losses.Reduction = tf.keras.losses.Reduction.AUTO):
+      reduction: tf.keras.losses.Reduction = tf.keras.losses.Reduction.AUTO,
+  ):
     super(AlignmentLoss, self).__init__(reduction=reduction)
     self.subs_cost_fn = subs_cost_fn
     self.ins_cost_fn = ins_cost_fn
@@ -367,11 +376,14 @@ class AlignmentLoss(tf.keras.losses.Loss):
     # Initializes recursion.
     v_opt = tf.fill([b], inf)
     v_p2 = tf.pad(tf.fill([m - 1, b], inf), [[1, 0], [0, 0]])
-    v_p1 = tf.concat([
-        tf.slice(ins_costs[0], [0, 0], [1, b]),
-        tf.fill([1, b], del_cost),
-        tf.fill([m - 1, b], inf)
-    ], 0)
+    v_p1 = tf.concat(
+        [
+            tf.slice(ins_costs[0], [0, 0], [1, b]),
+            tf.fill([1, b], del_cost),
+            tf.fill([m - 1, b], inf),
+        ],
+        0,
+    )
     # Precomputes auxiliary (constant) tensors used during the recursion.
     i_range = tf.range(m + 1, dtype=tf.int32)
     k_end = seq_lens + n  # Indexes antidiagonal containing last entry, w/o pad.
@@ -390,8 +402,9 @@ class AlignmentLoss(tf.keras.losses.Loss):
       o_d = v_p2 + del_cost  # [m, b]
 
       v_p1 = tf.concat(
-          [tf.slice(o_i, [0, 0], [1, b]),
-           minop(tf.stack([o_m, o_i[1:], o_d]))], 0)
+          [tf.slice(o_i, [0, 0], [1, b]), minop(tf.stack([o_m, o_i[1:], o_d]))],
+          0,
+      )
       v_p1 = tf.where(inv_mask, v_p1, inf)
       v_opt = tf.where(k_end == k, tf.gather_nd(v_p1, nd_indices), v_opt)
 
@@ -426,17 +439,20 @@ class AlignmentLoss(tf.keras.losses.Loss):
     width = tf.cast(self.width, dtype=tf.int32)
     n_diag = 2 * width + 1
     diags = tf.linalg.diag_part(
-        input_v, k=(-width, width), padding_value=inf, align='LEFT_LEFT')
+        input_v, k=(-width, width), padding_value=inf, align='LEFT_LEFT'
+    )
     weave = tf.reshape(
         tf.stack([diags, tf.fill(tf.shape(diags), inf)], -1),
-        [batch, n_diag, -1])
+        [batch, n_diag, -1],
+    )
     woven_band_tr = inf * tf.ones((n_diag, batch, 2 * len_v))
     for diff in tf.range(-width, width + 1):
       i = diff + width
       abs_diff = tf.abs(diff)
       padded_weave = tf.roll(weave[:, n_diag - 1 - i], abs_diff, -1)
-      woven_band_tr = tf.tensor_scatter_nd_update(woven_band_tr, [[i]],
-                                                  padded_weave[tf.newaxis, ...])
+      woven_band_tr = tf.tensor_scatter_nd_update(
+          woven_band_tr, [[i]], padded_weave[tf.newaxis, ...]
+      )
     return tf.transpose(woven_band_tr, (1, 2, 0))[:, :-1, :]
 
   def index_ending_band(self, len_1, seq_lens):
@@ -447,14 +463,18 @@ class AlignmentLoss(tf.keras.losses.Loss):
     sum_index = i + j
     diff_index = j - i + self.width
     range_batch = tf.range(batch)
-    return tf.concat([
-        range_batch[..., tf.newaxis], sum_index[..., tf.newaxis],
-        diff_index[..., tf.newaxis]
-    ],
-                     axis=-1)
+    return tf.concat(
+        [
+            range_batch[..., tf.newaxis],
+            sum_index[..., tf.newaxis],
+            diff_index[..., tf.newaxis],
+        ],
+        axis=-1,
+    )
 
-  def banded_alignment(self, subs_costs, ins_costs, del_cost, seq_lens, inf,
-                       dtype):
+  def banded_alignment(
+      self, subs_costs, ins_costs, del_cost, seq_lens, inf, dtype
+  ):
     """Computes the alignment score values, with a band-restriction on the path.
 
     Args:
@@ -475,22 +495,26 @@ class AlignmentLoss(tf.keras.losses.Loss):
     len_2 = tf.shape(subs_costs)[2]
     val_trans = tf.zeros((len_1 + 1, len_2 + 1, batch))
     updates = [
-        del_cost * tf.tile(
+        del_cost
+        * tf.tile(
             tf.range(len_1 + 1, dtype=tf.float32)[..., tf.newaxis],
-            multiples=[1, batch])
+            multiples=[1, batch],
+        )
     ]
     val_trans = tf.tensor_scatter_nd_update(val_trans, [[0]], updates)
     for i in tf.range(1, len_1 + 1):
       previous_row = val_trans[i - 1, 0]
       val_trans = tf.tensor_scatter_nd_update(
-          val_trans, [[i, 0]], [previous_row + ins_costs[:, i - 1]])
+          val_trans, [[i, 0]], [previous_row + ins_costs[:, i - 1]]
+      )
       values = tf.transpose(val_trans, [2, 1, 0])
     input_band = self.weave_band(values, inf)
     subs_band = self.weave_band(subs_costs, inf)
-    ins_costs_pad = tf.pad(ins_costs, [[0, 0], [1, 0]], constant_values=0.)
+    ins_costs_pad = tf.pad(ins_costs, [[0, 0], [1, 0]], constant_values=0.0)
     # TODO: uphere
     insert_expand = tf.tile(
-        ins_costs_pad[:, tf.newaxis, :], multiples=[1, len_1 + 1, 1])
+        ins_costs_pad[:, tf.newaxis, :], multiples=[1, len_1 + 1, 1]
+    )
     insert_band = self.weave_band(insert_expand, inf)
     length = tf.shape(input_band)[1]
     # Sets up reduction operators.
@@ -501,18 +525,23 @@ class AlignmentLoss(tf.keras.losses.Loss):
       minop = lambda t: -loss_reg * tf.reduce_logsumexp(-t / loss_reg, axis=-1)
     for k in tf.range(2, length):
       input_minus_one = tf.pad(
-          input_band[..., :-1], [[0, 0], [0, 0], [1, 0]], constant_values=inf)
+          input_band[..., :-1], [[0, 0], [0, 0], [1, 0]], constant_values=inf
+      )
       input_plus_one = tf.pad(
-          input_band[..., 1:], [[0, 0], [0, 0], [0, 1]], constant_values=inf)
-      min_tens = tf.stack([
-          input_band[:, k - 2, :] + subs_band[:, k - 2, :],
-          input_plus_one[:, k - 1, :] + del_cost,
-          input_minus_one[:, k - 1, :] + insert_band[:, k, :],
-      ],
-                          axis=-1)
+          input_band[..., 1:], [[0, 0], [0, 0], [0, 1]], constant_values=inf
+      )
+      min_tens = tf.stack(
+          [
+              input_band[:, k - 2, :] + subs_band[:, k - 2, :],
+              input_plus_one[:, k - 1, :] + del_cost,
+              input_minus_one[:, k - 1, :] + insert_band[:, k, :],
+          ],
+          axis=-1,
+      )
       insert_mins = minop(min_tens)
       input_trans = tf.tensor_scatter_nd_update(
-          tf.transpose(input_band, [1, 0, 2]), [[k]], [insert_mins])
+          tf.transpose(input_band, [1, 0, 2]), [[k]], [insert_mins]
+      )
       input_band = tf.transpose(input_trans, [1, 0, 2])
     fetch_indices = self.index_ending_band(len_1, seq_lens)
     return tf.gather_nd(input_band, fetch_indices)
@@ -654,13 +683,15 @@ class AlignmentMetric(tf.keras.metrics.Metric):
     gap_extend_penalty: The penalty of extending gaps (-e).
   """
 
-  def __init__(self,
-               matching_score: float = 2.0,
-               mismatch_penalty: float = 5.0,
-               gap_open_penalty: float = 5.0,
-               gap_extend_penalty: float = 4.0,
-               name: str = 'alignment_metric',
-               **kwargs):
+  def __init__(
+      self,
+      matching_score: float = 2.0,
+      mismatch_penalty: float = 5.0,
+      gap_open_penalty: float = 5.0,
+      gap_extend_penalty: float = 4.0,
+      name: str = 'alignment_metric',
+      **kwargs,
+  ):
     super(AlignmentMetric, self).__init__(name=name, **kwargs)
     self.matching_score = matching_score
     self.mismatch_penalty = mismatch_penalty
@@ -707,7 +738,8 @@ class AlignmentMetric(tf.keras.metrics.Metric):
     tf.debugging.assert_equal(
         x=b,
         y=tf.shape(y_pred)[0],
-        message='y_true and y_pred must have the same batch size.')
+        message='y_true and y_pred must have the same batch size.',
+    )
     m, n = tf.shape(y_true)[1], tf.shape(y_pred)[1]
     # Defines an appropriate large positive float to represent "infinity".
     inf = tf.convert_to_tensor(1e9, dtype)  # TODO: float16 support?
@@ -729,14 +761,16 @@ class AlignmentMetric(tf.keras.metrics.Metric):
         y_true,
         y_pred,
         matching_score=matching_score,
-        mismatch_penalty=mismatch_penalty)
+        mismatch_penalty=mismatch_penalty,
+    )
     wavefrontified_subs_costs = wavefrontify(subs_costs)
     # Stacks gap penalties as tf.Tensor of shape [3, 1, 1] for broadcasting.
     gap_pens = tf.stack([gap_open, gap_open, gap_extend])[:, None, None]
 
     # Setups reduction operators.
-    def reduce_max_with_argmax(t: tf.Tensor,
-                               axis: int = 0) -> Tuple[tf.Tensor, tf.Tensor]:
+    def reduce_max_with_argmax(
+        t: tf.Tensor, axis: int = 0
+    ) -> Tuple[tf.Tensor, tf.Tensor]:
       # Note(fllinares): I haven't yet managed to beat the performance of this
       # (wasteful) implementation with tf.argmax + tf.gather / tf.gather_nd :(
       t_max = tf.reduce_max(t, axis=axis)
@@ -765,8 +799,9 @@ class AlignmentMetric(tf.keras.metrics.Metric):
             tf.pad(
                 tf.fill([1, m - 1, b], -inf),
                 paddings=[[0, 0], [1, 0], [0, 0]],
-                constant_values=tf.convert_to_tensor(0.0, dtype=dtype)),
-            tf.fill([2, m, b], -inf)
+                constant_values=tf.convert_to_tensor(0.0, dtype=dtype),
+            ),
+            tf.fill([2, m, b], -inf),
         ],
         axis=0,
     )
@@ -780,14 +815,17 @@ class AlignmentMetric(tf.keras.metrics.Metric):
         tf.pad(
             tf.fill([m, b], -inf),
             paddings=[[1, 0], [0, 0]],
-            constant_values=-gap_open),
+            constant_values=-gap_open,
+        ),
         tf.roll(
             tf.pad(
                 tf.fill([m, b], -inf),
                 paddings=[[1, 0], [0, 0]],
-                constant_values=-gap_open),
+                constant_values=-gap_open,
+            ),
             shift=1,
-            axis=0),
+            axis=0,
+        ),
     ])
     # Allocates memory for backtracking "directions" tensor.
     dir_all = tf.TensorArray(tf.int32, size=m + n + 1, clear_after_read=True)
@@ -801,8 +839,9 @@ class AlignmentMetric(tf.keras.metrics.Metric):
             tf.pad(
                 tf.fill([1, m, b], -2),
                 paddings=[[0, 0], [1, 0], [0, 0]],
-                constant_values=tf.convert_to_tensor(-1, dtype=tf.int32)),
-            tf.fill([2, m + 1, b], -2)
+                constant_values=tf.convert_to_tensor(-1, dtype=tf.int32),
+            ),
+            tf.fill([2, m + 1, b], -2),
         ],
         axis=0,
     )
@@ -817,14 +856,17 @@ class AlignmentMetric(tf.keras.metrics.Metric):
         tf.pad(
             tf.fill([m, b], -2),
             paddings=[[1, 0], [0, 0]],
-            constant_values=tf.convert_to_tensor(0, dtype=tf.int32)),
+            constant_values=tf.convert_to_tensor(0, dtype=tf.int32),
+        ),
         tf.roll(
             tf.pad(
                 tf.fill([m, b], -2),
                 paddings=[[1, 0], [0, 0]],
-                constant_values=tf.convert_to_tensor(0, dtype=tf.int32)),
+                constant_values=tf.convert_to_tensor(0, dtype=tf.int32),
+            ),
             shift=1,
-            axis=0),
+            axis=0,
+        ),
     ])
     dir_all = dir_all.write(1, tf.cast(dir_all_p1, tf.int32))
 
@@ -914,8 +956,9 @@ class AlignmentMetric(tf.keras.metrics.Metric):
     #   insert extend (3): {insert} -> {insert}.
     #   delete open (4): {match, insert} -> {delete}.
     #   delete extend (5): {delete} -> {delete}.
-    trans_enc = tf.constant([[1, 1, 1], [2, 3, 2], [4, 4, 5]],
-                            dtype=tf.int32)  # [m_curr, m_prev]
+    trans_enc = tf.constant(
+        [[1, 1, 1], [2, 3, 2], [4, 4, 5]], dtype=tf.int32
+    )  # [m_curr, m_prev]
     # Initializes additional backtracking variables.
     k_opt = k_end  # [b], next antidiagonal for backtracking.
     i_opt = y_true_lens  # [b], next col for backtracking.
@@ -939,8 +982,9 @@ class AlignmentMetric(tf.keras.metrics.Metric):
       # Computes tentative next sparse updates for paths tensor, safeguarding
       # against invalid indexing.
       safe_m_opt_n = tf.maximum(m_opt_n, 0)
-      edges_n = tf.gather_nd(trans_enc,
-                             tf.stack([safe_m_opt, safe_m_opt_n], axis=-1))
+      edges_n = tf.gather_nd(
+          trans_enc, tf.stack([safe_m_opt, safe_m_opt_n], axis=-1)
+      )
       paths_sp_n = tf.stack([samp_idx, i_opt, k_opt - i_opt, edges_n], -1)
 
       # Checks if start (0, 0) was reached during backtracking.
@@ -951,8 +995,9 @@ class AlignmentMetric(tf.keras.metrics.Metric):
       k_opt = tf.where(cond, k_opt_n, k_opt)
       i_opt = tf.where(cond, i_opt_n, i_opt)
       m_opt = tf.where(cond, m_opt_n, m_opt)
-      paths_sp_k = tf.where(cond[:, None], paths_sp_n, tf.zeros([b, 4],
-                                                                tf.int32))
+      paths_sp_k = tf.where(
+          cond[:, None], paths_sp_n, tf.zeros([b, 4], tf.int32)
+      )
       paths_sp = paths_sp.write(k, paths_sp_k)  # [0, 0, 0, 0] used as dummy up.
 
     # Applies sparse updates, building paths tensor.
@@ -979,17 +1024,21 @@ class AlignmentMetric(tf.keras.metrics.Metric):
         'num_correct_matches': sum_positions(correct_matches),
     }
     metric_values['alignment_length'] = (
-        metric_values['num_matches'] + metric_values['num_insertions'] +
-        metric_values['num_deletions'])
+        metric_values['num_matches']
+        + metric_values['num_insertions']
+        + metric_values['num_deletions']
+    )
     # Computes percent identity (PID). PID is defined as 1.0 in the particular
     # case in which the ground-truth and predicted sequences are "empty", i.e.,
     # consist only of gap tokens.
     unsafe_pid = (
-        metric_values['num_correct_matches'] /
-        metric_values['alignment_length'])
-    metric_values['pid'] = tf.where(metric_values['alignment_length'] > 0,
-                                    tf.cast(unsafe_pid, dtype),
-                                    tf.convert_to_tensor(1.0, dtype))
+        metric_values['num_correct_matches'] / metric_values['alignment_length']
+    )
+    metric_values['pid'] = tf.where(
+        metric_values['alignment_length'] > 0,
+        tf.cast(unsafe_pid, dtype),
+        tf.convert_to_tensor(1.0, dtype),
+    )
 
     return v_opt, paths, metric_values
 
@@ -1010,8 +1059,11 @@ class AlignmentMetric(tf.keras.metrics.Metric):
 
 
 def get_batch_identity_ccs_pred(
-    ccs: tf.Tensor, y_pred: tf.Tensor, y_true: tf.Tensor,
-    alignment_metric: AlignmentMetric) -> Tuple[tf.Tensor, tf.Tensor]:
+    ccs: tf.Tensor,
+    y_pred: tf.Tensor,
+    y_true: tf.Tensor,
+    alignment_metric: AlignmentMetric,
+) -> Tuple[tf.Tensor, tf.Tensor]:
   """Calculate identity for CCS and sequence predicted by DeepConsensus.
 
   Args:
@@ -1038,7 +1090,8 @@ def get_batch_identity_ccs_pred(
   ccs = tf.cast(ccs, tf.int32)
   # Convert CCS to one-hot to match the shape of expected alignment inputs.
   ccs_one_hot = tf.one_hot(
-      ccs, depth=len(dc_constants.SEQ_VOCAB), dtype=dc_constants.TF_DATA_TYPE)
+      ccs, depth=len(dc_constants.SEQ_VOCAB), dtype=dc_constants.TF_DATA_TYPE
+  )
 
   _, _, metric_values_ccs = alignment_metric.alignment(y_true, ccs_one_hot)
   identity_ccs = per_batch_identity(metric_values_ccs)
@@ -1048,8 +1101,9 @@ def get_batch_identity_ccs_pred(
 def per_batch_identity(metric_values: Mapping[str, tf.Tensor]) -> tf.Tensor:
   """Calculates identity over the whole batch given metrics."""
   tot_alignment_length = tf.reduce_sum(metric_values['alignment_length'])
-  unsafe_pid = tf.reduce_sum(
-      metric_values['num_correct_matches']) / tot_alignment_length
+  unsafe_pid = (
+      tf.reduce_sum(metric_values['num_correct_matches']) / tot_alignment_length
+  )
   # PID is defined as 1.0 in the particular case in which all the ground-truth
   # and all predicted sequences are "empty", i.e., consist only of gap tokens.
   if tf.equal(tot_alignment_length, 0):
@@ -1067,19 +1121,24 @@ class YieldOverCCSMetric(tf.keras.metrics.Metric):
     yield_ccs: CCS yield.
   """
 
-  def __init__(self,
-               quality_threshold: float = 0.997,
-               name: str = 'yield_over_ccs',
-               **kwargs):
+  def __init__(
+      self,
+      quality_threshold: float = 0.997,
+      name: str = 'yield_over_ccs',
+      **kwargs,
+  ):
     super(YieldOverCCSMetric, self).__init__(name=name, **kwargs)
     self.quality_threshold = quality_threshold
     self.yield_dc = self.add_weight(
-        name='yield_dc', shape=[], initializer='zeros')
+        name='yield_dc', shape=[], initializer='zeros'
+    )
     self.yield_ccs = self.add_weight(
-        name='yield_ccs', shape=[], initializer='zeros')
+        name='yield_ccs', shape=[], initializer='zeros'
+    )
 
-  def update_state(self, identity_ccs: tf.Tensor,
-                   identity_pred: tf.Tensor) -> None:
+  def update_state(
+      self, identity_ccs: tf.Tensor, identity_pred: tf.Tensor
+  ) -> None:
     """Updates DeepConsensus and CCS yield based on provided identities.
 
     Args:
@@ -1089,9 +1148,11 @@ class YieldOverCCSMetric(tf.keras.metrics.Metric):
         (between 0 and 1) of predicted sequence over batch.
     """
     yield_dc = tf.cast(
-        identity_pred >= self.quality_threshold, dtype=tf.float32)
+        identity_pred >= self.quality_threshold, dtype=tf.float32
+    )
     yield_ccs = tf.cast(
-        identity_ccs >= self.quality_threshold, dtype=tf.float32)
+        identity_ccs >= self.quality_threshold, dtype=tf.float32
+    )
     self.yield_dc.assign_add(yield_dc)
     self.yield_ccs.assign_add(yield_ccs)
 
@@ -1125,13 +1186,15 @@ class DistillationLoss(tf.keras.losses.Loss):
       self,
       temperature: float = 1.0,
       logit_loss: tf.keras.losses.Loss = tf.keras.losses.get('kl_divergence'),
-      reduction: tf.keras.losses.Reduction = tf.keras.losses.Reduction.AUTO):
+      reduction: tf.keras.losses.Reduction = tf.keras.losses.Reduction.AUTO,
+  ):
     super(DistillationLoss, self).__init__(reduction=reduction)
     self.temperature = temperature
     self.logit_loss = logit_loss
 
-  def call(self, teacher_logits: tf.Tensor,
-           student_logits: tf.Tensor) -> tf.Tensor:
+  def call(
+      self, teacher_logits: tf.Tensor, student_logits: tf.Tensor
+  ) -> tf.Tensor:
     """Computes the distillation loss between student and teacher logits.
 
     Args:

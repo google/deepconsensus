@@ -34,11 +34,13 @@ import tensorflow as tf
 class Attention(tf.keras.layers.Layer):
   """Multi-headed attention layer."""
 
-  def __init__(self,
-               hidden_size: int,
-               num_heads: int,
-               attention_dropout: float,
-               attn_win_size: Optional[int] = None):
+  def __init__(
+      self,
+      hidden_size: int,
+      num_heads: int,
+      attention_dropout: float,
+      attn_win_size: Optional[int] = None,
+  ):
     """Initialize Attention.
 
     Args:
@@ -51,7 +53,8 @@ class Attention(tf.keras.layers.Layer):
     if hidden_size % num_heads:
       raise ValueError(
           "Hidden size ({}) must be divisible by the number of heads ({})."
-          .format(hidden_size, num_heads))
+          .format(hidden_size, num_heads)
+      )
 
     super(Attention, self).__init__()
     self.hidden_size = hidden_size
@@ -77,19 +80,22 @@ class Attention(tf.keras.layers.Layer):
         output_shape=(None, self.num_heads, size_per_head),
         kernel_initializer=query_initializer,
         bias_axes=None,
-        name="query")
+        name="query",
+    )
     self.key_dense_layer = tf.keras.layers.experimental.EinsumDense(
         "BTE,ENH->BTNH",
         output_shape=(None, self.num_heads, size_per_head),
         kernel_initializer=key_initializer,
         bias_axes=None,
-        name="key")
+        name="key",
+    )
     self.value_dense_layer = tf.keras.layers.experimental.EinsumDense(
         "BTE,ENH->BTNH",
         output_shape=(None, self.num_heads, size_per_head),
         kernel_initializer=value_initializer,
         bias_axes=None,
-        name="value")
+        name="value",
+    )
 
     output_initializer = _glorot_initializer(self.hidden_size, self.hidden_size)
     self.output_dense_layer = tf.keras.layers.experimental.EinsumDense(
@@ -97,15 +103,17 @@ class Attention(tf.keras.layers.Layer):
         output_shape=(None, self.hidden_size),
         kernel_initializer=output_initializer,
         bias_axes=None,
-        name="output_transform")
+        name="output_transform",
+    )
 
     # input_shape = [batch_size, input_length, hidden_size]
     max_length = input_shape.as_list()[1]
 
     if self.attn_win_size:
       self.attn_mask = tf.ones([1, 1, max_length, max_length])
-      self.attn_mask = tf.linalg.band_part(self.attn_mask, self.attn_win_size,
-                                           self.attn_win_size)
+      self.attn_mask = tf.linalg.band_part(
+          self.attn_mask, self.attn_win_size, self.attn_win_size
+      )
       # attn_mask will contain True values in the band and False values outside.
       self.attn_mask = self.attn_mask > 0.0
     else:
@@ -121,13 +129,15 @@ class Attention(tf.keras.layers.Layer):
         "attn_win_size": self.attn_win_size,
     }
 
-  def call(self,
-           query_input: tf.Tensor,
-           source_input: tf.Tensor,
-           bias: tf.Tensor,
-           training: bool,
-           cache: Optional[Dict[str, tf.Tensor]] = None,
-           decode_loop_step: Optional[int] = None) -> Dict[str, tf.Tensor]:
+  def call(
+      self,
+      query_input: tf.Tensor,
+      source_input: tf.Tensor,
+      bias: tf.Tensor,
+      training: bool,
+      cache: Optional[Dict[str, tf.Tensor]] = None,
+      decode_loop_step: Optional[int] = None,
+  ) -> Dict[str, tf.Tensor]:
     """Apply attention mechanism to query_input and source_input.
 
     Args:
@@ -152,7 +162,6 @@ class Attention(tf.keras.layers.Layer):
         length_query, hidden_size]. Used as input to the feed_forward_network.
         "attention scores": Attention map weights (after softmax) with shape
         [batch_size, num_heads, length_query, length_query] - auxiliary output.
-
     """
     # Linearly project the query, key and value using different learned
     # projections. Splitting heads is automatically done during the linear
@@ -167,12 +176,14 @@ class Attention(tf.keras.layers.Layer):
         cache_k_shape = cache["k"].shape.as_list()
         indices = tf.reshape(
             tf.one_hot(decode_loop_step, cache_k_shape[1], dtype=key.dtype),
-            [1, cache_k_shape[1], 1, 1])
+            [1, cache_k_shape[1], 1, 1],
+        )
         key = cache["k"] + key * indices
         cache_v_shape = cache["v"].shape.as_list()
         indices = tf.reshape(
             tf.one_hot(decode_loop_step, cache_v_shape[1], dtype=value.dtype),
-            [1, cache_v_shape[1], 1, 1])
+            [1, cache_v_shape[1], 1, 1],
+        )
         value = cache["v"] + value * indices
       else:
         key = tf.concat([tf.cast(cache["k"], key.dtype), key], axis=1)
@@ -184,7 +195,7 @@ class Attention(tf.keras.layers.Layer):
 
     # Scale query to prevent the dot product between query and key from growing
     # too large.
-    depth = (self.hidden_size // self.num_heads)
+    depth = self.hidden_size // self.num_heads
     query *= depth**-0.5
 
     # Calculate dot product attention
@@ -213,11 +224,14 @@ class Attention(tf.keras.layers.Layer):
 class SelfAttention(Attention):
   """Multiheaded self-attention layer."""
 
-  def call(self,
-           query_input: tf.Tensor,
-           bias: tf.Tensor,
-           training: bool,
-           cache: Optional[Dict[str, tf.Tensor]] = None,
-           decode_loop_step: Optional[int] = None) -> Dict[str, tf.Tensor]:
-    return super(SelfAttention, self).call(query_input, query_input, bias,
-                                           training, cache, decode_loop_step)
+  def call(
+      self,
+      query_input: tf.Tensor,
+      bias: tf.Tensor,
+      training: bool,
+      cache: Optional[Dict[str, tf.Tensor]] = None,
+      decode_loop_step: Optional[int] = None,
+  ) -> Dict[str, tf.Tensor]:
+    return super(SelfAttention, self).call(
+        query_input, query_input, bias, training, cache, decode_loop_step
+    )

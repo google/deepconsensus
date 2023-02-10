@@ -51,17 +51,18 @@ _BATCH_IDENTITY_METRIC_NAME = 'per_batch_alignment_identity'
 
 def get_deepconsensus_loss(
     params: ml_collections.ConfigDict,
-    reduction: tf.keras.losses.Reduction = tf.keras.losses.Reduction.AUTO
+    reduction: tf.keras.losses.Reduction = tf.keras.losses.Reduction.AUTO,
 ) -> tf.keras.losses.Loss:
   return {
-      'xentropy':
-          tf.keras.losses.SparseCategoricalCrossentropy(reduction=reduction),
-      'alignment_loss':
-          losses_and_metrics.AlignmentLoss(
-              del_cost=params.del_cost,
-              loss_reg=params.loss_reg,
-              width=params.band_width,
-              reduction=reduction),
+      'xentropy': tf.keras.losses.SparseCategoricalCrossentropy(
+          reduction=reduction
+      ),
+      'alignment_loss': losses_and_metrics.AlignmentLoss(
+          del_cost=params.del_cost,
+          loss_reg=params.loss_reg,
+          width=params.band_width,
+          reduction=reduction,
+      ),
   }[params.loss_function]
 
 
@@ -69,16 +70,22 @@ def get_deepconsensus_metrics(name_prefix='') -> List[tf.keras.metrics.Metric]:
   """Returns the metrics to use for training and evaluation."""
   return [
       losses_and_metrics.PerExampleAccuracy(
-          name=f'{name_prefix}per_example_accuracy'),
+          name=f'{name_prefix}per_example_accuracy'
+      ),
       tf.keras.metrics.Mean(name=f'{name_prefix}{_BATCH_IDENTITY_METRIC_NAME}'),
       losses_and_metrics.YieldOverCCSMetric(
-          name=f'{name_prefix}{_YIELD_OVER_CSS_METRIC_NAME}')
+          name=f'{name_prefix}{_YIELD_OVER_CSS_METRIC_NAME}'
+      ),
   ]
 
 
-def update_metrics(metrics: List[tf.keras.metrics.Metric], labels: tf.Tensor,
-                   predictions: tf.Tensor, identity_pred: tf.Tensor,
-                   identity_ccs: tf.Tensor) -> None:
+def update_metrics(
+    metrics: List[tf.keras.metrics.Metric],
+    labels: tf.Tensor,
+    predictions: tf.Tensor,
+    identity_pred: tf.Tensor,
+    identity_ccs: tf.Tensor,
+) -> None:
   """Updates metrics."""
   for metric in metrics:
     if _YIELD_OVER_CSS_METRIC_NAME in metric.name:
@@ -107,7 +114,8 @@ def get_record_shape(dataset_path: str) -> List[int]:
   """
   tfrecord_files = data_providers.create_glob_list(dataset_path)
   records = tf.data.TFRecordDataset(
-      tfrecord_files, compression_type='GZIP').as_numpy_iterator()
+      tfrecord_files, compression_type='GZIP'
+  ).as_numpy_iterator()
   features = data_providers.parse_example(next(records))
   return list(map(int, features['subreads/shape'].numpy()))
 
@@ -117,8 +125,9 @@ def extract_example_height(dataset_sharded_path: str) -> int:
   return get_record_shape(dataset_sharded_path)[0]
 
 
-def get_ccs_from_example(features: tf.Tensor,
-                         params: ml_collections.ConfigDict) -> tf.Tensor:
+def get_ccs_from_example(
+    features: tf.Tensor, params: ml_collections.ConfigDict
+) -> tf.Tensor:
   """Gets CCS sequence from model input features."""
   _, _, _, _, ccs_index, _, _ = data_providers.get_indices(
       params.max_passes,
@@ -146,8 +155,11 @@ def get_model(params: ml_collections.ConfigDict) -> tf.keras.Model:
 def set_dataset(params):
   """Sets dataset paths and loads example counts."""
   # Individual specifications:
-  manual_spec = hasattr(params, 'train_path') and hasattr(
-      params, 'eval_path') and hasattr(params, 'test_path')
+  manual_spec = (
+      hasattr(params, 'train_path')
+      and hasattr(params, 'eval_path')
+      and hasattr(params, 'test_path')
+  )
   if hasattr(params, 'tf_dataset') and manual_spec:
     msg = 'Cannot specify tf_dataset and individual paths (e.g. train_path)'
     raise Exception(msg)
@@ -165,7 +177,8 @@ def set_dataset(params):
       raise Exception(
           'You only have one of n_examples_{train,eval} set. '
           'Set both in model_configs.py to manually set these values, '
-          'or set neither to load the counts from summary.training.json.')
+          'or set neither to load the counts from summary.training.json.'
+      )
     load_example_counts = n_examples_train_not_set and n_examples_eval_not_set
     if load_example_counts:
       params.n_examples_train = 0
@@ -180,7 +193,8 @@ def set_dataset(params):
       n_examples_eval = dataset_summary.get('n_examples_eval', None)
       if not n_examples_train or not n_examples_eval:
         raise Exception(
-            f'No example count specified. Review {dataset_summary_path}')
+            f'No example count specified. Review {dataset_summary_path}'
+        )
       if load_example_counts:
         params.n_examples_train += n_examples_train
         params.n_examples_eval += n_examples_eval
@@ -220,12 +234,14 @@ def _del_param(params, name):
     del params[name]
 
 
-def modify_params(params: ml_collections.ConfigDict,
-                  tpu: Optional[str] = None,
-                  tpu_topology: Optional[str] = None,
-                  speedy: bool = False,
-                  max_length: Optional[int] = None,
-                  is_training: bool = True) -> None:
+def modify_params(
+    params: ml_collections.ConfigDict,
+    tpu: Optional[str] = None,
+    tpu_topology: Optional[str] = None,
+    speedy: bool = False,
+    max_length: Optional[int] = None,
+    is_training: bool = True,
+) -> None:
   """Updates params as needed for the model and hardware being usued.
 
   This function should be called before working with a ConfigDict to ensure that
@@ -297,15 +313,19 @@ def modify_params(params: ml_collections.ConfigDict,
     )
 
     if 'transformer_learn_values' in params.model_name:
-      dim = ((params.use_bases * params.per_base_hidden_size) +
-             (params.use_pw * params.pw_hidden_size) +
-             (params.use_ip * params.ip_hidden_size) +
-             (params.use_strand * params.strand_hidden_size) +
-             (params.use_ccs_bq * params.ccs_bq_hidden_size))
-      params.hidden_size = ((params.max_passes * dim) +
-                            (params.use_ccs * params.per_base_hidden_size) +
-                            (params.use_ccs_bq * params.ccs_bq_hidden_size) +
-                            (params.use_sn * params.sn_hidden_size * 4))
+      dim = (
+          (params.use_bases * params.per_base_hidden_size)
+          + (params.use_pw * params.pw_hidden_size)
+          + (params.use_ip * params.ip_hidden_size)
+          + (params.use_strand * params.strand_hidden_size)
+          + (params.use_ccs_bq * params.ccs_bq_hidden_size)
+      )
+      params.hidden_size = (
+          (params.max_passes * dim)
+          + (params.use_ccs * params.per_base_hidden_size)
+          + (params.use_ccs_bq * params.ccs_bq_hidden_size)
+          + (params.use_sn * params.sn_hidden_size * 4)
+      )
     else:
       params.hidden_size = params.total_rows
 
@@ -326,7 +346,8 @@ def modify_params(params: ml_collections.ConfigDict,
         params.hidden_size = params.transformer_input_size
     if 'transformer' in params.model_name:
       transformer_params = get_transformer_model_params(
-          params.transformer_model_size, num_gpus=num_gpus)
+          params.transformer_model_size, num_gpus=num_gpus
+      )
       # Only add hyperparameters that don't already exist.
       for param_name, param_value in transformer_params.items():
         if param_name not in params:
@@ -346,16 +367,21 @@ def get_transformer_model_params(param_set, num_gpus):
     elif param_set == 'base':
       return transformer_basic_params.BASE_MULTI_GPU_PARAMS.copy()
     else:
-      raise ValueError('Not valid params: param_set={} num_gpus={}'.format(
-          param_set, num_gpus))
+      raise ValueError(
+          'Not valid params: param_set={} num_gpus={}'.format(
+              param_set, num_gpus
+          )
+      )
 
   return params_map[param_set].copy()
 
 
-def run_inference_and_write_results(model: tf.keras.Model,
-                                    out_dir: str,
-                                    params: ml_collections.ConfigDict,
-                                    limit: int = -1):
+def run_inference_and_write_results(
+    model: tf.keras.Model,
+    out_dir: str,
+    params: ml_collections.ConfigDict,
+    limit: int = -1,
+):
   """Runs inference with given model and dataset and writes out results."""
 
   eval_paths = [params.eval_path]
@@ -364,7 +390,6 @@ def run_inference_and_write_results(model: tf.keras.Model,
     tf.io.gfile.makedirs(out_dir)
   logs_path = os.path.join(out_dir, 'inference.csv')
   with tf.io.gfile.GFile(logs_path, 'w') as logs_file:
-
     lines_to_write = []
     for path in eval_paths:
       validation_dataset = data_providers.get_dataset(
@@ -378,10 +403,12 @@ def run_inference_and_write_results(model: tf.keras.Model,
           # `inference` is set to False because this function is only used with
           # tf.Examples formatted for training mode as they contain a label.
           inference=False,
-          example_label_tuple=True)
+          example_label_tuple=True,
+      )
 
       history = model.evaluate(
-          x=validation_dataset, batch_size=params.batch_size, steps=None)
+          x=validation_dataset, batch_size=params.batch_size, steps=None
+      )
 
       metric_values = ','.join(map(str, history))
       lines_to_write.append(f'{path},{metric_values}\n')
@@ -394,8 +421,9 @@ def run_inference_and_write_results(model: tf.keras.Model,
     logs_file.write('\n')
 
 
-def print_model_summary(model: tf.keras.Model, input_shape: Tuple[int, int, int,
-                                                                  int]) -> None:
+def print_model_summary(
+    model: tf.keras.Model, input_shape: Tuple[int, int, int, int]
+) -> None:
   """Runs a forward pass with dummy data then prints the model summary."""
   # Without calling this forward pass, we won't be able to print the summary.
   dummy_data = np.zeros(input_shape)
@@ -413,13 +441,19 @@ def read_params_from_json(checkpoint_path: str) -> ml_collections.ConfigDict:
     dir_path = os.path.dirname(checkpoint_path)
   json_path = os.path.join(dir_path, 'params.json')
   json_params = ml_collections.ConfigDict(
-      json.load(tf.io.gfile.GFile(json_path, 'r')))
+      json.load(tf.io.gfile.GFile(json_path, 'r'))
+  )
   # Report new base parameters that are not present in params.json
   for b_param in param_set:
     if b_param not in json_params:
-      logging.warning(('A new parameter (%s=%s) was added to the base config '
-                       'that is not present in params.json'), b_param,
-                      param_set[b_param])
+      logging.warning(
+          (
+              'A new parameter (%s=%s) was added to the base config '
+              'that is not present in params.json'
+          ),
+          b_param,
+          param_set[b_param],
+      )
   param_set.update(json_params)
 
   # Calculate the total number of rows for backward compatibility.
@@ -431,8 +465,9 @@ def read_params_from_json(checkpoint_path: str) -> ml_collections.ConfigDict:
   return param_set
 
 
-def save_params_as_json(out_dir: str,
-                        params: ml_collections.ConfigDict) -> None:
+def save_params_as_json(
+    out_dir: str, params: ml_collections.ConfigDict
+) -> None:
   """Saves params to a JSON file."""
   json_path = os.path.join(out_dir, 'params.json')
   tf.io.gfile.makedirs(os.path.dirname(json_path))
@@ -445,16 +480,19 @@ def get_datasets(
 ) -> Tuple[tf.distribute.DistributedDataset, tf.distribute.DistributedDataset]:
   """Returns datasets for training and evaluation."""
   train_input_fn = data_providers.create_input_fn(
-      params=params, mode='train', limit=params.limit)
+      params=params, mode='train', limit=params.limit
+  )
   eval_input_fn = data_providers.create_input_fn(
-      params=params, mode='eval', limit=params.limit)
+      params=params, mode='eval', limit=params.limit
+  )
   train_dataset = strategy.experimental_distribute_dataset(train_input_fn())
   eval_dataset = strategy.experimental_distribute_dataset(eval_input_fn())
   return train_dataset, eval_dataset
 
 
-def get_step_counts(params: ml_collections.ConfigDict,
-                    eval_and_log_every_step: bool) -> Tuple[int, int]:
+def get_step_counts(
+    params: ml_collections.ConfigDict, eval_and_log_every_step: bool
+) -> Tuple[int, int]:
   """Returns the steps for training and evaluation."""
 
   if eval_and_log_every_step:
@@ -471,8 +509,11 @@ def get_step_counts(params: ml_collections.ConfigDict,
 
 
 def get_checkpoint_and_initial_epoch(
-    model: tf.keras.models.Model, optimizer: tf.keras.optimizers.Optimizer,
-    out_dir: str, eval_checkpoint: str) -> Tuple[tf.train.Checkpoint, int, int]:
+    model: tf.keras.models.Model,
+    optimizer: tf.keras.optimizers.Optimizer,
+    out_dir: str,
+    eval_checkpoint: str,
+) -> Tuple[tf.train.Checkpoint, int, int]:
   """Loads a checkpoint if available and sets epoch to start training."""
   initial_epoch = 0
   initial_step_train = 0
@@ -484,12 +525,17 @@ def get_checkpoint_and_initial_epoch(
       with tf.io.gfile.GFile(eval_checkpoint, 'r') as f:
         checkpoint.restore(latest_checkpoint)
         eval_checkpoint, initial_epoch, initial_step_train = f.readline().split(
-            '\t')
+            '\t'
+        )
         initial_epoch = int(initial_epoch)
         initial_step_train = int(initial_step_train)
-        logging.info('Loaded checkpoint %s (%s) for epoch %s step %s',
-                     latest_checkpoint, eval_checkpoint, initial_epoch,
-                     initial_step_train)
+        logging.info(
+            'Loaded checkpoint %s (%s) for epoch %s step %s',
+            latest_checkpoint,
+            eval_checkpoint,
+            initial_epoch,
+            initial_step_train,
+        )
         initial_step_train += 1
   return checkpoint, initial_epoch, initial_step_train
 
@@ -500,15 +546,24 @@ def reset_all_metrics(metrics: List[tf.keras.metrics.Metric]) -> None:
     metric.reset_states()
 
 
-def log_and_save_metrics(epoch: int, num_epochs: int, step: int,
-                         total_steps: int,
-                         optimizer: tf.keras.optimizers.Optimizer,
-                         metrics: List[tf.keras.metrics.Metric], training: bool,
-                         steps_per_second: float) -> None:
+def log_and_save_metrics(
+    epoch: int,
+    num_epochs: int,
+    step: int,
+    total_steps: int,
+    optimizer: tf.keras.optimizers.Optimizer,
+    metrics: List[tf.keras.metrics.Metric],
+    training: bool,
+    steps_per_second: float,
+) -> None:
   """Logs metrics and saves them for TensorBoard."""
   logging.info(
-      'epoch: %d  step: %d of %d metrics: %s', epoch, step, total_steps,
-      ' '.join(f'{metric.name}= {metric.result()}' for metric in metrics))
+      'epoch: %d  step: %d of %d metrics: %s',
+      epoch,
+      step,
+      total_steps,
+      ' '.join(f'{metric.name}= {metric.result()}' for metric in metrics),
+  )
 
   overall_progress = optimizer.iterations.numpy() / (total_steps * num_epochs)
 
@@ -517,12 +572,12 @@ def log_and_save_metrics(epoch: int, num_epochs: int, step: int,
     tf.summary.scalar(
         'learning_rate',
         optimizer.lr(optimizer.iterations),
-        step=optimizer.iterations)
+        step=optimizer.iterations,
+    )
     tf.summary.scalar('progress/epoch', epoch, step=optimizer.iterations)
     tf.summary.scalar(
-        'progress/overall_progress',
-        overall_progress,
-        step=optimizer.iterations)
+        'progress/overall_progress', overall_progress, step=optimizer.iterations
+    )
   for metric in metrics:
     tf.summary.scalar(metric.name, metric.result(), step=optimizer.iterations)
     metric.reset_states()
@@ -533,9 +588,12 @@ def write_row(handle: Union[io.TextIOWrapper], row: List[Any]) -> None:
   handle.write('\t'.join(map(str, row)) + '\n')
 
 
-def save_checkpoint(checkpoint: tf.train.Checkpoint, out_dir: str,
-                    eval_metrics: List[tf.keras.metrics.Metric],
-                    write_checkpoint_metrics: bool) -> str:
+def save_checkpoint(
+    checkpoint: tf.train.Checkpoint,
+    out_dir: str,
+    eval_metrics: List[tf.keras.metrics.Metric],
+    write_checkpoint_metrics: bool,
+) -> str:
   """Save checkpoint and return its name."""
   checkpoint_name = checkpoint.save(os.path.join(out_dir, 'checkpoint'))
   logging.info('Saved checkpoint to %s', checkpoint_name)
@@ -551,15 +609,18 @@ def save_checkpoint(checkpoint: tf.train.Checkpoint, out_dir: str,
       for group_name, metrics in [('eval', eval_metrics)]:
         for metric in metrics:
           row = [
-              checkpoint_name, group_name, metric.name,
-              float(metric.result())
+              checkpoint_name,
+              group_name,
+              metric.name,
+              float(metric.result()),
           ]
           write_row(f, row)
   return checkpoint_name
 
 
-def create_optimizer(params: ml_collections.ConfigDict,
-                     decay_steps: int) -> tf.keras.optimizers.Optimizer:
+def create_optimizer(
+    params: ml_collections.ConfigDict, decay_steps: int
+) -> tf.keras.optimizers.Optimizer:
   """Creates optimizer based on specified model params and decay steps.
 
   Args:
@@ -579,19 +640,29 @@ def create_optimizer(params: ml_collections.ConfigDict,
               beta_2=params.beta_2,
               epsilon=params.epsilon,
               exclude_from_weight_decay=[
-                  'LayerNorm', 'bias', 'norm', 'BatchNorm',
-                  'batch_normalization'
-              ])),
+                  'LayerNorm',
+                  'bias',
+                  'norm',
+                  'BatchNorm',
+                  'batch_normalization',
+              ],
+          ),
+      ),
       learning_rate=optimization.LrConfig(
           type='polynomial',
           polynomial=optimization.PolynomialLrConfig(
               initial_learning_rate=params.initial_learning_rate,
               decay_steps=decay_steps,
-              end_learning_rate=params.end_learning_rate)),
+              end_learning_rate=params.end_learning_rate,
+          ),
+      ),
       warmup=optimization.WarmupConfig(
           type='linear',
           linear=optimization.LinearWarmupConfig(
-              warmup_steps=params.warmup_steps)))
+              warmup_steps=params.warmup_steps
+          ),
+      ),
+  )
 
   opt_factory = optimization.OptimizerFactory(optimization_config)
   optimizer = opt_factory.build_optimizer(opt_factory.build_learning_rate())

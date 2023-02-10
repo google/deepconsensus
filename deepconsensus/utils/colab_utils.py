@@ -51,7 +51,8 @@ def remove_gaps(seq: str) -> str:
 
 
 def get_deepconsensus_prediction(
-    model: tf.keras.Model, rows: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
+    model: tf.keras.Model, rows: tf.Tensor
+) -> Tuple[tf.Tensor, tf.Tensor]:
   """Runs model on given rows and returns distributions and predictions."""
   softmax_output = model(rows, training=False)
   pred = tf.argmax(softmax_output, axis=-1)
@@ -68,9 +69,12 @@ def ints_to_bases(bases_row: tf.Tensor) -> str:
   return ''.join([dc_constants.SEQ_VOCAB[int(b)] for b in bases_row])
 
 
-def convert_to_bases(rows: tf.Tensor, label: tf.Tensor,
-                     deepconsensus_pred: tf.Tensor,
-                     max_passes: int) -> Tuple[List[str], str, str]:
+def convert_to_bases(
+    rows: tf.Tensor,
+    label: tf.Tensor,
+    deepconsensus_pred: tf.Tensor,
+    max_passes: int,
+) -> Tuple[List[str], str, str]:
   """Converts numerical tensors to string of bases."""
   rows = tf.squeeze(rows)
   label = tf.squeeze(label)
@@ -117,9 +121,9 @@ def pretty_print_proto(dc_input, print_aux=False):
       print('%4d' % read.subread_strand * len(read.bases))
 
 
-def get_results_df(experiments: List[int],
-                   experiment_pattern: str,
-                   decimals: int = 5) -> pd.DataFrame:
+def get_results_df(
+    experiments: List[int], experiment_pattern: str, decimals: int = 5
+) -> pd.DataFrame:
   """Returns a dataframe with inference results."""
   all_lines = None
   for experiment in experiments:
@@ -147,7 +151,9 @@ def get_results_df(experiments: List[int],
 def get_results_df_compact(df: pd.DataFrame) -> pd.DataFrame:
   """Returns a compact version of the results with fewer columns."""
   cols_to_keep = [
-      'dataset_type', 'experiment_and_work_unit', 'accuracy',
-      'per_example_accuracy'
+      'dataset_type',
+      'experiment_and_work_unit',
+      'accuracy',
+      'per_example_accuracy',
   ]
   return df[cols_to_keep]

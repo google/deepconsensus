@@ -52,7 +52,8 @@ def fake_model_output(start: int, window_size: int):
       ec=2.5,
       np_num_passes=2,
       rq=0.98,
-      rg='test_rg')
+      rg='test_rg',
+  )
 
 
 def fake_model_outputs(window_size: int, num_windows: int):
@@ -70,12 +71,15 @@ class GetFullSequenceTest(parameterized.TestCase):
     width = 5
     dc_outputs = fake_model_outputs(window_size=width, num_windows=10)
     expected_sequence = ''.join(
-        [dc_output.sequence for dc_output in dc_outputs])
+        [dc_output.sequence for dc_output in dc_outputs]
+    )
     expected_quality_string = ''.join(
-        [dc_output.quality_string for dc_output in dc_outputs])
+        [dc_output.quality_string for dc_output in dc_outputs]
+    )
 
     sequence_output, quality_output = stitch_utils.get_full_sequence(
-        deepconsensus_outputs=dc_outputs, max_length=width)
+        deepconsensus_outputs=dc_outputs, max_length=width
+    )
     self.assertEqual(expected_sequence, sequence_output)
     self.assertEqual(expected_quality_string, quality_output)
 
@@ -90,16 +94,20 @@ class GetFullSequenceTest(parameterized.TestCase):
       if n == rand_seq_knockout:
         dc_output.sequence = 'N' * width
         dc_output.quality_string = utils.quality_score_to_string(
-            dc_constants.EMPTY_QUAL) * len(dc_output.sequence)
+            dc_constants.EMPTY_QUAL
+        ) * len(dc_output.sequence)
     expected_sequence = ''.join(
-        [dc_output.sequence for dc_output in dc_outputs])
+        [dc_output.sequence for dc_output in dc_outputs]
+    )
     expected_quality_string = ''.join(
-        [dc_output.quality_string for dc_output in dc_outputs])
+        [dc_output.quality_string for dc_output in dc_outputs]
+    )
     # Knockout sequence
     dc_outputs.pop(rand_seq_knockout)
 
     sequence_output, quality_output = stitch_utils.get_full_sequence(
-        deepconsensus_outputs=dc_outputs, max_length=width, fill_n=True)
+        deepconsensus_outputs=dc_outputs, max_length=width, fill_n=True
+    )
     self.assertEqual(expected_sequence, sequence_output)
     self.assertEqual(expected_quality_string, quality_output)
 
@@ -113,16 +121,19 @@ class RemoveGapsTest(parameterized.TestCase):
           quality_string=utils.quality_scores_to_string(np.array([1, 2, 3, 4])),
           expected_sequence='ATCG',
           expected_quality_string=utils.quality_scores_to_string(
-              np.array([1, 2, 3, 4])),
+              np.array([1, 2, 3, 4])
+          ),
       ),
       dict(
           testcase_name='some gaps',
           sequence='AT CG ',
           quality_string=utils.quality_scores_to_string(
-              np.array([1, 2, 3, 4, 5, 6])),
+              np.array([1, 2, 3, 4, 5, 6])
+          ),
           expected_sequence='ATCG',
           expected_quality_string=utils.quality_scores_to_string(
-              np.array([1, 2, 4, 5])),
+              np.array([1, 2, 4, 5])
+          ),
       ),
       dict(
           testcase_name='all gaps',
@@ -132,15 +143,17 @@ class RemoveGapsTest(parameterized.TestCase):
           expected_quality_string=None,
       ),
   )
-  def test_remove_gaps(self, sequence, quality_string, expected_sequence,
-                       expected_quality_string):
+  def test_remove_gaps(
+      self, sequence, quality_string, expected_sequence, expected_quality_string
+  ):
     if expected_sequence:
       expected_output = (expected_sequence, expected_quality_string)
     else:
       expected_output = ('', '')
 
     output = stitch_utils.remove_gaps(
-        sequence=sequence, quality_string=quality_string)
+        sequence=sequence, quality_string=quality_string
+    )
     self.assertEqual(output, expected_output)
 
 
@@ -151,14 +164,16 @@ class IsQualityAboveThresholdTest(parameterized.TestCase):
       dict(min_quality=20, read_qualities=(20, 20, 20, 20), should_pass=True),
       dict(min_quality=40, read_qualities=(40, 40, 40, 40), should_pass=True),
       # Average phred is not the same as average base quality.
-      dict(min_quality=40, read_qualities=(39, 39, 41, 41), should_pass=False)
+      dict(min_quality=40, read_qualities=(39, 39, 41, 41), should_pass=False),
   ])
-  def test_is_quality_above_threshold(self, min_quality, read_qualities,
-                                      should_pass):
+  def test_is_quality_above_threshold(
+      self, min_quality, read_qualities, should_pass
+  ):
     quality_string = [utils.quality_score_to_string(x) for x in read_qualities]
 
     passes = stitch_utils.is_quality_above_threshold(
-        quality_string=quality_string, min_quality=min_quality)
+        quality_string=quality_string, min_quality=min_quality
+    )
     self.assertEqual(passes, should_pass)
 
 

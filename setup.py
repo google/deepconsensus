@@ -44,7 +44,7 @@ REQUIREMENTS = (here / 'requirements.txt').read_text().splitlines()
 EXTRA_REQUIREMENTS = {
     # Use '==' to pin the versions.
     'cpu': ['intel-tensorflow==2.9.1'],
-    'gpu': ['tensorflow-gpu==2.9.1']
+    'gpu': ['tensorflow-gpu==2.9.1'],
 }
 
 
@@ -53,7 +53,7 @@ def get_version():
   with open(here / 'deepconsensus/utils/dc_constants.py', 'r') as constants:
     for line in constants:
       if line.startswith('__version__'):
-        return line.split('=')[1].strip(' \'\n')
+        return line.split('=')[1].strip(" '\n")
 
 
 setup(

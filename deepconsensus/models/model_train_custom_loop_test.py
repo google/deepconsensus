@@ -59,7 +59,8 @@ class ModelTrainTest(parameterized.TestCase):
         tpu=tpu,
         tpu_topology=tpu_topology,
         write_checkpoint_metrics=True,
-        debug=True)
+        debug=True,
+    )
 
     # Output directory should contain TensorBoard event files for training and
     # eval, model checkpoint files.
@@ -68,12 +69,14 @@ class ModelTrainTest(parameterized.TestCase):
     self.assertLen(train_event_file, 1)
     self.assertLen(eval_event_file, 1)
     checkpoint_metrics = glob.glob(
-        os.path.join(out_dir, 'checkpoint_metrics.tsv'))
+        os.path.join(out_dir, 'checkpoint_metrics.tsv')
+    )
     self.assertLen(checkpoint_metrics, 1)
     checkpoint_files = glob.glob(os.path.join(out_dir, 'checkpoint*index'))
     self.assertNotEmpty(checkpoint_files)
     checkpoint_metrics = glob.glob(
-        os.path.join(out_dir, 'checkpoint_metrics.tsv'))
+        os.path.join(out_dir, 'checkpoint_metrics.tsv')
+    )
     self.assertNotEmpty(checkpoint_metrics)
     json_params = glob.glob(os.path.join(out_dir, 'params.json'))
     self.assertNotEmpty(json_params)

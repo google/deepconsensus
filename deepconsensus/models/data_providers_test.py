@@ -92,7 +92,9 @@ class DataProvidersTest(parameterized.TestCase):
           inference=True,
       ),
       dict(
-          testcase_name='batch size does not evenly divide # examples inference',
+          testcase_name=(
+              'batch size does not evenly divide # examples inference'
+          ),
           num_epochs=5,
           batch_size=10,
           inference=True,
@@ -114,7 +116,8 @@ class DataProvidersTest(parameterized.TestCase):
         params=params,
         drop_remainder=False,
         inference=inference,
-        example_label_tuple=True)
+        example_label_tuple=True,
+    )
     total = 0
     for rows, label in dataset.as_numpy_iterator():
       # Last batch may contain fewer examples.
@@ -156,7 +159,9 @@ class DataProvidersTest(parameterized.TestCase):
           inference=True,
       ),
       dict(
-          testcase_name='batch size does not evenly divide # examples inference',
+          testcase_name=(
+              'batch size does not evenly divide # examples inference'
+          ),
           num_epochs=5,
           batch_size=10,
           inference=True,
@@ -176,7 +181,8 @@ class DataProvidersTest(parameterized.TestCase):
         batch_size=batch_size,
         params=params,
         drop_remainder=False,
-        inference=inference)
+        inference=inference,
+    )
     total = 0
     for tf_example in dataset.as_numpy_iterator():
       rows = tf_example['rows']
@@ -221,7 +227,8 @@ class DataProvidersTest(parameterized.TestCase):
         num_epochs=num_epochs,
         batch_size=batch_size,
         params=params,
-        inference=inference)
+        inference=inference,
+    )
     check_not_empty = False
     for data in dataset.as_numpy_iterator():
       rows = data['rows']
@@ -296,13 +303,16 @@ class DataProvidersTest(parameterized.TestCase):
         batch_size=1,
         params=params,
         limit=limit,
-        inference=inference)
+        inference=inference,
+    )
     limit_dataset_size = sum(1 for record in dataset)
     self.assertEqual(min(limit, full_dataset_size), limit_dataset_size)
 
   def test_remove_internal_gaps_and_shift(self):
-    label, expected = ('   GGGCGAG   ACATA   ACATA ATA ATA      ',
-                       'GGGCGAGACATAACATAATAATA                 ')
+    label, expected = (
+        '   GGGCGAG   ACATA   ACATA ATA ATA      ',
+        'GGGCGAGACATAACATAATAATA                 ',
+    )
     label = [float(dc_constants.SEQ_VOCAB.index(x)) for x in label]
     label = tf.expand_dims(tf.constant(label), axis=0)
     shifted = data_providers.remove_internal_gaps_and_shift(label)
@@ -330,15 +340,18 @@ class GetIndicesTest(parameterized.TestCase):
           testcase_name='use_ccs_bq',
           use_ccs_bq=True,
           expected_ccs_bq_rows=(81, 82),
-          expected_sn_rows=(82, 86)),
+          expected_sn_rows=(82, 86),
+      ),
       dict(
           testcase_name='no_use_ccs_bq',
           use_ccs_bq=False,
           expected_ccs_bq_rows=(0, 0),
-          expected_sn_rows=(81, 85)),
+          expected_sn_rows=(81, 85),
+      ),
   )
-  def test_get_indices(self, use_ccs_bq, expected_ccs_bq_rows,
-                       expected_sn_rows):
+  def test_get_indices(
+      self, use_ccs_bq, expected_ccs_bq_rows, expected_sn_rows
+  ):
     (
         _,
         _,

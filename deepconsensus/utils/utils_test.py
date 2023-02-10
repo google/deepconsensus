@@ -37,12 +37,19 @@ from deepconsensus.utils import utils
 
 class EncodedSequenceToString(parameterized.TestCase):
 
-  @parameterized.parameters(([0], ' '), ([1], 'A'), ([2], 'T'), ([3], 'C'),
-                            ([4], 'G'), ([2, 0, 1], 'T A'))
+  @parameterized.parameters(
+      ([0], ' '),
+      ([1], 'A'),
+      ([2], 'T'),
+      ([3], 'C'),
+      ([4], 'G'),
+      ([2, 0, 1], 'T A'),
+  )
   def test_score_to_string(self, encoded_val, expected_char):
     encoded_val = np.asarray(encoded_val)
     self.assertEqual(
-        utils.encoded_sequence_to_string(encoded_val), expected_char)
+        utils.encoded_sequence_to_string(encoded_val), expected_char
+    )
 
 
 class QualityScoreToStringTest(parameterized.TestCase):
@@ -51,16 +58,22 @@ class QualityScoreToStringTest(parameterized.TestCase):
   def test_score_to_string(self, score, expected_char):
     self.assertEqual(utils.quality_score_to_string(score), expected_char)
 
-  @parameterized.parameters((np.array([]), ''),
-                            (np.array([0, 10, 20, 30, 40]), '!+5?I'))
+  @parameterized.parameters(
+      (np.array([]), ''), (np.array([0, 10, 20, 30, 40]), '!+5?I')
+  )
   def test_score_list_to_string(self, scores, expected_str):
     self.assertEqual(utils.quality_scores_to_string(scores), expected_str)
 
 
 class QualityStringToArrayTest(parameterized.TestCase):
 
-  @parameterized.parameters(('', []), ('!', [0]), ('I', [40]), ('5', [20]),
-                            ('!+5?I', [0, 10, 20, 30, 40]))
+  @parameterized.parameters(
+      ('', []),
+      ('!', [0]),
+      ('I', [40]),
+      ('5', [20]),
+      ('!+5?I', [0, 10, 20, 30, 40]),
+  )
   def test_string_to_int(self, string, expected_scores):
     self.assertEqual(utils.quality_string_to_array(string), expected_scores)
 
@@ -92,7 +105,8 @@ class TestAvgPhred(parameterized.TestCase):
           testcase_name='no values',
           ccs_base_quality_scores=np.array([-1, -1, -1]),
           expected_avg_quality=0.0,
-      ))
+      ),
+  )
   def test_avg_ccs_quality(self, ccs_base_quality_scores, expected_avg_quality):
     np_phred = utils.avg_phred(ccs_base_quality_scores)
     self.assertAlmostEqual(np_phred, expected_avg_quality, 3)
@@ -117,10 +131,13 @@ class TestLeftSeq(parameterized.TestCase):
       dict(
           testcase_name='multiple_gaps',
           input_seq=np.array(
-              [0, 0, 1, 2, 3, 4, 0, 0, 1, 2, 3, 4, 0, 0, 1, 2, 3, 4, 0, 0]),
+              [0, 0, 1, 2, 3, 4, 0, 0, 1, 2, 3, 4, 0, 0, 1, 2, 3, 4, 0, 0]
+          ),
           expected_seq=np.array(
-              [1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 0, 0, 0, 0, 0, 0, 0, 0]),
-      ))
+              [1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 0, 0, 0, 0, 0, 0, 0, 0]
+          ),
+      ),
+  )
   def test_avg_ccs_quality(self, input_seq, expected_seq):
     left_shifted_seq = utils.left_shift_seq(input_seq)
     self.assertTrue((left_shifted_seq == expected_seq).all())
@@ -136,11 +153,14 @@ class TestBatchLeftSeq(parameterized.TestCase):
       ),
       dict(
           testcase_name='staggered_gaps',
-          input_seq=np.array([[0, 0, 1, 1, 0, 0, 2, 2],
-                              [1, 1, 0, 0, 2, 2, 0, 0]]),
-          expected_seq=np.array([[1, 1, 2, 2, 0, 0, 0, 0],
-                                 [1, 1, 2, 2, 0, 0, 0, 0]]),
-      ))
+          input_seq=np.array(
+              [[0, 0, 1, 1, 0, 0, 2, 2], [1, 1, 0, 0, 2, 2, 0, 0]]
+          ),
+          expected_seq=np.array(
+              [[1, 1, 2, 2, 0, 0, 0, 0], [1, 1, 2, 2, 0, 0, 0, 0]]
+          ),
+      ),
+  )
   def test_avg_ccs_quality(self, input_seq, expected_seq):
     left_shifted_seq = utils.left_shift(input_seq)
     self.assertTrue((left_shifted_seq == expected_seq).all())

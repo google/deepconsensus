@@ -43,15 +43,18 @@ class PerExampleAccuracyTest(parameterized.TestCase):
   @parameterized.named_parameters(
       dict(
           testcase_name='all padding',
-          y_true=np.array([
-              [dc_constants.GAP_INT, dc_constants.GAP_INT],
-          ]),
-
+          y_true=np.array(
+              [
+                  [dc_constants.GAP_INT, dc_constants.GAP_INT],
+              ]
+          ),
           # Using one hot inputs to create a 'distribution'. The metric will
           # compute the prediction by taking the argmax of the distribution.
-          y_pred_scores=np.array([
-              [test_utils.get_one_hot(dc_constants.GAP_INT)] * 2,
-          ]),
+          y_pred_scores=np.array(
+              [
+                  [test_utils.get_one_hot(dc_constants.GAP_INT)] * 2,
+              ]
+          ),
           # All windows are correct.
           exp_accuracy=1.0,
       ),
@@ -62,7 +65,6 @@ class PerExampleAccuracyTest(parameterized.TestCase):
               test_utils.seq_to_array('T T T T'),
               test_utils.seq_to_array('A A A A'),
           ]),
-
           # Using one hot inputs to create a 'distribution'. The metric will
           # compute the prediction by taking the argmax of the distribution.
           y_pred_scores=np.stack([
@@ -88,12 +90,12 @@ class PerExampleAccuracyTest(parameterized.TestCase):
     y_true = np.array([
         test_utils.seq_to_array('A T C G'),
         test_utils.seq_to_array('A T C G'),
-        test_utils.seq_to_array('A T C G')
+        test_utils.seq_to_array('A T C G'),
     ])
     y_pred_scores = np.array([
         test_utils.seq_to_one_hot('   ATCG'),
         test_utils.seq_to_one_hot('ATCG   '),
-        test_utils.seq_to_one_hot('  ATCG ')
+        test_utils.seq_to_one_hot('  ATCG '),
     ])
 
     # Update 1 is all correct
@@ -103,12 +105,12 @@ class PerExampleAccuracyTest(parameterized.TestCase):
     y_true = np.array([
         test_utils.seq_to_array('C C C C'),
         test_utils.seq_to_array('A T C G'),
-        test_utils.seq_to_array('C C C C')
+        test_utils.seq_to_array('C C C C'),
     ])
     y_pred_scores = np.array([
         test_utils.seq_to_one_hot('   ATCG'),
         test_utils.seq_to_one_hot('ATCG   '),
-        test_utils.seq_to_one_hot('  CCCC ')
+        test_utils.seq_to_one_hot('  CCCC '),
     ])
 
     # Update 2 has 1 errors
@@ -126,7 +128,7 @@ class PerClassAccuracyTest(parameterized.TestCase):
               test_utils.get_one_hot(0),
               test_utils.get_one_hot(1),
               test_utils.get_one_hot(0),
-              test_utils.get_one_hot(0)
+              test_utils.get_one_hot(0),
           ]]),
           class_value=1,
           exp_accuracy=1 / 1,
@@ -138,7 +140,7 @@ class PerClassAccuracyTest(parameterized.TestCase):
               test_utils.get_one_hot(0),
               test_utils.get_one_hot(1),
               test_utils.get_one_hot(1),
-              test_utils.get_one_hot(1)
+              test_utils.get_one_hot(1),
           ]]),
           class_value=1,
           exp_accuracy=1.0,
@@ -150,7 +152,7 @@ class PerClassAccuracyTest(parameterized.TestCase):
               test_utils.get_one_hot(0),
               test_utils.get_one_hot(1),
               test_utils.get_one_hot(0),
-              test_utils.get_one_hot(0)
+              test_utils.get_one_hot(0),
           ]]),
           class_value=1,
           exp_accuracy=1 / 3,
@@ -162,7 +164,7 @@ class PerClassAccuracyTest(parameterized.TestCase):
               test_utils.get_one_hot(0),
               test_utils.get_one_hot(1),
               test_utils.get_one_hot(0),
-              test_utils.get_one_hot(0)
+              test_utils.get_one_hot(0),
           ]]),
           class_value=4,
           # Metric is initialized as 0.
@@ -181,12 +183,18 @@ class LeftShiftTrueLabels(parameterized.TestCase):
   @parameterized.named_parameters(
       dict(
           testcase_name='Convert internal gaps',
-          sequences=(['TTAGGC    ', 'AGCTGG    '], ['T T A G GC',
-                                                    'A   G CTGG'])),
+          sequences=(
+              ['TTAGGC    ', 'AGCTGG    '],
+              ['T T A G GC', 'A   G CTGG'],
+          ),
+      ),
       dict(
           testcase_name='Do not convert internal gaps',
-          sequences=(['TTAGGC    ', 'AGCTGG    '], ['T T A G GC',
-                                                    'A   G CTGG'])),
+          sequences=(
+              ['TTAGGC    ', 'AGCTGG    '],
+              ['T T A G GC', 'A   G CTGG'],
+          ),
+      ),
   )
   def test_left_shift_sequence(self, sequences):
     """Checks that edit distance calculation matches expected value."""
@@ -225,11 +233,13 @@ class XentropySubsCostFn(parameterized.TestCase):
     n_base_tokens = len(dc_constants.ALLOWED_BASES)
 
     y_true = tf.argmax(
-        tf.random.stateless_normal([b, m, n_base_tokens], [seed, 0]), -1)
+        tf.random.stateless_normal([b, m, n_base_tokens], [seed, 0]), -1
+    )
     y_true_oh = tf.one_hot(y_true, n_tokens, dtype=dtype)
 
-    y_pred = tf.random.stateless_uniform([b, n, n_tokens], [seed, 1],
-                                         dtype=dtype)
+    y_pred = tf.random.stateless_uniform(
+        [b, n, n_tokens], [seed, 1], dtype=dtype
+    )
     y_pred = y_pred / tf.reduce_sum(y_pred, -1, True)
 
     xent = losses_and_metrics.xentropy_subs_cost_fn(y_true_oh, y_pred)
@@ -250,15 +260,17 @@ class XentropyInsCostFn(parameterized.TestCase):
           n=8,
           seed=0,
           dtype=tf.float32,
-      ),)
+      ),
+  )
   def test_xentropy_subs_cost_fn(self, b, n, seed, dtype):
     """Checks that pointwise XEntropy values agree with tf.keras.losses."""
     # Generates random data.
     gap_token = dc_constants.SEQ_VOCAB.find(dc_constants.GAP)
     n_tokens = len(dc_constants.SEQ_VOCAB)
 
-    y_pred = tf.random.stateless_uniform([b, n, n_tokens], [seed, 0],
-                                         dtype=dtype)
+    y_pred = tf.random.stateless_uniform(
+        [b, n, n_tokens], [seed, 0], dtype=dtype
+    )
     y_pred = y_pred / tf.reduce_sum(y_pred, -1, True)
 
     xent = losses_and_metrics.xentropy_ins_cost_fn(y_pred)
@@ -277,94 +289,113 @@ class AlignmentLossTest(parameterized.TestCase):
           del_cost=1.0,
           loss_reg=None,
           expected_loss=0.0,
-          width=None),
+          width=None,
+      ),
       dict(
           testcase_name='Hard, identical sequences, with same pad',
-          sequences=(['TTAGGC    ', 'AGCTGG    '], ['TTAGGC    ',
-                                                    'AGCTGG    ']),
+          sequences=(
+              ['TTAGGC    ', 'AGCTGG    '],
+              ['TTAGGC    ', 'AGCTGG    '],
+          ),
           del_cost=1.0,
           loss_reg=None,
           expected_loss=0.0,
-          width=None),
+          width=None,
+      ),
       dict(
           testcase_name='Hard, identical sequences, with different pad',
           sequences=(['TTAGGCAT', 'AGCTGG  '], ['TTAGGCAT  ', 'AGCTGG    ']),
           del_cost=1.0,
           loss_reg=None,
           expected_loss=0.0,
-          width=None),
+          width=None,
+      ),
       dict(
           testcase_name='Hard, correct insertions only, no pad',
           sequences=(['TTAGGC', 'AGCTGG'], ['T TA G G C', 'AGC    TGG']),
           del_cost=1.0,
           loss_reg=None,
           expected_loss=0.0,
-          width=None),
+          width=None,
+      ),
       dict(
           testcase_name='Hard, correct insertions only, with pad',
-          sequences=(['TTAGGC    ', 'AGCTGG    '], ['TTA G GC  ',
-                                                    'AGC    TGG']),
+          sequences=(
+              ['TTAGGC    ', 'AGCTGG    '],
+              ['TTA G GC  ', 'AGC    TGG'],
+          ),
           del_cost=1.0,
           loss_reg=None,
           expected_loss=0.0,
-          width=None),
+          width=None,
+      ),
       dict(
           testcase_name='Hard, one deletion at cost one, with pad',
           sequences=(['TTAGGC', 'AGCTGG'], ['TTAGG ', 'GCTGG ']),
           del_cost=1.0,
           loss_reg=None,
           expected_loss=1.0,
-          width=None),
+          width=None,
+      ),
       dict(
           testcase_name='Hard, one deletion at cost two, with pad',
           sequences=(['TTAGGC', 'AGCTGG'], ['TAGGC ', 'AGCGG ']),
           del_cost=2.0,
           loss_reg=None,
           expected_loss=2.0,
-          width=None),
+          width=None,
+      ),
       dict(
           testcase_name='Hard, two deletions at cost one, with pad',
           sequences=(['TTAGGC', 'AGCTGG'], ['TTAG  ', 'GCGG  ']),
           del_cost=1.0,
           loss_reg=None,
           expected_loss=2.0,
-          width=None),
+          width=None,
+      ),
       dict(
           testcase_name='Hard, one error, no pad',
           sequences=(['TTAGGC', 'AGCTGG'], ['ATAGGC', 'TGCTGG']),
           del_cost=1.0,
           loss_reg=None,
           expected_loss=16.118,  # log(eps), with eps = 1e-7
-          width=None),
+          width=None,
+      ),
       dict(
           testcase_name='Hard, two errors, no pad',
           sequences=(['TTAGGC', 'AGCTGG'], ['AAAGGC', 'TGCTGC']),
           del_cost=1.0,
           loss_reg=None,
           expected_loss=32.236,  # 2*log(eps), with eps = 1e-7
-          width=None),
+          width=None,
+      ),
       dict(
           testcase_name='Hard, one erroneous insertion, no pad',
-          sequences=(['TTAGGC', 'ATCGAC',
-                      'AGCTGG'], ['TTAGGCA', 'ATCCGAC', 'CAGCTGG']),
+          sequences=(
+              ['TTAGGC', 'ATCGAC', 'AGCTGG'],
+              ['TTAGGCA', 'ATCCGAC', 'CAGCTGG'],
+          ),
           del_cost=1.0,
           loss_reg=None,
           expected_loss=16.118,  # log(eps), with eps = 1e-7
-          width=None),
+          width=None,
+      ),
       dict(
           testcase_name='Hard, one deletion, small deletion cost, with pad',
           sequences=(['ATCG ', 'ATCG '], ['TCG  ', 'TCG  ']),
           del_cost=1.0,
           loss_reg=None,
           expected_loss=1.0,
-          width=None),
+          width=None,
+      ),
       dict(
           testcase_name='Hard, one deletion, large deletion cost, with pad',
           sequences=(['ATCG ', 'ATCG '], ['TCG  ', 'TCG  ']),
           del_cost=1e9,
           loss_reg=None,
           expected_loss=64.472,  # 4*log(eps), with eps = 1e-7
-          width=None),
+          width=None,
+      ),
       # TODO: included test cases for soft alignment.
       dict(
           testcase_name='with band, identical sequences',
@@ -372,65 +403,79 @@ class AlignmentLossTest(parameterized.TestCase):
           del_cost=1.0,
           loss_reg=None,
           expected_loss=0.0,
-          width=2),
+          width=2,
+      ),
       dict(
           testcase_name='with band, one deletion at cost one, with pad',
           sequences=(['TTAGGC', 'AGCTGG'], ['TTAGG ', 'GCTGG ']),
           del_cost=1.0,
           loss_reg=None,
           expected_loss=1.0,
-          width=2),
+          width=2,
+      ),
       dict(
           testcase_name='with band, identical sequences, with same pad',
-          sequences=(['TTAGGC    ', 'AGCTGG    '], ['TTAGGC    ',
-                                                    'AGCTGG    ']),
+          sequences=(
+              ['TTAGGC    ', 'AGCTGG    '],
+              ['TTAGGC    ', 'AGCTGG    '],
+          ),
           del_cost=1.0,
           loss_reg=None,
           expected_loss=0.0,
-          width=1),
+          width=1,
+      ),
       dict(
           testcase_name='with band, correct insertions only, no pad',
           sequences=(['TTAGGC   ', 'AGCTG   G'], ['T TAG G C', 'AGC   TGG']),
           del_cost=1.0,
           loss_reg=None,
           expected_loss=0.0,
-          width=8),
+          width=8,
+      ),
       dict(
           testcase_name='with band, correct insertions only, with pad',
-          sequences=(['TTAGGC    ', 'AGCTGG    '], ['TTA G GC  ',
-                                                    'AGC    TGG']),
+          sequences=(
+              ['TTAGGC    ', 'AGCTGG    '],
+              ['TTA G GC  ', 'AGC    TGG'],
+          ),
           del_cost=1.0,
           loss_reg=None,
           expected_loss=0.0,
-          width=8),
+          width=8,
+      ),
       dict(
           testcase_name='with band, two errors, no pad',
           sequences=(['TTAGGC', 'AGCTGG'], ['AAAGGC', 'TGCTGC']),
           del_cost=1.0,
           loss_reg=None,
           expected_loss=32.236,  # 2*log(eps), with eps = 1e-7
-          width=4),
+          width=4,
+      ),
       dict(
           testcase_name='with band of 2, two dels, one align, two pads',
           sequences=(['TTA', 'GGC'], ['A  ', 'C  ']),
           del_cost=1.0,
           loss_reg=None,
           expected_loss=2.0,
-          width=2),
+          width=2,
+      ),
       dict(
           testcase_name='with band of 1,one del, one align, two pads, one del',
           sequences=(['TTA', 'GGC'], ['A  ', 'C  ']),
           del_cost=1.0,
           loss_reg=None,
           expected_loss=18.118,  # 2.0 + log(eps), with eps = 1e-7
-          width=1),
+          width=1,
+      ),
   )
-  def test_alignment_loss(self, sequences, del_cost, loss_reg, width,
-                          expected_loss):
+  def test_alignment_loss(
+      self, sequences, del_cost, loss_reg, width, expected_loss
+  ):
     """Checks that edit distance calculation matches expected value."""
     y_true, y_pred_scores = test_utils.convert_seqs(sequences)
     loss_obj = losses_and_metrics.AlignmentLoss(
-        del_cost=del_cost, loss_reg=loss_reg, width=width)
+        del_cost=del_cost, loss_reg=loss_reg, width=width
+    )
     loss = loss_obj(y_true, y_pred_scores)
     self.assertAlmostEqual(float(loss), expected_loss, places=2)
 
@@ -445,7 +490,8 @@ class AlignmentMetricTest(parameterized.TestCase):
           mismatch_penalty=5.0,
           gap_open_penalty=5.0,
           gap_extend_penalty=4.0,
-          expected_pid=(1.0, 1.0)),
+          expected_pid=(1.0, 1.0),
+      ),
       dict(
           testcase_name='Two errors, no pad',
           sequences=(['TTAGGC', 'AGCTGG'], ['AAAGGC', 'TGCTGC']),
@@ -453,7 +499,8 @@ class AlignmentMetricTest(parameterized.TestCase):
           mismatch_penalty=5.0,
           gap_open_penalty=5.0,
           gap_extend_penalty=4.0,
-          expected_pid=(0.667, 0.667)),
+          expected_pid=(0.667, 0.667),
+      ),
       dict(
           testcase_name='Correct insertions only, no pad.',
           sequences=(['TTAGGC', 'AGCTGG'], ['T TA G G C', 'AGC    TGG']),
@@ -461,7 +508,8 @@ class AlignmentMetricTest(parameterized.TestCase):
           mismatch_penalty=5.0,
           gap_open_penalty=5.0,
           gap_extend_penalty=4.0,
-          expected_pid=(1.0, 1.0)),
+          expected_pid=(1.0, 1.0),
+      ),
       dict(
           testcase_name='One deletion, with pad.',
           sequences=(['TTAGGC', 'AGCTGG'], ['TTAGG ', 'GCTGG ']),
@@ -469,16 +517,20 @@ class AlignmentMetricTest(parameterized.TestCase):
           mismatch_penalty=5.0,
           gap_open_penalty=5.0,
           gap_extend_penalty=4.0,
-          expected_pid=(0.833, 0.833)),
+          expected_pid=(0.833, 0.833),
+      ),
       dict(
           testcase_name='One erroneous insertion, no pad.',
-          sequences=(['TTAGGC', 'ATCGAC',
-                      'AGCTGG'], ['TTAGGCA', 'ATCCGAC', 'CAGCTGG']),
+          sequences=(
+              ['TTAGGC', 'ATCGAC', 'AGCTGG'],
+              ['TTAGGCA', 'ATCCGAC', 'CAGCTGG'],
+          ),
           matching_score=2.0,
           mismatch_penalty=5.0,
           gap_open_penalty=5.0,
           gap_extend_penalty=4.0,
-          expected_pid=(0.857, 0.857, 0.857)),
+          expected_pid=(0.857, 0.857, 0.857),
+      ),
       dict(
           testcase_name='One deletion, shorter, with pad.',
           sequences=(['ATCG ', 'ATCG '], ['TCG  ', 'TCG  ']),
@@ -486,7 +538,8 @@ class AlignmentMetricTest(parameterized.TestCase):
           mismatch_penalty=5.0,
           gap_open_penalty=5.0,
           gap_extend_penalty=4.0,
-          expected_pid=(0.75, 0.75)),
+          expected_pid=(0.75, 0.75),
+      ),
       dict(
           testcase_name='Empty predictions.',
           sequences=(['ATCG ', 'ATCG '], ['     ', '     ']),
@@ -494,7 +547,8 @@ class AlignmentMetricTest(parameterized.TestCase):
           mismatch_penalty=5.0,
           gap_open_penalty=5.0,
           gap_extend_penalty=4.0,
-          expected_pid=(0.0, 0.0)),
+          expected_pid=(0.0, 0.0),
+      ),
       dict(
           testcase_name='Empty ground-truth.',
           sequences=(['     ', '     '], ['ATCG ', 'ATCG ']),
@@ -502,7 +556,8 @@ class AlignmentMetricTest(parameterized.TestCase):
           mismatch_penalty=5.0,
           gap_open_penalty=5.0,
           gap_extend_penalty=4.0,
-          expected_pid=(0.0, 0.0)),
+          expected_pid=(0.0, 0.0),
+      ),
       dict(
           testcase_name='Empty predictions, ground-truth length one.',
           sequences=(['A    ', 'T    '], ['     ', '     ']),
@@ -510,7 +565,8 @@ class AlignmentMetricTest(parameterized.TestCase):
           mismatch_penalty=5.0,
           gap_open_penalty=5.0,
           gap_extend_penalty=4.0,
-          expected_pid=(0.0, 0.0)),
+          expected_pid=(0.0, 0.0),
+      ),
       dict(
           testcase_name='Empty ground-truth, predictions length one.',
           sequences=(['     ', '     '], ['A    ', 'T    ']),
@@ -518,7 +574,8 @@ class AlignmentMetricTest(parameterized.TestCase):
           mismatch_penalty=5.0,
           gap_open_penalty=5.0,
           gap_extend_penalty=4.0,
-          expected_pid=(0.0, 0.0)),
+          expected_pid=(0.0, 0.0),
+      ),
       dict(
           testcase_name='Both empty.',
           sequences=(['     ', '     '], ['     ', '     ']),
@@ -526,19 +583,25 @@ class AlignmentMetricTest(parameterized.TestCase):
           mismatch_penalty=5.0,
           gap_open_penalty=5.0,
           gap_extend_penalty=4.0,
-          expected_pid=(1.0, 1.0)),  # Expected PID defined as special case.
+          expected_pid=(1.0, 1.0),
+      ),  # Expected PID defined as special case.
   )
-  def test_alignment_metric(self, sequences: Tuple[Sequence[str],
-                                                   Sequence[str]],
-                            matching_score: float, mismatch_penalty: float,
-                            gap_open_penalty: float, gap_extend_penalty: float,
-                            expected_pid: Tuple[float]):
+  def test_alignment_metric(
+      self,
+      sequences: Tuple[Sequence[str], Sequence[str]],
+      matching_score: float,
+      mismatch_penalty: float,
+      gap_open_penalty: float,
+      gap_extend_penalty: float,
+      expected_pid: Tuple[float],
+  ):
     y_true, y_pred_scores = test_utils.convert_seqs(sequences)
     alignment_metric_obj = losses_and_metrics.AlignmentMetric(
         matching_score=matching_score,
         mismatch_penalty=mismatch_penalty,
         gap_open_penalty=gap_open_penalty,
-        gap_extend_penalty=gap_extend_penalty)
+        gap_extend_penalty=gap_extend_penalty,
+    )
     pid = alignment_metric_obj.alignment(y_true, y_pred_scores)[2]['pid']
     for i, _ in enumerate(sequences):
       self.assertAlmostEqual(float(pid[i]), expected_pid[i], places=2)
@@ -554,7 +617,8 @@ class AlignmentIdentityBatchMetricTest(parameterized.TestCase):
           label_seqs=['TTAGGC', 'AGCTGG'],
           alignment_metric_obj=losses_and_metrics.AlignmentMetric(),
           expected_pid_pred=1.0,
-          expected_pid_ccs=1.0),
+          expected_pid_ccs=1.0,
+      ),
       dict(
           testcase_name='3 mismatches in CCS, 6 in DC over multiple examples.',
           pred_seqs=['CCCCCC', 'TGCTGG'],
@@ -562,7 +626,8 @@ class AlignmentIdentityBatchMetricTest(parameterized.TestCase):
           label_seqs=['TTAGGC', 'AGCTGG'],
           alignment_metric_obj=losses_and_metrics.AlignmentMetric(),
           expected_pid_pred=0.5,
-          expected_pid_ccs=0.75),
+          expected_pid_ccs=0.75,
+      ),
       dict(
           testcase_name='Empty CCS, DC, and label.',
           pred_seqs=['     ', '     '],
@@ -570,24 +635,32 @@ class AlignmentIdentityBatchMetricTest(parameterized.TestCase):
           label_seqs=['     ', '     '],
           alignment_metric_obj=losses_and_metrics.AlignmentMetric(),
           expected_pid_pred=1.0,
-          expected_pid_ccs=1.0),  # Expected PID defined as special case.
+          expected_pid_ccs=1.0,
+      ),  # Expected PID defined as special case.
   )
   def test_get_batch_identity_ccs_pred(
-      self, pred_seqs: Sequence[str], ccs_seqs: Sequence[str],
+      self,
+      pred_seqs: Sequence[str],
+      ccs_seqs: Sequence[str],
       label_seqs: Sequence[str],
       alignment_metric_obj: losses_and_metrics.AlignmentMetric,
-      expected_pid_pred: float, expected_pid_ccs: float):
+      expected_pid_pred: float,
+      expected_pid_ccs: float,
+  ):
     """Checks per batch identity for DeepConsensus and CCS."""
 
     sequences = tuple((label_seqs, pred_seqs))
     labels, predictions = test_utils.convert_seqs(sequences)
     ccs = test_utils.multiseq_to_array(ccs_seqs).astype(
-        dc_constants.NP_DATA_TYPE)
+        dc_constants.NP_DATA_TYPE
+    )
 
     # Calculate identity per batch for CCS and DC.
-    (identity_ccs,
-     identity_pred) = losses_and_metrics.get_batch_identity_ccs_pred(
-         ccs, predictions, labels, alignment_metric_obj)
+    (identity_ccs, identity_pred) = (
+        losses_and_metrics.get_batch_identity_ccs_pred(
+            ccs, predictions, labels, alignment_metric_obj
+        )
+    )
     self.assertAlmostEqual(identity_pred.numpy(), expected_pid_pred, places=2)
     self.assertAlmostEqual(identity_ccs.numpy(), expected_pid_ccs, places=2)
 
@@ -602,7 +675,8 @@ class YieldOverCCSMetricTest(parameterized.TestCase):
           identities_ccs=[1.0, 1.0],
           exp_yields_dc=[1.0, 2.0],
           exp_yields_ccs=[1.0, 2.0],
-          exp_yields_over_ccs=[1.0, 1.0]),
+          exp_yields_over_ccs=[1.0, 1.0],
+      ),
       dict(
           testcase_name='DC yield < CCS yield.',
           quality_threshold=0.99,
@@ -610,7 +684,8 @@ class YieldOverCCSMetricTest(parameterized.TestCase):
           identities_ccs=[1.0, 1.0],
           exp_yields_dc=[0.0, 1.0],
           exp_yields_ccs=[1.0, 2.0],
-          exp_yields_over_ccs=[0.0, 0.5]),
+          exp_yields_over_ccs=[0.0, 0.5],
+      ),
       dict(
           testcase_name='DC yield > CCS yield.',
           quality_threshold=0.99,
@@ -618,7 +693,8 @@ class YieldOverCCSMetricTest(parameterized.TestCase):
           identities_ccs=[0.9, 1.0],
           exp_yields_dc=[1.0, 2.0],
           exp_yields_ccs=[0.0, 1.0],
-          exp_yields_over_ccs=[0.0, 2.0]),
+          exp_yields_over_ccs=[0.0, 2.0],
+      ),
       dict(
           testcase_name='DC yield >= CCS yield, low CCS identity in 2nd batch.',
           quality_threshold=0.99,
@@ -626,7 +702,8 @@ class YieldOverCCSMetricTest(parameterized.TestCase):
           identities_ccs=[1.0, 0.9],
           exp_yields_dc=[1.0, 2.0],
           exp_yields_ccs=[1.0, 1.0],
-          exp_yields_over_ccs=[1.0, 2.0]),
+          exp_yields_over_ccs=[1.0, 2.0],
+      ),
       dict(
           testcase_name='Lower identity quality threshold.',
           quality_threshold=0.9,
@@ -634,12 +711,18 @@ class YieldOverCCSMetricTest(parameterized.TestCase):
           identities_ccs=[1.0, 1.0],
           exp_yields_dc=[1.0, 2.0],
           exp_yields_ccs=[1.0, 2.0],
-          exp_yields_over_ccs=[1.0, 1.0]),
+          exp_yields_over_ccs=[1.0, 1.0],
+      ),
   )
   def test_yield_over_ccs_metric_multiple_updates(
-      self, quality_threshold: float, identities_dc: List[Sequence[str]],
-      identities_ccs: List[Sequence[str]], exp_yields_dc: List[float],
-      exp_yields_ccs: List[float], exp_yields_over_ccs: List[float]):
+      self,
+      quality_threshold: float,
+      identities_dc: List[Sequence[str]],
+      identities_ccs: List[Sequence[str]],
+      exp_yields_dc: List[float],
+      exp_yields_ccs: List[float],
+      exp_yields_over_ccs: List[float],
+  ):
     """Checks that yield over ccs metrics and attributes match expected values.
 
     Since during trainig metric values are continually updated, this function
@@ -656,22 +739,33 @@ class YieldOverCCSMetricTest(parameterized.TestCase):
       exp_yields_over_ccs: Expected yield over CCS for each metric update.
     """
     yield_over_ccs_obj = losses_and_metrics.YieldOverCCSMetric(
-        quality_threshold=quality_threshold, name='yield_over_ccs_metric')
+        quality_threshold=quality_threshold, name='yield_over_ccs_metric'
+    )
 
-    for (identity_ccs, identity_pred, exp_yield_dc, exp_yield_ccs,
-         exp_yield_over_ccs) in zip(identities_ccs, identities_dc,
-                                    exp_yields_dc, exp_yields_ccs,
-                                    exp_yields_over_ccs):
-
+    for (
+        identity_ccs,
+        identity_pred,
+        exp_yield_dc,
+        exp_yield_ccs,
+        exp_yield_over_ccs,
+    ) in zip(
+        identities_ccs,
+        identities_dc,
+        exp_yields_dc,
+        exp_yields_ccs,
+        exp_yields_over_ccs,
+    ):
       # Update metric.
       yield_over_ccs_obj.update_state(identity_ccs, identity_pred)
       # Test accumulated CCS and DC yield.
-      self.assertAlmostEqual(yield_over_ccs_obj.yield_ccs.numpy(),
-                             exp_yield_ccs)
+      self.assertAlmostEqual(
+          yield_over_ccs_obj.yield_ccs.numpy(), exp_yield_ccs
+      )
       self.assertAlmostEqual(yield_over_ccs_obj.yield_dc.numpy(), exp_yield_dc)
       # Test accumulated yield of DC over CCS.
-      self.assertAlmostEqual(yield_over_ccs_obj.result().numpy(),
-                             exp_yield_over_ccs)
+      self.assertAlmostEqual(
+          yield_over_ccs_obj.result().numpy(), exp_yield_over_ccs
+      )
 
 
 def softmax(x):
@@ -679,15 +773,17 @@ def softmax(x):
   return np.exp(x) / np.sum(np.exp(x), axis=0)
 
 
-def distill_loss_per_pos_fn_np(teacher_logits, student_logits, temperature,
-                               logit_loss_identifier):
+def distill_loss_per_pos_fn_np(
+    teacher_logits, student_logits, temperature, logit_loss_identifier
+):
   """Computes per position distillation loss."""
   teacher_probs = softmax(teacher_logits / temperature)
   student_probs = softmax(student_logits / temperature)
   if logit_loss_identifier == 'kl_divergence':
     # Compute the KL divergence.
     loss = np.sum(
-        teacher_probs * np.log(teacher_probs / student_probs), axis=-1)
+        teacher_probs * np.log(teacher_probs / student_probs), axis=-1
+    )
   elif logit_loss_identifier == 'mean_squared_error':
     # Compute MSE
     loss = np.square(np.subtract(teacher_probs, student_probs)).mean()
@@ -713,15 +809,18 @@ class DistillationLossTest(parameterized.TestCase):
           testcase_name='Temperature=10',
           temperature=10,
           logit_loss_identifier='kl_divergence',
-          are_logits_equal=False),
+          are_logits_equal=False,
+      ),
       dict(
           testcase_name='Student and teacher have the same logits.',
           temperature=1,
           logit_loss_identifier='kl_divergence',
-          are_logits_equal=True),
+          are_logits_equal=True,
+      ),
   )
-  def test_distillation_loss_fn(self, temperature, logit_loss_identifier,
-                                are_logits_equal):
+  def test_distillation_loss_fn(
+      self, temperature, logit_loss_identifier, are_logits_equal
+  ):
     """Checks that pointwise Distillation values agree with numpy."""
     # Generate random data.
     batch_size = 2
@@ -734,27 +833,33 @@ class DistillationLossTest(parameterized.TestCase):
       seed_student = seed_teacher + 1
     np.random.seed(seed_teacher)
     teacher_logits = np.random.normal(
-        size=(batch_size, window_length, dc_constants.SEQ_VOCAB_SIZE))
+        size=(batch_size, window_length, dc_constants.SEQ_VOCAB_SIZE)
+    )
     np.random.seed(seed_student)
     student_logits = np.random.normal(
-        size=(batch_size, window_length, dc_constants.SEQ_VOCAB_SIZE))
+        size=(batch_size, window_length, dc_constants.SEQ_VOCAB_SIZE)
+    )
 
     distill_loss_fn = losses_and_metrics.DistillationLoss(
         temperature=temperature,
         logit_loss=tf.keras.losses.get(logit_loss_identifier),
-        reduction=tf.keras.losses.Reduction.NONE)
+        reduction=tf.keras.losses.Reduction.NONE,
+    )
     expected_loss = distill_loss_fn(
         tf.constant(teacher_logits, dtype=tf.float32),
-        tf.constant(student_logits, dtype=tf.float32)).numpy()
+        tf.constant(student_logits, dtype=tf.float32),
+    ).numpy()
 
     # Compute distillation loss in numpy pointwise.
     for example_ind in range(batch_size):
       distill_loss = 0
       for pos_ind in range(window_length):
         loss_ij = distill_loss_per_pos_fn_np(
-            teacher_logits[example_ind, pos_ind, :], student_logits[example_ind,
-                                                                    pos_ind, :],
-            temperature, logit_loss_identifier)
+            teacher_logits[example_ind, pos_ind, :],
+            student_logits[example_ind, pos_ind, :],
+            temperature,
+            logit_loss_identifier,
+        )
         distill_loss = distill_loss + loss_ij
       # Get the distillation loss over the whole window.
       distill_loss = distill_loss / window_length

@@ -48,9 +48,13 @@ class EditDistanceTest(parameterized.TestCase):
 
 class RepeatContentTest(parameterized.TestCase):
 
-  @parameterized.parameters([['      ', 0.0], ['ABCD', 0.0], ['AAABBBCD', 0.75],
-                             ['AAABBBCCCDDD', 1.0],
-                             ['AAA BBB CCC DDD    ', 1.0]])
+  @parameterized.parameters([
+      ['      ', 0.0],
+      ['ABCD', 0.0],
+      ['AAABBBCD', 0.75],
+      ['AAABBBCCCDDD', 1.0],
+      ['AAA BBB CCC DDD    ', 1.0],
+  ])
   def test_repeat_content(self, seq, expected_homopolymer_content):
     hcontent = model_inference_transforms.homopolymer_content(seq)
     self.assertEqual(hcontent, expected_homopolymer_content)

@@ -45,7 +45,8 @@ SEQ_VOCAB_SIZE = len(SEQ_VOCAB)
 GAP_INT = SEQ_VOCAB.index(GAP)
 
 PYSAM_READ_ADVANCING_OPS = list(
-    map(int, [pysam.CMATCH, pysam.CINS, pysam.CEQUAL, pysam.CDIFF]))
+    map(int, [pysam.CMATCH, pysam.CINS, pysam.CEQUAL, pysam.CDIFF])
+)
 
 
 class Issue(int, enum.Enum):
@@ -69,7 +70,7 @@ CIGAR_OPS = {
     'P': pysam.CPAD,
     '=': pysam.CEQUAL,
     'X': pysam.CDIFF,
-    'B': pysam.CBACK
+    'B': pysam.CBACK,
 }
 
 # Defining this as ints makes comparison operations faster.
@@ -89,20 +90,30 @@ NP_DATA_TYPE = np.float32
 ECOLI_REGIONS = {
     'TRAIN': (464253, 4178270),
     'EVAL': (0, 464252),
-    'TEST': (4178271, 4642522)
+    'TEST': (4178271, 4642522),
 }
 # chrs 1-18, X, and Y. All with and without 'chr'.
-HUMAN_TRAIN_REGIONS = [str(i) for i in range(1, 19)] + [
-    'chr%d' % i for i in range(1, 19)
-] + ['X', 'Y', 'chrX', 'chrY']
+HUMAN_TRAIN_REGIONS = (
+    [str(i) for i in range(1, 19)]
+    + ['chr%d' % i for i in range(1, 19)]
+    + ['X', 'Y', 'chrX', 'chrY']
+)
 # chrs 21 and 22, both with and without 'chr'.
 HUMAN_EVAL_REGIONS = ['21', '22', 'chr21', 'chr22']
 HUMAN_TEST_REGIONS = ['19', '20', 'chr19', 'chr20']
 
 # List of features in DC examples.
 DC_FEATURES = [
-    'rows', 'label', 'num_passes', 'window_pos', 'name',
-    'ccs_base_quality_scores', 'ec', 'np_num_passes', 'rq', 'rg'
+    'rows',
+    'label',
+    'num_passes',
+    'window_pos',
+    'name',
+    'ccs_base_quality_scores',
+    'ec',
+    'np_num_passes',
+    'rq',
+    'rg',
 ]
 
 EMPTY_QUAL = 0

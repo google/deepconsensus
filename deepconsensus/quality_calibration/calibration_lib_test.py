@@ -40,23 +40,32 @@ class CalibrateLibTest(parameterized.TestCase):
       dict(
           calibration_str='skip',
           expected=calibration_lib.QualityCalibrationValues(
-              enabled=False, threshold=0.0, w=1.0, b=0.0),
-          message='Test 1: Valid empty calibration string.'),
+              enabled=False, threshold=0.0, w=1.0, b=0.0
+          ),
+          message='Test 1: Valid empty calibration string.',
+      ),
       dict(
           calibration_str='10,1.0,0.2222',
           expected=calibration_lib.QualityCalibrationValues(
-              enabled=True, threshold=10.0, w=1.0, b=0.2222),
-          message='Test 2: Valid calibration string with positive values.'),
+              enabled=True, threshold=10.0, w=1.0, b=0.2222
+          ),
+          message='Test 2: Valid calibration string with positive values.',
+      ),
       dict(
           calibration_str='-10,1.0,0.2222',
           expected=calibration_lib.QualityCalibrationValues(
-              enabled=True, threshold=-10.0, w=1.0, b=0.2222),
-          message='Test 3: Valid calibration string with negative threshold.'),
+              enabled=True, threshold=-10.0, w=1.0, b=0.2222
+          ),
+          message='Test 3: Valid calibration string with negative threshold.',
+      ),
       dict(
           calibration_str='-10,-1.0,-0.2222',
           expected=calibration_lib.QualityCalibrationValues(
-              enabled=True, threshold=-10.0, w=-1.0, b=-0.2222),
-          message='Test 4: Valid calibration string with all negative values.'))
+              enabled=True, threshold=-10.0, w=-1.0, b=-0.2222
+          ),
+          message='Test 4: Valid calibration string with all negative values.',
+      ),
+  )
   def test_parse_calibration_string(self, calibration_str, expected, message):
     """Tests for parse_calibration_string method."""
     returned = calibration_lib.parse_calibration_string(calibration_str)
@@ -68,19 +77,24 @@ class CalibrateLibTest(parameterized.TestCase):
   @parameterized.parameters(
       dict(
           calibration_str='ABCD',
-          message='Test 1: Invalid calibration string ABCD.'),
+          message='Test 1: Invalid calibration string ABCD.',
+      ),
       dict(
           calibration_str='A,BC,D',
-          message='Test 2: Invalid calibration string A,BC,D.'),
+          message='Test 2: Invalid calibration string A,BC,D.',
+      ),
       dict(
           calibration_str='10,1.0',
-          message='Test 3: Invalid calibration string 10,1.0.'),
+          message='Test 3: Invalid calibration string 10,1.0.',
+      ),
       dict(
           calibration_str='10,AB,1.0',
-          message='Test 4: Invalid calibration string 10,AB,1.0.'),
+          message='Test 4: Invalid calibration string 10,AB,1.0.',
+      ),
       dict(
           calibration_str='10,0.1.1,1.0',
-          message='Test 5: Invalid calibration string 10,0.1.1,1.0.'),
+          message='Test 5: Invalid calibration string 10,0.1.1,1.0.',
+      ),
   )
   def test_parse_calibration_string_exceptions(self, calibration_str, message):
     with self.assertRaises(Exception, msg=message):
@@ -90,21 +104,26 @@ class CalibrateLibTest(parameterized.TestCase):
       dict(
           input_values=np.array([0, 1, 2, 3, 4]),
           calibration_str='0,0,1',
-          expected_output=np.array([1, 1, 1, 1, 1])),
+          expected_output=np.array([1, 1, 1, 1, 1]),
+      ),
       dict(
           input_values=np.array([0, 1, 2, 3, 4]),
           calibration_str='0,1,1',
-          expected_output=np.array([1, 2, 3, 4, 5])),
+          expected_output=np.array([1, 2, 3, 4, 5]),
+      ),
       dict(
           input_values=np.array([0, 1, 2, 3, 4, 5]),
           calibration_str='3,1,1',
-          expected_output=np.array([0, 1, 2, 3, 5, 6])),
+          expected_output=np.array([0, 1, 2, 3, 5, 6]),
+      ),
   )
   def test_calibration(self, input_values, calibration_str, expected_output):
     calibration_values = calibration_lib.parse_calibration_string(
-        calibration_str)
-    output = calibration_lib.calibrate_quality_scores(input_values,
-                                                      calibration_values)
+        calibration_str
+    )
+    output = calibration_lib.calibrate_quality_scores(
+        input_values, calibration_values
+    )
     self.assertTrue(np.array_equal(output, expected_output))
 
 

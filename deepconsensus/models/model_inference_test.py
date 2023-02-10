@@ -39,8 +39,8 @@ from deepconsensus.utils import test_utils
 
 
 class ModelInferenceTest(absltest.TestCase):
-
   pass
+
 
 
 if __name__ == '__main__':

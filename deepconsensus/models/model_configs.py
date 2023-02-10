@@ -141,8 +141,9 @@ def _set_transformer_learned_embeddings_hparams(params):
 
 def _set_custom_data_hparams(params):
   """Updates the given config with values for custom dataset (subreads are aligned to CCS)."""
-  params.tf_dataset = ['/path_to_training_data'
-                      ]  # This needs to point to the actual training examples
+  params.tf_dataset = [
+      '/path_to_training_data'
+  ]  # This needs to point to the actual training examples
   params.max_passes = 20
 
 
@@ -170,7 +171,8 @@ def _set_transformer_learned_embeddings_distill_hparams(params):
   params.student_encoder_layers = [0, 1, 2, 3, 4]
   if params.init_encoder_stack:
     assert len(params.teacher_encoder_layers) == len(
-        params.student_encoder_layers)
+        params.student_encoder_layers
+    )
     assert len(params.student_encoder_layers) == params.num_hidden_layers
     assert max(params.student_encoder_layers) < params.num_hidden_layers
 
@@ -179,7 +181,7 @@ def _set_transformer_learned_embeddings_distill_hparams(params):
 
   # Distillation loss parameters.
   # Weight corresponding to the distillation loss.
-  params.distill_alpha = 1.0e+5
+  params.distill_alpha = 1.0e5
   # Weight corresponding to the student loss.
   params.student_alpha = 1.0
   # Temperature for softening probability distributions.
@@ -203,7 +205,8 @@ def _set_test_data_hparams(params):
   params.eval_path = params.train_path
   params.test_path = params.train_path
   params.inference_path = os.path.join(
-      curr_dir, '../testdata/human_1m/tf_examples/inference/*')
+      curr_dir, '../testdata/human_1m/tf_examples/inference/*'
+  )
   params.n_examples_train = 253
   params.n_examples_eval = 253
   params.max_passes = 20
@@ -228,7 +231,8 @@ def _set_test_bq_data_hparams(params):
   params.eval_path = params.train_path
   params.test_path = params.train_path
   params.inference_path = os.path.join(
-      curr_dir, '../testdata/human_1m/tf_examples_bq/inference/*')
+      curr_dir, '../testdata/human_1m/tf_examples_bq/inference/*'
+  )
   params.n_examples_train = 253
   params.n_examples_eval = 253
   params.max_passes = 20
@@ -368,6 +372,8 @@ def get_config(config_name: Optional[str] = None) -> ml_collections.ConfigDict:
   elif dataset_config_name == 'custom':
     _set_custom_data_hparams(params)
   else:
-    raise ValueError('dataset_config_name is %s. Must be one of the following: '
-                     'ccs, poa, ecoli, test' % dataset_config_name)
+    raise ValueError(
+        'dataset_config_name is %s. Must be one of the following: '
+        'ccs, poa, ecoli, test' % dataset_config_name
+    )
   return params

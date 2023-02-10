@@ -66,33 +66,43 @@ FLAGS = flags.FLAGS
 flags.DEFINE_string(
     'bam',
     default=None,
-    help='Input BAM containing reads aligned to reference alignment.')
+    help='Input BAM containing reads aligned to reference alignment.',
+)
 flags.DEFINE_string(
-    'ref', default=None, help='Input FASTA file of the reference/assembly.')
+    'ref', default=None, help='Input FASTA file of the reference/assembly.'
+)
 flags.DEFINE_string(
     'region',
     default=None,
-    help='A region defined as contig:start-stop. [chr20:1000-2000]')
+    help='A region defined as contig:start-stop. [chr20:1000-2000]',
+)
 flags.DEFINE_string(
     'output_csv',
     default=None,
-    help='Path to a CSV output filename. example: /path/OUTPUT.csv')
+    help='Path to a CSV output filename. example: /path/OUTPUT.csv',
+)
 flags.DEFINE_integer(
     'cpus',
     default=multiprocessing.cpu_count(),
     help='Number of worker processes to use.',
-    short_name='j')
+    short_name='j',
+)
 flags.DEFINE_integer(
     'interval_length',
     default=1000,
-    help='Region interval length for splitting into smaller chunks.')
+    help='Region interval length for splitting into smaller chunks.',
+)
 flags.DEFINE_integer(
     'min_mapq',
     default=60,
-    help='Minimum mapping quality for read.'
-    'Reads below min_mapq will be ignored from calculation.')
-flags.DEFINE_string('dc_calibration', 'skip',
-                    'Apply a calibration before outputting.')
+    help=(
+        'Minimum mapping quality for read.'
+        'Reads below min_mapq will be ignored from calculation.'
+    ),
+)
+flags.DEFINE_string(
+    'dc_calibration', 'skip', 'Apply a calibration before outputting.'
+)
 
 
 def register_required_flags():
@@ -102,9 +112,9 @@ def register_required_flags():
 class RegionRecord:
   """Represents a genomics region.
 
-    : contig - Name of a contig
-    : start - start position
-    : end - end position
+  : contig - Name of a contig
+  : start - start position
+  : end - end position
   """
 
   def __init__(self, contig: str, start: int, stop: int):
@@ -113,8 +123,11 @@ class RegionRecord:
     self.stop = stop
 
   def __str__(self):
-    return '[REGION: Contig= %s, Start= %d, Stop= %d]' % (self.contig,
-                                                          self.start, self.stop)
+    return '[REGION: Contig= %s, Start= %d, Stop= %d]' % (
+        self.contig,
+        self.start,
+        self.stop,
+    )
 
 
 def process_region_string(region_string: str, fasta_file: str) -> RegionRecord:
@@ -150,8 +163,9 @@ def process_region_string(region_string: str, fasta_file: str) -> RegionRecord:
   return region_record
 
 
-def split_regions_in_intervals(regions: List[RegionRecord],
-                               region_length: int) -> List[RegionRecord]:
+def split_regions_in_intervals(
+    regions: List[RegionRecord], region_length: int
+) -> List[RegionRecord]:
   """Splits each region into intervals of region length.
 
   Args:
@@ -166,14 +180,16 @@ def split_regions_in_intervals(regions: List[RegionRecord],
     for pos in range(region.start, region.stop, region_length):
       interval_start = max(region.start, pos)
       interval_end = min(region.stop, pos + region_length)
-      interval_record = RegionRecord(region.contig, interval_start,
-                                     interval_end)
+      interval_record = RegionRecord(
+          region.contig, interval_start, interval_end
+      )
       all_intervals.append(interval_record)
   return all_intervals
 
 
-def get_contig_regions(bam_file: str, fasta_file: str, region: str,
-                       interval_length: int) -> List[RegionRecord]:
+def get_contig_regions(
+    bam_file: str, fasta_file: str, region: str, interval_length: int
+) -> List[RegionRecord]:
   """Creates a list of regions for processing.
 
   Reads contig names from bam and fasta file and creates a list of regions
@@ -203,23 +219,27 @@ def get_contig_regions(bam_file: str, fasta_file: str, region: str,
       for contig in contigs:
         region_record = process_region_string(contig, fasta_file)
         if region_record.contig not in bam_fasta_common_contigs:
-          raise ValueError('Contig %s not found in BAM or FASTA file.' %
-                           region_record.contig)
+          raise ValueError(
+              'Contig %s not found in BAM or FASTA file.' % region_record.contig
+          )
         regions_to_process.append(region_record)
     else:
       region_record = process_region_string(region, fasta_file)
       if region_record.contig not in bam_fasta_common_contigs:
-        raise ValueError('Contig %s not found in BAM or FASTA file.' %
-                         region_record.contig)
+        raise ValueError(
+            'Contig %s not found in BAM or FASTA file.' % region_record.contig
+        )
       regions_to_process.append(region_record)
   else:  # create regions from the common contigs
     for contig in bam_fasta_common_contigs:
-      region_record = RegionRecord(contig, 0,
-                                   fasta_reader.get_reference_length(contig))
+      region_record = RegionRecord(
+          contig, 0, fasta_reader.get_reference_length(contig)
+      )
       regions_to_process.append(region_record)
 
-  region_intervals = split_regions_in_intervals(regions_to_process,
-                                                interval_length)
+  region_intervals = split_regions_in_intervals(
+      regions_to_process, interval_length
+  )
 
   bam_reader.close()
   fasta_reader.close()
@@ -228,9 +248,13 @@ def get_contig_regions(bam_file: str, fasta_file: str, region: str,
 
 
 def create_processes(
-    bam_file: str, fasta_file: str, all_intervals: List[RegionRecord],
-    total_threads: int, min_mapq: int,
-    dc_calibration: calibration_lib.QualityCalibrationValues) ->...:
+    bam_file: str,
+    fasta_file: str,
+    all_intervals: List[RegionRecord],
+    total_threads: int,
+    min_mapq: int,
+    dc_calibration: calibration_lib.QualityCalibrationValues,
+) -> ...:
   """Argument generator for launching processes in parallel."""
 
   def process_feeder():
@@ -243,7 +267,7 @@ def create_processes(
   return process_feeder
 
 
-def trace_exception(f) ->...:
+def trace_exception(f) -> ...:
   """Decorator to catch errors run in multiprocessing processes."""
 
   @functools.wraps(f)
@@ -258,8 +282,9 @@ def trace_exception(f) ->...:
   return wrap
 
 
-def clear_tasks(tasks: List[Any], global_stats: List[Dict[str,
-                                                          int]]) -> List[Any]:
+def clear_tasks(
+    tasks: List[Any], global_stats: List[Dict[str, int]]
+) -> List[Any]:
   """Clears successful tasks and log result."""
   for task in tasks:
     if task.ready():
@@ -276,15 +301,22 @@ def clear_tasks(tasks: List[Any], global_stats: List[Dict[str,
 
 
 def get_quality_calibration_stats(
-    reads: List[pysam.AlignedSegment], ref_sequence: str,
-    region_interval: RegionRecord, min_mapq: int,
-    dc_calibration: calibration_lib.QualityCalibrationValues
+    reads: List[pysam.AlignedSegment],
+    ref_sequence: str,
+    region_interval: RegionRecord,
+    min_mapq: int,
+    dc_calibration: calibration_lib.QualityCalibrationValues,
 ) -> List[Dict[str, int]]:
   """Iterates over reads and calculate quality scores."""
   match_mismatch_count = [{'M': 0, 'X': 0} for _ in range(0, MAX_BASEQ)]
 
   for read in reads:
-    if read.is_duplicate or read.is_qcfail or read.is_secondary or read.is_unmapped:
+    if (
+        read.is_duplicate
+        or read.is_qcfail
+        or read.is_secondary
+        or read.is_unmapped
+    ):
       continue
 
     if read.is_supplementary or read.mapping_quality < min_mapq:
@@ -295,7 +327,8 @@ def get_quality_calibration_stats(
 
     if dc_calibration.enabled:
       fit_read_query_qualities = calibration_lib.calibrate_quality_scores(
-          np.array(read.query_qualities, dtype=np.uint8), dc_calibration)
+          np.array(read.query_qualities, dtype=np.uint8), dc_calibration
+      )
       fit_read_query_qualities = np.round(fit_read_query_qualities, decimals=0)
       fit_read_query_qualities = fit_read_query_qualities.astype(dtype=np.int32)
     else:
@@ -342,10 +375,13 @@ def get_quality_calibration_stats(
   return match_mismatch_count
 
 
-def calculate_quality_calibration(bam_file: str, fasta_file: str,
-                                  process_intervals: List[RegionRecord],
-                                  min_mapq: int,
-                                  dc_calibration: str) -> List[Dict[str, int]]:
+def calculate_quality_calibration(
+    bam_file: str,
+    fasta_file: str,
+    process_intervals: List[RegionRecord],
+    min_mapq: int,
+    dc_calibration: str,
+) -> List[Dict[str, int]]:
   """Calculates quality calibration of reads."""
   thread_counter = collections.Counter()
   thread_counter['n_examples'] += len(process_intervals)
@@ -355,20 +391,26 @@ def calculate_quality_calibration(bam_file: str, fasta_file: str,
 
   # Parse calibration values
   dc_calibration_values = calibration_lib.parse_calibration_string(
-      dc_calibration)
+      dc_calibration
+  )
 
   for interval_region in process_intervals:
     # get the sequence from the fasta file
-    reference_sequence = fasta_reader.fetch(interval_region.contig,
-                                            interval_region.start,
-                                            interval_region.stop + 5)
+    reference_sequence = fasta_reader.fetch(
+        interval_region.contig, interval_region.start, interval_region.stop + 5
+    )
     # get the reads from bam
-    read_set = bam_reader.fetch(interval_region.contig, interval_region.start,
-                                interval_region.stop)
+    read_set = bam_reader.fetch(
+        interval_region.contig, interval_region.start, interval_region.stop
+    )
     # create the example of the region
     match_mismatch_count = get_quality_calibration_stats(
-        read_set, reference_sequence, interval_region, min_mapq,
-        dc_calibration_values)
+        read_set,
+        reference_sequence,
+        interval_region,
+        min_mapq,
+        dc_calibration_values,
+    )
     for i in range(0, MAX_BASEQ):
       main_dict[i]['M'] += match_mismatch_count[i]['M']
       main_dict[i]['X'] += match_mismatch_count[i]['X']
@@ -388,14 +430,20 @@ def main(unused_argv) -> None:
   if FLAGS.cpus == 0:
     raise ValueError('Must set cpus to >=1 for processing.')
   # get all intervals
-  all_intervals = get_contig_regions(FLAGS.bam, FLAGS.ref, FLAGS.region,
-                                     FLAGS.interval_length)
+  all_intervals = get_contig_regions(
+      FLAGS.bam, FLAGS.ref, FLAGS.region, FLAGS.interval_length
+  )
 
   manager = multiprocessing.Manager()
 
-  proc_feeder = create_processes(FLAGS.bam, FLAGS.ref, all_intervals,
-                                 FLAGS.cpus, FLAGS.min_mapq,
-                                 FLAGS.dc_calibration)
+  proc_feeder = create_processes(
+      FLAGS.bam,
+      FLAGS.ref,
+      all_intervals,
+      FLAGS.cpus,
+      FLAGS.min_mapq,
+      FLAGS.dc_calibration,
+  )
   global_match_mismatch_stat = [{'M': 0, 'X': 0} for _ in range(0, MAX_BASEQ)]
 
   logging.info('Processing in parallel using %s cores', FLAGS.cpus)
@@ -403,7 +451,8 @@ def main(unused_argv) -> None:
     tasks = []
     for args in proc_feeder():
       tasks.append(
-          pool.starmap_async(calculate_quality_calibration, ([*args],)))
+          pool.starmap_async(calculate_quality_calibration, ([*args],))
+      )
     while tasks:
       time.sleep(0.5)
       tasks = clear_tasks(tasks, global_match_mismatch_stat)
@@ -414,15 +463,17 @@ def main(unused_argv) -> None:
     pool.join()
 
   base_quality_dataframe = pd.DataFrame(
-      columns=['baseq', 'total_match', 'total_mismatch'])
+      columns=['baseq', 'total_match', 'total_mismatch']
+  )
   for baseq in range(0, MAX_BASEQ):
     base_quality_dataframe = base_quality_dataframe.append(
         {
             'baseq': str(baseq),
             'total_match': str(global_match_mismatch_stat[baseq]['M']),
-            'total_mismatch': str(global_match_mismatch_stat[baseq]['X'])
+            'total_mismatch': str(global_match_mismatch_stat[baseq]['X']),
         },
-        ignore_index=True)
+        ignore_index=True,
+    )
   save_csv(base_quality_dataframe, FLAGS.output_csv)
   print('Processing complete.')
 

@@ -53,7 +53,8 @@ class SubreadGrouper(abc.Iterator):
   def __init__(self, subreads_to_ccs, reader_threads):
     save = pysam.set_verbosity(0)  # Avoid confusing index file warning.
     self.bam_reader = pysam.AlignmentFile(
-        subreads_to_ccs, check_sq=False, threads=reader_threads)
+        subreads_to_ccs, check_sq=False, threads=reader_threads
+    )
     pysam.set_verbosity(save)
     self.keep_iter = True
     self.subread_group = []
@@ -136,6 +137,7 @@ class Read(abc.Sequence):
     idx_spaced: Indices of bases after they are spaced out.
     spacing_done: Whether spacing has been completed.
   """
+
   name: str
   bases: np.ndarray
   cigar: np.ndarray
@@ -229,8 +231,9 @@ class Read(abc.Sequence):
       self.cigar = spaced_cigar
       truth_pos = np.repeat(-1, seq_len)
       truth_idx = np.arange(self.truth_range['begin'], self.truth_range['end'])
-      truth_aln_base = np.isin(self.cigar,
-                               dc_constants.PYSAM_READ_ADVANCING_OPS)
+      truth_aln_base = np.isin(
+          self.cigar, dc_constants.PYSAM_READ_ADVANCING_OPS
+      )
       assert len(truth_pos[truth_aln_base]) == len(truth_idx)
       truth_pos[truth_aln_base] = truth_idx
       self.truth_idx = truth_pos
@@ -250,7 +253,8 @@ class Read(abc.Sequence):
   def bases_encoded(self) -> np.ndarray:
     """Outputs bases as discrete integers, but cast as floats."""
     bases_encoded = np.ndarray(
-        self.bases.shape, dtype=dc_constants.NP_DATA_TYPE)
+        self.bases.shape, dtype=dc_constants.NP_DATA_TYPE
+    )
     for k, base in enumerate(dc_constants.SEQ_VOCAB):
       bases_encoded[self.bases == base] = k
     return bases_encoded
@@ -304,8 +308,9 @@ class Read(abc.Sequence):
   def ccs_slice(self, start: int, end: int) -> 'Read':
     """Perform slicing based on ccs coordinates. Coordinates are inclusive."""
     # Note that these bounds are inclusive by design.
-    locs = np.where(np.logical_and(self.ccs_idx >= start,
-                                   self.ccs_idx <= end))[0]
+    locs = np.where(np.logical_and(self.ccs_idx >= start, self.ccs_idx <= end))[
+        0
+    ]
     if locs.any():
       ccs_slice = slice(np.min(locs), np.max(locs) + 1)
     else:
@@ -325,7 +330,8 @@ class Read(abc.Sequence):
         rg=self.rg,
         ccs_idx=self.ccs_idx[ccs_slice],
         truth_idx=self.truth_idx[ccs_slice],
-        truth_range=self.truth_range)
+        truth_range=self.truth_range,
+    )
 
   def pad(self, pad_width: int) -> 'Read':
     """Skip padding when not necessary."""
@@ -346,7 +352,8 @@ class Read(abc.Sequence):
         rg=self.rg,
         ccs_idx=right_pad(self.ccs_idx, pad_width, -1),
         truth_idx=right_pad(self.truth_idx, pad_width, -1),
-        truth_range=self.truth_range)
+        truth_range=self.truth_range,
+    )
 
   def remove_gaps(self, pad_width: int) -> Union['Read', None]:
     """Removes gaps from sequence and returns padded."""
@@ -373,7 +380,8 @@ class Read(abc.Sequence):
         rg=self.rg,
         ccs_idx=self.ccs_idx[keep],
         truth_idx=self.truth_idx[keep],
-        truth_range=self.truth_range).pad(pad_width)
+        truth_range=self.truth_range,
+    ).pad(pad_width)
 
   def __str__(self):
     return ''.join(self.bases)
@@ -397,7 +405,8 @@ class Read(abc.Sequence):
         rq=self.rq,
         rg=self.rg,
         ccs_idx=self.ccs_idx[r_slice],
-        truth_idx=self.truth_idx[r_slice])
+        truth_idx=self.truth_idx[r_slice],
+    )
 
   def __repr__(self):
     if np.any(self.ccs_idx >= 0):
@@ -406,12 +415,15 @@ class Read(abc.Sequence):
     else:
       start = 0
       end = 0
-    return (f'Read({self.name}) : CCS({start}-{end}) L={len(self.bases)} ' +
-            self.label_coords).strip()
+    return (
+        f'Read({self.name}) : CCS({start}-{end}) L={len(self.bases)} '
+        + self.label_coords
+    ).strip()
 
 
-def dc_config_from_shape(subreads_shape: Tuple[int, int, int],
-                         use_ccs_bq: bool = False) -> 'DcConfig':
+def dc_config_from_shape(
+    subreads_shape: Tuple[int, int, int], use_ccs_bq: bool = False
+) -> 'DcConfig':
   """Creates a DcConfig object based on subread shape and base quality usage.
 
   Args:
@@ -427,8 +439,9 @@ def dc_config_from_shape(subreads_shape: Tuple[int, int, int],
   else:
     fixed_height = 5
 
-  max_passes, remainder = divmod(height - fixed_height,
-                                 len(DcConfig.n_subread_features))
+  max_passes, remainder = divmod(
+      height - fixed_height, len(DcConfig.n_subread_features)
+  )
   if remainder != 0:
     raise ValueError(f'Invalid subreads shape {subreads_shape!r}.')
   return DcConfig(max_passes, width, use_ccs_bq)
@@ -466,7 +479,7 @@ class DcConfig:
         'strand': max_passes,
         'ccs': 1,
         'ccs_bq': 1 if use_ccs_bq else 0,
-        'sn': 4
+        'sn': 4,
     }
     # Sets slices indicating rows for each feature type.
     self.feature_indices = dict()
@@ -496,7 +509,8 @@ class DcConfig:
       assert feature not in DcConfig.n_subread_features
       return slice(
           getattr(self, feature),
-          getattr(self, feature) + self.feature_rows[feature])
+          getattr(self, feature) + self.feature_rows[feature],
+      )
 
   @property
   def tensor_height(self) -> int:
@@ -510,13 +524,14 @@ class DcConfig:
         'max_passes': str(self.max_passes),
         'max_length': str(self.max_length),
         'tensor_height': str(self.tensor_height),
-        'tensor_width': str(self.max_length)
+        'tensor_width': str(self.max_length),
     }
 
 
 @dataclasses.dataclass
 class DcExample:
   """Python container used to generate DeepConsensus tf.Example."""
+
   name: str
   reads: List[Read]
   config: DcConfig
@@ -642,7 +657,7 @@ class DcExample:
     start_pos = 0
     for window_width in self.calculate_windows(max_length):
       self.counter['example_width_bucket_{}'.format(window_width)] += 1
-      window = self[start_pos:start_pos + window_width]
+      window = self[start_pos : start_pos + window_width]
       if start_pos > self.ccs_width:
         break
       start_pos += window_width
@@ -755,12 +770,15 @@ class DcExample:
     features.feature['subreads/encoded'].bytes_list.value.append(data.tobytes())
     features.feature['subreads/shape'].int64_list.value.extend(data.shape)
     features.feature['subreads/num_passes'].int64_list.value.append(
-        self.keep_subreads)
+        self.keep_subreads
+    )
     features.feature['name'].bytes_list.value.append(self.name.encode())
     features.feature['window_pos'].int64_list.value.append(
-        self.ccs.ccs_bounds.start)
+        self.ccs.ccs_bounds.start
+    )
     features.feature['ccs_base_quality_scores'].int64_list.value.extend(
-        self.ccs.base_quality_scores)
+        self.ccs.base_quality_scores
+    )
 
     if self.is_training:
       label = self.label.bases_encoded
@@ -784,8 +802,10 @@ class DcExample:
     start = preview.ccs.ccs_bounds.start
     end = preview.ccs.ccs_bounds.stop
     output = ''
-    output += (f'{self.name} CCS({start}-{end}) {self.label_coords}'.strip() +
-               f'\n{"-"*(preview.width+24)}\n')
+    output += (
+        f'{self.name} CCS({start}-{end}) {self.label_coords}'.strip()
+        + f'\n{"-"*(preview.width+24)}\n'
+    )
     for subread in self.subreads:
       subread_range = subread.name.split('/')[2]
       output += f'{subread_range:<20} {subread.strand} >{str(subread)}\n'
@@ -836,7 +856,7 @@ def from_features_dict(features_dict: Dict[str, Any]) -> DcExample:
 
   ccs_idx = np.repeat(-1, dc_config.max_length)
   ccs_end_pos = ccs_start_pos + dc_config.max_length
-  ccs_idx[0:dc_config.max_length] = np.arange(ccs_start_pos, ccs_end_pos)
+  ccs_idx[0 : dc_config.max_length] = np.arange(ccs_start_pos, ccs_end_pos)
 
   movie, zmw, _ = name.split('/')
 
@@ -851,7 +871,8 @@ def from_features_dict(features_dict: Dict[str, Any]) -> DcExample:
         ip=ip[i],
         sn=sn,
         strand=dc_constants.Strand(int(strand[i][0])),
-        ccs_idx=ccs_idx)
+        ccs_idx=ccs_idx,
+    )
     read_set.append(read)
   ccs_read = Read(
       name=name,
@@ -861,7 +882,8 @@ def from_features_dict(features_dict: Dict[str, Any]) -> DcExample:
       ip=np.repeat(np.uint8(0), dc_config.max_length),
       sn=np.repeat(0, 4),
       strand=dc_constants.Strand.UNKNOWN,
-      ccs_idx=ccs_idx)
+      ccs_idx=ccs_idx,
+  )
   read_set.append(ccs_read)
   return DcExample(name=name, reads=read_set, config=dc_config)
 
@@ -877,10 +899,12 @@ def set_feature(feature, shape):
   return feature
 
 
-def tf_example_to_features_dict(tf_example_proto_str: Dict[str, Any],
-                                inference: bool = False,
-                                use_ccs_bq: bool = False,
-                                max_length: int = 100) -> Dict[str, Any]:
+def tf_example_to_features_dict(
+    tf_example_proto_str: Dict[str, Any],
+    inference: bool = False,
+    use_ccs_bq: bool = False,
+    max_length: int = 100,
+) -> Dict[str, Any]:
   """Converts tf.Example to features_dict.
 
   Args:
@@ -910,8 +934,9 @@ def tf_example_to_features_dict(tf_example_proto_str: Dict[str, Any],
       features['name'] = features['name'][0]
   features['subreads/num_passes'] = int(features['subreads/num_passes'])
 
-  features['subreads'] = set_feature(features['subreads/encoded'],
-                                     features['subreads/shape'])
+  features['subreads'] = set_feature(
+      features['subreads/encoded'], features['subreads/shape']
+  )
   dc_config = dc_config_from_shape(
       features['subreads/shape'],
       use_ccs_bq,
@@ -926,18 +951,21 @@ def tf_example_to_features_dict(tf_example_proto_str: Dict[str, Any],
         params.max_passes,
         use_ccs_bq,
     )
-  features['subreads'] = data_providers.format_rows(features['subreads'],
-                                                    params)
+  features['subreads'] = data_providers.format_rows(
+      features['subreads'], params
+  )
   del features['subreads/encoded']
   if not inference:
-    features['label'] = set_feature(features['label/encoded'],
-                                    features['label/shape'])
+    features['label'] = set_feature(
+        features['label/encoded'], features['label/shape']
+    )
     del features['label/encoded']
   return features
 
 
 def construct_ccs_read(
-    ccs_bam_read: pysam.libcalignedsegment.AlignedSegment) -> Read:
+    ccs_bam_read: pysam.libcalignedsegment.AlignedSegment,
+) -> Read:
   """Constructs a Read with quality scores using a ccs bam read."""
   ccs_seq = np.array(ccs_bam_read.seq, 'c')
 
@@ -966,12 +994,15 @@ def construct_ccs_read(
       rg=rg,
       strand=dc_constants.Strand.UNKNOWN,
       base_quality_scores=np.array(ccs_bam_read.query_qualities),
-      ccs_idx=np.arange(len(ccs_seq)))
+      ccs_idx=np.arange(len(ccs_seq)),
+  )
 
 
 def fetch_label_alignment(
-    ccs_seqname: str, truth_to_ccs: pysam.AlignmentFile,
-    truth_range: Dict[str, Any]) -> Union[dc_constants.Issue, Read]:
+    ccs_seqname: str,
+    truth_to_ccs: pysam.AlignmentFile,
+    truth_range: Dict[str, Any],
+) -> Union[dc_constants.Issue, Read]:
   """Fetches a label aligned to ccs sequence."""
   try:
     truth_alignment = next(truth_to_ccs.fetch(ccs_seqname))
@@ -1015,7 +1046,8 @@ def read_truth_split(split_fname: str) -> Dict[str, str]:
 def trim_insertions(
     read: pysam.AlignedSegment,
     ins_trim: int,
-    counter: Optional[Counter[str]] = None) -> pysam.AlignedSegment:
+    counter: Optional[Counter[str]] = None,
+) -> pysam.AlignedSegment:
   """Remove insertions larger than max length.
 
   This operation effectively
@@ -1046,7 +1078,7 @@ def trim_insertions(
   for cigar_op, op_len in read.cigartuples:
     if cigar_op == dc_constants.PYSAM_CINS and op_len > ins_trim:
       # Trim to zero, so this cigar operation is removed completely.
-      mask[seq_pos:seq_pos + op_len] = [False] * op_len
+      mask[seq_pos : seq_pos + op_len] = [False] * op_len
       seq_pos += op_len
       if counter is not None:
         counter['zmw_trimmed_insertions'] += 1
@@ -1054,7 +1086,7 @@ def trim_insertions(
     else:
       trimmed_cigar.append((cigar_op, op_len))
       if cigar_op not in [dc_constants.PYSAM_CDEL]:
-        trimmed_seq += read.query_sequence[seq_pos:seq_pos + op_len]
+        trimmed_seq += read.query_sequence[seq_pos : seq_pos + op_len]
         seq_pos += op_len
 
     if counter is not None:
@@ -1078,10 +1110,12 @@ def trim_insertions(
   return read
 
 
-def expand_clip_indent(read: pysam.AlignedSegment,
-                       truth_range: Union[Dict[str, Any], None] = None,
-                       ins_trim: int = 0,
-                       counter: Optional[Counter[str]] = None) -> Read:
+def expand_clip_indent(
+    read: pysam.AlignedSegment,
+    truth_range: Union[Dict[str, Any], None] = None,
+    ins_trim: int = 0,
+    counter: Optional[Counter[str]] = None,
+) -> Read:
   """Adds PAD tokens and clips reads.
 
   For both subreads and label:
@@ -1170,8 +1204,9 @@ def expand_clip_indent(read: pysam.AlignedSegment,
   if read.pos:
     new_seq = np.insert(new_seq, 0, [dc_constants.GAP] * read.pos)
     # Add N cigar op at position 0 to indicate indent.
-    new_cigar = np.insert(new_cigar, 0,
-                          np.repeat(int(pysam.CREF_SKIP), read.pos))
+    new_cigar = np.insert(
+        new_cigar, 0, np.repeat(int(pysam.CREF_SKIP), read.pos)
+    )
     new_pw = np.insert(new_pw, 0, np.repeat(0, read.pos))
     new_ip = np.insert(new_ip, 0, np.repeat(0, read.pos))
     ccs_idx = np.insert(ccs_idx, 0, np.repeat(-1, read.pos))
@@ -1185,7 +1220,8 @@ def expand_clip_indent(read: pysam.AlignedSegment,
       sn=sn,
       strand=strand,
       ccs_idx=ccs_idx,
-      truth_range=truth_range)
+      truth_range=truth_range,
+  )
 
 
 def space_out_subreads(subreads: List[Read]) -> List[Read]:
@@ -1225,16 +1261,18 @@ def space_out_subreads(subreads: List[Read]) -> List[Read]:
   return subreads
 
 
-def create_proc_feeder(subreads_to_ccs: str,
-                       ccs_bam: str,
-                       dc_config: DcConfig,
-                       ins_trim: int = 0,
-                       use_ccs_smart_windows: bool = False,
-                       truth_bed: Optional[str] = None,
-                       truth_to_ccs: Optional[str] = None,
-                       truth_split: Optional[str] = None,
-                       limit: int = 0,
-                       bam_reader_threads: int = 1):
+def create_proc_feeder(
+    subreads_to_ccs: str,
+    ccs_bam: str,
+    dc_config: DcConfig,
+    ins_trim: int = 0,
+    use_ccs_smart_windows: bool = False,
+    truth_bed: Optional[str] = None,
+    truth_to_ccs: Optional[str] = None,
+    truth_split: Optional[str] = None,
+    limit: int = 0,
+    bam_reader_threads: int = 1,
+):
   """Creates a generator to feed subread process jobs to a multiprocess pool."""
   main_counter = collections.Counter()
 
@@ -1259,7 +1297,8 @@ def create_proc_feeder(subreads_to_ccs: str,
           expand_clip_indent,
           truth_range=None,
           ins_trim=ins_trim,
-          counter=main_counter)
+          counter=main_counter,
+      )
       subreads = list(map(expand_clip_indent_count, read_set))
       ccs_seqname = '/'.join(subreads[0].name.split('/')[:2] + ['ccs'])
       # Fetch ccs sequence and append to subread set.
@@ -1284,8 +1323,9 @@ def create_proc_feeder(subreads_to_ccs: str,
           logging.info('No truth_range defined for %s.', ccs_seqname)
           main_counter['n_zmw_missing_truth_range'] += 1
           continue
-        label = fetch_label_alignment(ccs_seqname, truth_to_ccs_bam,
-                                      truth_range)
+        label = fetch_label_alignment(
+            ccs_seqname, truth_to_ccs_bam, truth_range
+        )
         if label == Issue.TRUTH_ALIGNMENT_NOT_FOUND:
           logging.info('Unable to fetch label alignment for %s.', ccs_seqname)
           main_counter['n_zmw_no_label_alignment'] += 1
@@ -1312,14 +1352,18 @@ def create_proc_feeder(subreads_to_ccs: str,
   return proc_feeder, main_counter
 
 
-def subreads_to_dc_example(subreads: List[Read], ccs_seqname: str,
-                           dc_config: DcConfig,
-                           window_widths: np.ndarray) -> DcExample:
+def subreads_to_dc_example(
+    subreads: List[Read],
+    ccs_seqname: str,
+    dc_config: DcConfig,
+    window_widths: np.ndarray,
+) -> DcExample:
   """Process subreads and return a DcExample object."""
   aln_reads = space_out_subreads(subreads)
   dc_example = DcExample(
       name=ccs_seqname,
       reads=aln_reads,
       config=dc_config,
-      window_widths=window_widths)
+      window_widths=window_widths,
+  )
   return dc_example

@@ -52,9 +52,11 @@ class FeedForwardNetwork(tf.keras.layers.Layer):
         self.filter_size,
         use_bias=True,
         activation=tf.nn.relu,
-        name="filter_layer")
+        name="filter_layer",
+    )
     self.output_dense_layer = tf.keras.layers.Dense(
-        self.hidden_size, use_bias=True, name="output_layer")
+        self.hidden_size, use_bias=True, name="output_layer"
+    )
     super(FeedForwardNetwork, self).build(input_shape)
 
   def get_config(self) -> Dict[str, Any]:
