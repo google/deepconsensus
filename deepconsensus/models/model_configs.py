@@ -108,10 +108,10 @@ def _set_base_transformer_hparams(params):
   # Training
   params.batch_size = 256
   # We use this number of epochs to obtain fast training results.
-  params.num_epochs = 7
+  params.num_epochs = 9
   # We use this number of epochs to obtain the finalized models. This parameter
   # keeps the learning rate schedule the same when num_epochs is changed.
-  params.num_epochs_for_decay = 7
+  params.num_epochs_for_decay = 9
   params.buffer_size = 1_000_000
 
   # Optimizer params (values obtained in b/246369335#comment3).

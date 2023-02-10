@@ -92,15 +92,23 @@ ECOLI_REGIONS = {
     'EVAL': (0, 464252),
     'TEST': (4178271, 4642522),
 }
-# chrs 1-18, X, and Y. All with and without 'chr'.
-HUMAN_TRAIN_REGIONS = (
-    [str(i) for i in range(1, 19)]
-    + ['chr%d' % i for i in range(1, 19)]
-    + ['X', 'Y', 'chrX', 'chrY']
-)
-# chrs 21 and 22, both with and without 'chr'.
-HUMAN_EVAL_REGIONS = ['21', '22', 'chr21', 'chr22']
-HUMAN_TEST_REGIONS = ['19', '20', 'chr19', 'chr20']
+TRAIN_REGIONS = {
+    'HUMAN': (
+        [str(i) for i in range(1, 19)]
+        + ['chr%d' % i for i in range(1, 19)]
+        + ['X', 'Y', 'chrX', 'chrY']
+    ),
+    'MAIZE': [str(i) for i in range(1, 9)] + ['chr%d' % i for i in range(1, 9)],
+}
+
+EVAL_REGIONS = {
+    'HUMAN': ['21', '22', 'chr21', 'chr22'],
+    'MAIZE': ['9', 'chr9'],
+}
+TEST_REGIONS = {
+    'HUMAN': ['19', '20', 'chr19', 'chr20'],
+    'MAIZE': ['10', 'chr10'],
+}
 
 # List of features in DC examples.
 DC_FEATURES = [

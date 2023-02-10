@@ -1029,11 +1029,26 @@ def read_truth_split(split_fname: str) -> Dict[str, str]:
   """Reads in split bed file and returns dict."""
   contig_split = {}
   split_regions = {}
-  for i in dc_constants.HUMAN_TRAIN_REGIONS:
+  if any([x in split_fname.lower() for x in ['chm13', 'hg00', 'human']]):
+    train_regions = dc_constants.TRAIN_REGIONS['HUMAN']
+    eval_regions = dc_constants.EVAL_REGIONS['HUMAN']
+    test_regions = dc_constants.TEST_REGIONS['HUMAN']
+  elif 'maize' in split_fname.lower():
+    train_regions = dc_constants.TRAIN_REGIONS['MAIZE']
+    eval_regions = dc_constants.EVAL_REGIONS['MAIZE']
+    test_regions = dc_constants.TEST_REGIONS['MAIZE']
+  else:
+    raise ValueError(
+        f'{split_fname} does not correspond to any genome specified in'
+        f' dc_constants.py. Please either either change {split_fname} name or'
+        ' add new train/eval/test regions to dc_constants.py'
+    )
+
+  for i in train_regions:
     split_regions[i] = 'train'
-  for i in dc_constants.HUMAN_EVAL_REGIONS:
+  for i in eval_regions:
     split_regions[i] = 'eval'
-  for i in dc_constants.HUMAN_TEST_REGIONS:
+  for i in test_regions:
     split_regions[i] = 'test'
   with tf.io.gfile.GFile(split_fname, 'r') as f:
     for line in f:
