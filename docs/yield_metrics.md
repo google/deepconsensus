@@ -3,7 +3,7 @@
 ## We evaluate on 3 different datasets
 
 For each PacBio dataset (Movie ID), we compared yield at Q30 for ccs (baseline),
-and v0.2, v0.3, v1.0, v1.1 of DeepConsensus.
+and v0.2, v0.3, v1.0, v1.1, v1.2 of DeepConsensus.
 
 Movie ID             | Sample | Chemistry | Mean insert size
 -------------------- | ------ | --------- | ----------------
@@ -13,7 +13,7 @@ m64014_200920_132517 | HG002  | 2.2       | 24 kb
 
 ## Yield versus runtime
 
-![v1.1 runtime versus yield over ccs](images/runtime_yield.png)
+![v1.2 runtime versus yield over ccs](images/runtime_yield.png)
 <table border="1" class="dataframe">
   <thead>
     <tr style="text-align: right;">
@@ -33,46 +33,46 @@ m64014_200920_132517 | HG002  | 2.2       | 24 kb
   </thead>
   <tbody>
     <tr>
-      <td>v1.1</td>
+      <td>v1.2</td>
       <td>m64011_181218_235052</td>
       <td>chem1_11kb</td>
       <td>1,392,300</td>
-      <td>1,557,424</td>
-      <td>17.18 Gb</td>
-      <td>111.83%</td>
-      <td>12.14 Gb</td>
-      <td>137.40%</td>
-      <td>5.10 Gb</td>
-      <td>208.66%</td>
-      <td>233.02</td>
+      <td>1,552,566</td>
+      <td>17.16 Gb</td>
+      <td>111.72%</td>
+      <td>12.17 Gb</td>
+      <td>137.81%</td>
+      <td>5.32 Gb</td>
+      <td>217.55%</td>
+      <td>219.39</td>
     </tr>
     <tr>
-      <td>v1.1</td>
+      <td>v1.2</td>
       <td>m64008_201124_002822</td>
       <td>chem2.2_15kb</td>
       <td>2,687,977</td>
-      <td>2,899,794</td>
-      <td>42.97 Gb</td>
-      <td>108.49%</td>
-      <td>32.74 Gb</td>
-      <td>128.44%</td>
-      <td>9.64 Gb</td>
-      <td>241.85%</td>
-      <td>567.41</td>
+      <td>2,894,238</td>
+      <td>43.00 Gb</td>
+      <td>108.55%</td>
+      <td>33.06 Gb</td>
+      <td>129.70%</td>
+      <td>10.35 Gb</td>
+      <td>259.46%</td>
+      <td>532.03</td>
     </tr>
     <tr>
-      <td>v1.1</td>
+      <td>v1.2</td>
       <td>m64014_200920_132517</td>
       <td>chem2.2_24kb</td>
       <td>1,918,627</td>
-      <td>2,087,945</td>
-      <td>49.74 Gb</td>
-      <td>109.94%</td>
-      <td>32.52 Gb</td>
-      <td>194.41%</td>
-      <td>2.73 Gb</td>
-      <td>1058.0%</td>
-      <td>724.48</td>
+      <td>2,083,487</td>
+      <td>49.75 Gb</td>
+      <td>109.96%</td>
+      <td>32.92 Gb</td>
+      <td>196.82%</td>
+      <td>3.11 Gb</td>
+      <td>1203.8%</td>
+      <td>661.91</td>
     </tr>
   </tbody>
 </table>
@@ -93,8 +93,8 @@ follows:
     reads in bases by 40% over CCS.
 
 These were run on GCP `n1-standard-16` machines with no GPU (in 500 shards,
-combined above), with `--batch_zmws=100 --batch_size=1024`, which is generally
-what we recommend. For more information on compute setups, see the
+combined above), with `--batch_zmws=100 --batch_size=1024`. For recommendations
+on the optimal runtime setting and compute setups, see the
 [runtime metrics page](runtime_metrics.md).
 
 ## Runtime-yield tradeoffs with `--skip_windows_above`
@@ -107,5 +107,5 @@ this chart for m64014_200920_132517-chr20:
 
 ![runtime/yield tradeoff of --skip_windows_above](images/skip_windows_above_tradeoff.png).
 
-The default in v1.1 is Q45, but you can adjust this level using
+The default in v1.2 is Q45, but you can adjust this level using
 `--skip_windows_above`.

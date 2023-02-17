@@ -5,11 +5,11 @@
 The recommended compute setup for DeepConsensus is to shard each SMRT Cell into
 at least 500 shards, each of which can run on a 16-CPU machine (or smaller). We
 find that having more than 16 CPUs available for each shard does not
-significantly improve runtime. Additionally, running with `--batch_size=1024
---batch_zmws=100` is a reasonable setup for minimizing memory requirements while
-still achieving the best runtime. If you find that this exhausts the memory on
-your machines though, reducing both, e.g. to `--batch_size=512 --batch_zmws=20`
-would be a good thing to try.
+significantly improve runtime. Additionally, for DC v1.2 running with
+`--batch_size=2048 --batch_zmws=1000` is a reasonable setup for minimizing
+memory requirements while still achieving the best runtime. If you find that
+this exhausts the memory on your machines though, reducing both, e.g. to
+`--batch_size=1024 --batch_zmws=20` would be a good thing to try.
 
 See the [yield metrics page](yield_metrics.md) for total runtimes on full SMRT
 Cells of different sequencing runs.
@@ -30,9 +30,8 @@ memory usage. Our current implementation requires setting `batch_zmws` and
 performance further and allow for more predictable runtimes based on
 DeepConsensus settings.
 
-We only show GPU runtimes for `n1-standard-16`. Note that we observe job
-failures when using GPU with larger `batch_size` (>=2048) and with larger values
-of `batch_zmws` (500, 1000).
+Note that we observe job failures when using GPU with larger `batch_size`
+(>=4096) and larger values of `batch_zmws` (100, 500, 1000).
 
 ## Runtime Test Configurations
 
@@ -100,4 +99,4 @@ gcloud compute instances create "${USER}-gpu" \
 
 The 10k ZMW test dataset is available on Google Storage:
 
-`gs://brain-genomics-public/research/deepconsensus/quickstart/v1.1/n10000.subreads.bam`
+`gs://brain-genomics-public/research/deepconsensus/quickstart/v1.2/n10000.subreads.bam`
