@@ -58,7 +58,7 @@ mkdir "${TF_EXAMPLES_DIR}/eval"
 mkdir "${TF_EXAMPLES_DIR}/test"
 
 # Download the input PacBio Subread data.
-gsutil cp gs://brain-genomics-public/research/deepconsensus/quickstart/v1.1/n1000.subreads.bam "${BASE_DIR}"/
+gsutil cp gs://brain-genomics-public/research/deepconsensus/quickstart/v1.2/n1000.subreads.bam "${BASE_DIR}"/
 
 # Truth Reference
 gsutil cp gs://deepconsensus/pacbio/datasets/chm13/chm13v2.0_noY.fa "${BASE_DIR}"/
@@ -159,7 +159,7 @@ https://docs.docker.com/engine/install/ubuntu/ to install Docker.
 
 ```bash
 # Define DOCKER_IMAGE *once* depending on whether you will be using CPU or GPU:
-DOCKER_IMAGE=google/deepconsensus:1.1.0  # For CPU
+DOCKER_IMAGE=google/deepconsensus:1.2.0  # For CPU
 sudo docker pull ${DOCKER_IMAGE}
 ```
 
@@ -313,6 +313,9 @@ export truth_reference=chm13v2.0_noY.fa
 export ccs_shard_bam="${shard_id}.ccs.bam"
 export truth_split=chm13v2.0_noY.chrom_mapping.txt
 export subreads_to_ccs_shard_bam="${shard_id}.subreads_to_ccs.bam"
+# If true, incorporate CCS Base Quality scores into tf.examples (DC v1.2).
+export use_ccs_bq=True
+
 # Output
 TF_EXAMPLES_DIR="tf_examples"
 export ccs_shard_to_truth_alignment_unfiltered="${shard_id}.ccs_to_truth_ref.unfiltered.bam"
@@ -392,6 +395,7 @@ deepconsensus preprocess \
       --truth_bed="${truth_shard_bed}" \
       --truth_to_ccs="${truth_to_ccs_shard_bam}" \
       --truth_split="${truth_split}" \
+      --use_ccs_bq="${use_ccs_bq}" \
       --output="${tf_example_fname_output}" \
       --cpus="$(nproc)"
 

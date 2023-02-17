@@ -26,5 +26,5 @@
  "truth_bed": "testdata/human_1m/truth.bed",
  "truth_split": "testdata/human_1m/truth_split.tsv",
  "ins_trim": "5",
- "version": "1.1.0"
+ "version": "1.2.0"
 }

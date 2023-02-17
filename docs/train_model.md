@@ -43,7 +43,7 @@ mkdir "${DC_TRAIN_DIR}"
 mkdir "${TF_EXAMPLES}"
 mkdir "${DC_TRAIN_OUTPUT}"
 
-gsutil -m cp -R gs://brain-genomics-public/research/deepconsensus/training-tutorial/v1.0/* "${TF_EXAMPLES}/"
+gsutil -m cp -R gs://brain-genomics-public/research/deepconsensus/training-tutorial/v1.2/* "${TF_EXAMPLES}/"
 ```
 
 The path to training examples has to be set in
@@ -52,11 +52,14 @@ The path to training examples has to be set in
 For example, if training data is located in /home/user/dc-model/tf-examples the
 config will look like this:
 
-```
+```python
 def _set_custom_data_hparams(params):
   """Updates the given config with values for human data aligned to CCS."""
   params.tf_dataset = ['/home/user/dc-model/tf-examples']
   params.max_passes = 20
+  # Set this to True if the tf examples contain ccs base quality scores.
+  # Option available starting in v1.2.
+  params.use_ccs_bq = True
 
 ```
 
@@ -85,7 +88,7 @@ parameter that points to the path + prefix of the checkpoint.
 
 ## Runtime
 
-By default, training will run for 4 epochs. Batch size is set to 256 by default,
+By default, training will run for 9 epochs. Batch size is set to 256 by default,
 but this is scaled based on the number of GPUs or TPUs available. These values
 can be configured by updating the `model_configs.py` file.
 

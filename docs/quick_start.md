@@ -68,10 +68,10 @@ Follow https://docs.docker.com/engine/install/ubuntu/ to install Docker.
 
 ## Parallelization
 
-One 8M SMRT Cell can take ~1000 hours to run (without parallelization) depending
+One 8M SMRT Cell can take ~500 hours to run (without parallelization) depending
 on the fragment lengths of the sequencing library - see the
 [yield metrics page](yield_metrics.md). If we split this into 500 shards, that
-is about 2 hours per shard. There is some variability between shards, but this
+is about 1 hour per shard. There is some variability between shards, but this
 should give you an idea of what to expect. This estimate is only for the
 DeepConsensus processing step, and does not include the preprocessing required
 with *ccs* and *actc*.
@@ -100,10 +100,10 @@ QS_DIR="${HOME}/deepconsensus_quick_start"
 mkdir -p "${QS_DIR}" "${QS_DIR}/model"
 
 # Download the input PacBio Subread data.
-gsutil cp gs://brain-genomics-public/research/deepconsensus/quickstart/v1.1/n1000.subreads.bam "${QS_DIR}"/
+gsutil cp gs://brain-genomics-public/research/deepconsensus/quickstart/v1.2/n1000.subreads.bam "${QS_DIR}"/
 
 # Download the DeepConsensus model.
-gsutil cp -r gs://brain-genomics-public/research/deepconsensus/models/v1.1/model_checkpoint/* "${QS_DIR}"/model/
+gsutil cp -r gs://brain-genomics-public/research/deepconsensus/models/v1.2/model_checkpoint/* "${QS_DIR}"/model/
 ```
 
 This directory should now contain the following files:
@@ -133,8 +133,8 @@ the appropriate version (CPU / GPU) depending on your use case.
 
 ```bash
 # Define DOCKER_IMAGE *once* depending on whether you will be using CPU or GPU:
-DOCKER_IMAGE=google/deepconsensus:1.1.0  # For CPU
-DOCKER_IMAGE=google/deepconsensus:1.1.0-gpu  # For GPU
+DOCKER_IMAGE=google/deepconsensus:1.2.0  # For CPU
+DOCKER_IMAGE=google/deepconsensus:1.2.0-gpu  # For GPU
 sudo docker pull ${DOCKER_IMAGE}
 ```
 

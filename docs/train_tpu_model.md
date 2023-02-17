@@ -98,7 +98,7 @@ Then, I copied over a dataset:
 BASE_DIR=/mnt/disks/persist/dc_training_examples
 mkdir -p ${BASE_DIR}/tf_examples
 time gcloud alpha storage cp -R \
-gs://brain-genomics-public/research/deepconsensus/training-tutorial/v1.1/* \
+gs://brain-genomics-public/research/deepconsensus/training-tutorial/v1.2/* \
 ${BASE_DIR}/tf_examples
 ```
 
@@ -138,7 +138,7 @@ Get a Cloud TPU VM (`--accelerator-type=v2-8` specifies Cloud TPU v2):
 gcloud compute tpus tpu-vm create ${USER}-tpu-name \
 --zone=${ZONE} \
 --accelerator-type=v2-8 \
---version=tpu-vm-tf-2.11.0 \
+--version=tpu-vm-tf-2.9.1 \
 --project ${PROJECT} \
 --data-disk source=projects/${PROJECT}/zones/${ZONE}/disks/${USER}-tpu-disk,mode=read-write
 ```
@@ -167,7 +167,7 @@ git clone https://github.com/google/deepconsensus.git
 
 ```
 cd deepconsensus
-sed -i -e 's|python3 -m pip install --user "intel-tensorflow>=2.11.0"||' install.sh
+sed -i -e 's|python3 -m pip install --user "intel-tensorflow==2.9.1"||' install.sh
 ./install.sh
 ```
 
@@ -209,6 +209,9 @@ def _set_custom_data_hparams(params):
   # confusing.
   params.n_examples_train = 100_000_000
   params.n_examples_eval = 3_500_000
+  # Set this to True if the tf examples contain ccs base quality scores.
+  # Option available starting in v1.2.
+  params.use_ccs_bq = True
 ```
 
 It is assumed that after copying training examples the
@@ -242,22 +245,22 @@ time python3 deepconsensus/models/model_train_custom_loop.py \
 
 Beginning training from an existing model checkpoint will generally speed up
 most training sessions. In order to start from a checkpoint add `--checkpoint`
-parameter that points to the path + prefix of the checkpoint. DeepConsensus v1.1
+parameter that points to the path + prefix of the checkpoint. DeepConsensus v1.2
 checkpoint can be copied from
-`gs://brain-genomics-public/research/deepconsensus/models/v1.1/model_checkpoint`
+`gs://brain-genomics-public/research/deepconsensus/models/v1.2/model_checkpoint`
 This directory contains 3 files:
 
 ```
-gs://brain-genomics-public/research/deepconsensus/models/v1.1/model_checkpoint/checkpoint.data-00000-of-00001
-gs://brain-genomics-public/research/deepconsensus/models/v1.1/model_checkpoint/checkpoint.index
-gs://brain-genomics-public/research/deepconsensus/models/v1.1/model_checkpoint/params.json
+gs://brain-genomics-public/research/deepconsensus/models/v1.2/model_checkpoint/checkpoint.data-00000-of-00001
+gs://brain-genomics-public/research/deepconsensus/models/v1.2/model_checkpoint/checkpoint.index
+gs://brain-genomics-public/research/deepconsensus/models/v1.2/model_checkpoint/params.json
 ```
 
 Copy DeepConsensus checkpoint locally:
 
 ```bash
 mkdir /mnt/disks/persist/model_checkpoint
-gsutil cp gs://brain-genomics-public/research/deepconsensus/models/v1.1/model_checkpoint/* /mnt/disks/persist/model_checkpoint/
+gsutil cp gs://brain-genomics-public/research/deepconsensus/models/v1.2/model_checkpoint/* /mnt/disks/persist/model_checkpoint/
 ```
 
 Add optional `--checkpoint` flag to
@@ -284,7 +287,7 @@ I1026 05:48:32.895524 140202426203200 model_utils.py:271] Per-replica batch-size
 I1026 05:48:32.895847 140202426203200 model_utils.py:280] Global batch size is 8192
 ```
 
-By default, training will run for 7 epochs. Per-replica batch size and epochs
+By default, training will run for 9 epochs. Per-replica batch size and epochs
 can be configured by updating the `model_configs.py` file. Global batch size is
 scaled based on the TPU topology and number of cores you have available.
 
