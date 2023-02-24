@@ -1315,7 +1315,7 @@ def create_proc_feeder(
           counter=main_counter,
       )
       subreads = list(map(expand_clip_indent_count, read_set))
-      ccs_seqname = '/'.join(subreads[0].name.split('/')[:2] + ['ccs'])
+      ccs_seqname = read_set[0].reference_name
       # Fetch ccs sequence and append to subread set.
       while True:
         ccs_bam_read = next(ccs_bam_h)
