@@ -35,6 +35,7 @@ Commands:
   preprocess: Convert aligned subreads to tf.Example format.
   run: Run DeepConsenseus beginning with aligned subreads.
   calibrate: Calculate base-quality calibration.
+  filter_reads: Filters reads from fastq or bam at a given q-value.
 """
 
 import argparse
@@ -46,7 +47,7 @@ from absl.flags import argparse_flags
 
 from deepconsensus.utils import dc_constants
 
-COMMANDS = ['preprocess', 'run', 'calibrate']
+COMMANDS = ['preprocess', 'run', 'calibrate', 'filter_reads']
 
 
 def parse_flags(argv):
@@ -105,6 +106,12 @@ def main(argset):
     calculate_baseq_calibration.register_required_flags()
     handle_help(passed, calculate_baseq_calibration)
     app.run(calculate_baseq_calibration.main, argv=passed)
+  elif args.command == 'filter_reads':
+    from deepconsensus.quality_calibration import filter_reads
+
+    filter_reads.register_required_flags()
+    handle_help(passed, filter_reads)
+    app.run(filter_reads.main, argv=passed)
 
 
 def run():
