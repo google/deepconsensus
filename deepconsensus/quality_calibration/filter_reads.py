@@ -28,6 +28,7 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """Filter reads based on the base qualities."""
 
+from collections.abc import Sequence
 import math
 from absl import app
 from absl import flags
@@ -64,7 +65,7 @@ def register_required_flags():
                                 'quality_threshold'])
 
 
-def avg_phred(base_qualities: list[float]) -> float:
+def avg_phred(base_qualities: Sequence[float]) -> float:
   """Get the average phred quality given base qualities of a read.
 
   Args:
