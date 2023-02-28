@@ -182,7 +182,7 @@ to confirm that we can still run the simple test after installing DeepConsensus.
 ## Set up variables and files
 
 ```bash
-BASE_DIR=/mnt/disks/persist/dc220828_shuf_ins_trim5
+BASE_DIR=/mnt/disks/persist/dc_training_examples
 export DC_TRAIN_DIR="${HOME}/dc-model"
 export TF_EXAMPLES="${BASE_DIR}/tf-examples"  # This should already be there.
 export DC_TRAIN_OUTPUT="${DC_TRAIN_DIR}/output"
