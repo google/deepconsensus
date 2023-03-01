@@ -61,11 +61,11 @@ mkdir "${TF_EXAMPLES_DIR}/test"
 gsutil cp gs://brain-genomics-public/research/deepconsensus/quickstart/v1.2/n1000.subreads.bam "${BASE_DIR}"/
 
 # Truth Reference
-gsutil cp gs://deepconsensus/pacbio/datasets/chm13/chm13v2.0_noY.fa "${BASE_DIR}"/
+gsutil cp gs://brain-genomics-public/research/deepconsensus/training-tutorial/v1.2/chm13v2.0_noY.fa "${BASE_DIR}"/
 # Truth exclude BED
-gsutil cp gs://deepconsensus/pacbio/datasets/chm13/chm13v2.0_noY_hifi.issues.bed "${BASE_DIR}"/
+gsutil cp gs://brain-genomics-public/research/deepconsensus/training-tutorial/v1.2/chm13v2.0_noY_hifi.issues.bed "${BASE_DIR}"/
 # Truth split
-gsutil cp gs://deepconsensus/pacbio/datasets/chm13/chm13v2.0_noY.chrom_mapping.txt "${BASE_DIR}"/
+gsutil cp gs://brain-genomics-public/research/deepconsensus/training-tutorial/v1.2/chm13v2.0_noY.chrom_mapping.txt "${BASE_DIR}"/
 
 cd "${BASE_DIR}"
 ```
