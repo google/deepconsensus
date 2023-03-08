@@ -47,6 +47,18 @@ You can log into the new VM using `gcloud`:
 ```bash
 gcloud compute ssh "${VM}" --zone=us-west1-b
 ```
+Setup the VM:
+
+```bash
+sudo apt-get -y update
+sudo apt-get -y install libbz2-dev zlib1g-dev libncurses5-dev libncursesw5-dev liblzma-dev
+```
+
+Install python and pip related tools on the VM:
+
+```bash
+sudo apt-get -y install python3-dev python3-pip
+```
 
 See the [runtime metrics page](runtime_metrics.md) for an overview of runtimes
 using different GCP compute VM configurations.
