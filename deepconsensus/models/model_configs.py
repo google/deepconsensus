@@ -373,6 +373,8 @@ def get_config(config_name: Optional[str] = None) -> ml_collections.ConfigDict:
     _set_human_aligned_to_revio_data_hparams(params)
   elif dataset_config_name == 'kestrel13_long':
     _set_human_aligned_to_kestrel13_long_data_hparams(params)
+  elif dataset_config_name == 'kestrel_kudu_13':
+    _set_human_aligned_to_kestrel_kudu_13_data_hparams(params)
   elif dataset_config_name == 'ccs_test':
     _set_human_test_set_ccs_hparams(params)
   elif dataset_config_name == 'ecoli':
