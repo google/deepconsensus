@@ -36,6 +36,8 @@ OUT_DIR=/tmp
 time blaze run -c opt \
 //learning/genomics/deepconsensus/models:model_train_custom_loop -- \
   --params ${CONFIG} \
+  --params.buffer_size=32 \
+  --params.batch_size=8 \
   --xm_runlocal \
   --alsologtostderr
 """
