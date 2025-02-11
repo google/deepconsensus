@@ -28,7 +28,7 @@
 """Utilities to help with testing code."""
 
 import os
-from typing import Dict, List, Text, Tuple, Union
+from typing import Union
 
 from absl import flags
 from absl.testing import absltest
@@ -119,16 +119,16 @@ def get_one_hot(value: Union[int, np.ndarray]) -> np.ndarray:
   ]
 
 
-def seq_to_array(seq: str) -> List[int]:
+def seq_to_array(seq: str) -> list[int]:
   return [dc_constants.SEQ_VOCAB.index(i) for i in seq]
 
 
-def multiseq_to_array(sequences: Union[Text, List[Text]]) -> np.ndarray:
+def multiseq_to_array(sequences: Union[str, list[str]]) -> np.ndarray:
   """Converts ATCG sequences to DC numeric format."""
   return np.array(list(map(seq_to_array, sequences)))
 
 
-def seq_to_one_hot(sequences: Union[Text, List[Text]]) -> np.ndarray:
+def seq_to_one_hot(sequences: Union[str, list[str]]) -> np.ndarray:
   """Converts ATCG to one-hot format."""
   result = []
   for seq in sequences:
@@ -138,9 +138,9 @@ def seq_to_one_hot(sequences: Union[Text, List[Text]]) -> np.ndarray:
 
 
 def convert_seqs(
-    sequences: List[str],
+    sequences: list[str],
     dtype: tf.DType = tf.keras.mixed_precision.global_policy().compute_dtype,
-) -> Tuple[tf.Tensor, tf.Tensor]:
+) -> tuple[tf.Tensor, tf.Tensor]:
   """Creates label and associated y_pred tensor.
 
   Args:
@@ -159,7 +159,7 @@ def convert_seqs(
   return y_true, y_pred_scores
 
 
-def load_dataset(output: str, dataset: str) -> List[Dict[str, np.ndarray]]:
+def load_dataset(output: str, dataset: str) -> list[dict[str, np.ndarray]]:
   # Load inference, train, eval, or test tfrecord.gz files.
   tf_record = output.replace('@split', dataset)
   dataset = tf.data.TFRecordDataset(tf_record, compression_type='GZIP')

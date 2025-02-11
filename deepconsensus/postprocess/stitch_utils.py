@@ -27,8 +27,10 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """Methods for DeepConsensus stitch-predictions step."""
 
+from collections.abc import Iterable
 import dataclasses
-from typing import Iterable, Optional, Tuple
+from typing import Optional
+
 from absl import logging
 import numpy as np
 
@@ -81,7 +83,7 @@ def get_full_sequence(
   return full_sequence, full_quality_string
 
 
-def remove_gaps(sequence: str, quality_string: str) -> Tuple[str, str]:
+def remove_gaps(sequence: str, quality_string: str) -> tuple[str, str]:
   """Removes gaps and corresponding quality score from outputs."""
   # Remove gaps from the final sequence.
   final_sequence = ''

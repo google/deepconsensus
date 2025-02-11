@@ -29,7 +29,6 @@
 
 import collections
 import textwrap
-from typing import List
 
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -68,9 +67,9 @@ TEST_HEADER = pysam.AlignmentHeader.from_dict(
 def create_segment(
     bases: str,
     cigar: str,
-    ip: List[int] = None,
-    pw: List[int] = None,
-    sn: List[int] = None,
+    ip: list[int] = None,
+    pw: list[int] = None,
+    sn: list[int] = None,
     is_reverse: bool = False,
     reference_name: str = TEST_HEADER.references[0],
     reference_start: int = 0,

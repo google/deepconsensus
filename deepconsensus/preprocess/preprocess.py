@@ -45,7 +45,7 @@ import multiprocessing
 import multiprocessing.pool
 import os
 import time
-from typing import Counter, Dict, List, Tuple, Union
+from typing import Union
 
 from absl import flags
 from absl import logging
@@ -161,8 +161,8 @@ def make_dirs(path):
 
 
 def setup_writers(
-    output_fname: str, splits: List[str]
-) -> Dict[str, tf.io.TFRecordWriter]:
+    output_fname: str, splits: list[str]
+) -> dict[str, tf.io.TFRecordWriter]:
   """Creates tf writers for split set."""
   tf_writers = {}
   tf_ops = tf.io.TFRecordOptions(compression_type='GZIP')
@@ -175,9 +175,9 @@ def setup_writers(
 
 
 def write_tf_record(
-    tf_example_str_set: List[bytes],
+    tf_example_str_set: list[bytes],
     split: str,
-    tf_writers: Dict[str, tf.io.TFRecordWriter],
+    tf_writers: dict[str, tf.io.TFRecordWriter],
 ):
   """Writes tf examples to a split."""
   for tf_example_str in tf_example_str_set:
@@ -187,7 +187,7 @@ def write_tf_record(
 
 @trace_exception
 def tf_record_writer(
-    output_fname: str, splits: List[str], queue: Queue
+    output_fname: str, splits: list[str], queue: Queue
 ) -> bool:
   """tf_record writing worker."""
   tf_writers = setup_writers(output_fname, splits)
@@ -203,14 +203,16 @@ def tf_record_writer(
 
 @trace_exception
 def process_subreads(
-    subreads: List[pre_lib.Read],
+    subreads: list[pre_lib.Read],
     ccs_seqname: str,
     dc_config: pre_lib.DcConfig,
     split: str,
     window_widths: np.ndarray,
     queue: Queue,
     local: bool = False,
-) -> Union[Counter[str], Tuple[List[str], str, Counter[str]]]:
+) -> Union[
+    collections.Counter[str], tuple[list[str], str, collections.Counter[str]]
+]:
   """Subread processing worker."""
   tf_out = []
   dc_example = pre_lib.subreads_to_dc_example(
@@ -229,8 +231,8 @@ def process_subreads(
 
 
 def clear_tasks(
-    tasks: List[AsyncResult], main_counter: collections.Counter
-) -> List[AsyncResult]:
+    tasks: list[AsyncResult], main_counter: collections.Counter
+) -> list[AsyncResult]:
   """Clear successful tasks and log result."""
   for task in tasks:
     if task.ready():

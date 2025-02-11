@@ -45,7 +45,7 @@ import functools
 import multiprocessing
 import multiprocessing.pool
 import time
-from typing import Any, Dict, List
+from typing import Any
 
 from absl import flags
 from absl import logging
@@ -164,8 +164,8 @@ def process_region_string(region_string: str, fasta_file: str) -> RegionRecord:
 
 
 def split_regions_in_intervals(
-    regions: List[RegionRecord], region_length: int
-) -> List[RegionRecord]:
+    regions: list[RegionRecord], region_length: int
+) -> list[RegionRecord]:
   """Splits each region into intervals of region length.
 
   Args:
@@ -189,7 +189,7 @@ def split_regions_in_intervals(
 
 def get_contig_regions(
     bam_file: str, fasta_file: str, region: str, interval_length: int
-) -> List[RegionRecord]:
+) -> list[RegionRecord]:
   """Creates a list of regions for processing.
 
   Reads contig names from bam and fasta file and creates a list of regions
@@ -250,7 +250,7 @@ def get_contig_regions(
 def create_processes(
     bam_file: str,
     fasta_file: str,
-    all_intervals: List[RegionRecord],
+    all_intervals: list[RegionRecord],
     total_threads: int,
     min_mapq: int,
     dc_calibration: calibration_lib.QualityCalibrationValues,
@@ -283,8 +283,8 @@ def trace_exception(f) -> ...:
 
 
 def clear_tasks(
-    tasks: List[Any], global_stats: List[Dict[str, int]]
-) -> List[Any]:
+    tasks: list[Any], global_stats: list[dict[str, int]]
+) -> list[Any]:
   """Clears successful tasks and log result."""
   for task in tasks:
     if task.ready():
@@ -301,12 +301,12 @@ def clear_tasks(
 
 
 def get_quality_calibration_stats(
-    reads: List[pysam.AlignedSegment],
+    reads: list[pysam.AlignedSegment],
     ref_sequence: str,
     region_interval: RegionRecord,
     min_mapq: int,
     dc_calibration: calibration_lib.QualityCalibrationValues,
-) -> List[Dict[str, int]]:
+) -> list[dict[str, int]]:
   """Iterates over reads and calculate quality scores."""
   match_mismatch_count = [{'M': 0, 'X': 0} for _ in range(0, MAX_BASEQ)]
 
@@ -378,10 +378,10 @@ def get_quality_calibration_stats(
 def calculate_quality_calibration(
     bam_file: str,
     fasta_file: str,
-    process_intervals: List[RegionRecord],
+    process_intervals: list[RegionRecord],
     min_mapq: int,
     dc_calibration: str,
-) -> List[Dict[str, int]]:
+) -> list[dict[str, int]]:
   """Calculates quality calibration of reads."""
   thread_counter = collections.Counter()
   thread_counter['n_examples'] += len(process_intervals)

@@ -27,8 +27,6 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """Utilities for error analysis that can be used in colab."""
 
-from typing import List, Tuple
-
 import numpy as np
 import pandas as pd
 import tensorflow as tf
@@ -52,7 +50,7 @@ def remove_gaps(seq: str) -> str:
 
 def get_deepconsensus_prediction(
     model: tf.keras.Model, rows: tf.Tensor
-) -> Tuple[tf.Tensor, tf.Tensor]:
+) -> tuple[tf.Tensor, tf.Tensor]:
   """Runs model on given rows and returns distributions and predictions."""
   softmax_output = model(rows, training=False)
   pred = tf.argmax(softmax_output, axis=-1)
@@ -74,7 +72,7 @@ def convert_to_bases(
     label: tf.Tensor,
     deepconsensus_pred: tf.Tensor,
     max_passes: int,
-) -> Tuple[List[str], str, str]:
+) -> tuple[list[str], str, str]:
   """Converts numerical tensors to string of bases."""
   rows = tf.squeeze(rows)
   label = tf.squeeze(label)
@@ -122,7 +120,7 @@ def pretty_print_proto(dc_input, print_aux=False):
 
 
 def get_results_df(
-    experiments: List[int], experiment_pattern: str, decimals: int = 5
+    experiments: list[int], experiment_pattern: str, decimals: int = 5
 ) -> pd.DataFrame:
   """Returns a dataframe with inference results."""
   all_lines = None

@@ -32,7 +32,7 @@ from collections import abc
 import dataclasses
 import functools
 import itertools
-from typing import Any, Counter, Dict, List, Optional, Tuple, Union
+from typing import Any, Optional, Union
 
 from absl import logging
 import numpy as np
@@ -65,7 +65,7 @@ class SubreadGrouper(abc.Iterator):
     if not first_read.is_unmapped:
       self.subread_group.append(first_read)
 
-  def __next__(self) -> List[pysam.libcalignedsegment.AlignedSegment]:
+  def __next__(self) -> list[pysam.libcalignedsegment.AlignedSegment]:
     if not self.keep_iter:
       raise StopIteration
     while self.keep_iter:
@@ -169,7 +169,7 @@ class Read(abc.Sequence):
   # The truth_range['contig'] and truth_idx are used calculate
   # label_coords from sliced regions.
   # truth_range bounds are [begin, end) in keeping with bed format.
-  truth_range: Union[Dict[str, Any], None] = None
+  truth_range: Union[dict[str, Any], None] = None
 
   # Alignment Variables.
   _seq_indices: np.ndarray = dataclasses.field(
@@ -432,7 +432,7 @@ class Read(abc.Sequence):
 
 
 def dc_config_from_shape(
-    subreads_shape: Tuple[int, int, int], use_ccs_bq: bool = False
+    subreads_shape: tuple[int, int, int], use_ccs_bq: bool = False
 ) -> 'DcConfig':
   """Creates a DcConfig object based on subread shape and base quality usage.
 
@@ -532,7 +532,7 @@ class DcConfig:
     """Returns total rows for tf.Example input."""
     return sum(self.feature_rows.values())
 
-  def to_dict(self) -> Dict[str, str]:
+  def to_dict(self) -> dict[str, str]:
     """Output configuration properties as dict."""
     return {
         # Encode values as strings to prevent aggregation across shards.
@@ -548,10 +548,12 @@ class DcExample:
   """Python container used to generate DeepConsensus tf.Example."""
 
   name: str
-  reads: List[Read]
+  reads: list[Read]
   config: DcConfig
   window_widths: Optional[np.ndarray] = None
-  counter: Counter[str] = dataclasses.field(default_factory=collections.Counter)
+  counter: collections.Counter[str] = dataclasses.field(
+      default_factory=collections.Counter
+  )
 
   # Define cached variables.
   _width: Optional[int] = None
@@ -590,7 +592,7 @@ class DcExample:
     return ''
 
   @property
-  def subreads(self) -> List[Read]:
+  def subreads(self) -> list[Read]:
     if self.is_training:
       return self.reads[:-2]
     else:
@@ -637,7 +639,7 @@ class DcExample:
     label = right_pad(label, seq_len, 0)
     return np.equal(ccs, label).all()
 
-  def calculate_windows(self, example_width: int) -> List[int]:
+  def calculate_windows(self, example_width: int) -> list[int]:
     """Calculate window widths for the given CCS widths with added spacing."""
     window_positions = []
     window_widths = []
@@ -851,7 +853,7 @@ def decode_bases(bases_encoded: np.ndarray) -> np.ndarray:
   return bases
 
 
-def from_features_dict(features_dict: Dict[str, Any]) -> DcExample:
+def from_features_dict(features_dict: dict[str, Any]) -> DcExample:
   """Converts features_dict partially back to a DcExample object for tests."""
   dc_config = dc_config_from_shape(features_dict['subreads/shape'])
   data = np.squeeze(features_dict['subreads'])
@@ -923,11 +925,11 @@ def set_feature(feature, shape):
 
 
 def tf_example_to_features_dict(
-    tf_example_proto_str: Dict[str, Any],
+    tf_example_proto_str: dict[str, Any],
     inference: bool = False,
     use_ccs_bq: bool = False,
     max_length: int = 100,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
   """Converts tf.Example to features_dict.
 
   Args:
@@ -1024,7 +1026,7 @@ def construct_ccs_read(
 def fetch_label_alignment(
     ccs_seqname: str,
     truth_to_ccs: pysam.AlignmentFile,
-    truth_range: Dict[str, Any],
+    truth_range: dict[str, Any],
 ) -> Union[dc_constants.Issue, Read]:
   """Fetches a label aligned to ccs sequence."""
   try:
@@ -1037,7 +1039,7 @@ def fetch_label_alignment(
   return truth_alignment
 
 
-def read_truth_bedfile(truth_bed: str) -> Dict[str, Dict[str, Any]]:
+def read_truth_bedfile(truth_bed: str) -> dict[str, dict[str, Any]]:
   """Reads in complete truth bed file and returns dict."""
   bed_coords = {}
   with tf.io.gfile.GFile(truth_bed, 'r') as bedfile:
@@ -1048,7 +1050,7 @@ def read_truth_bedfile(truth_bed: str) -> Dict[str, Dict[str, Any]]:
   return bed_coords
 
 
-def read_truth_split(split_fname: str) -> Dict[str, str]:
+def read_truth_split(split_fname: str) -> dict[str, str]:
   """Reads in split bed file and returns dict."""
   contig_split = {}
   split_regions = {}
@@ -1084,7 +1086,7 @@ def read_truth_split(split_fname: str) -> Dict[str, str]:
 def trim_insertions(
     read: pysam.AlignedSegment,
     ins_trim: int,
-    counter: Optional[Counter[str]] = None,
+    counter: Optional[collections.Counter[str]] = None,
 ) -> pysam.AlignedSegment:
   """Remove insertions larger than max length.
 
@@ -1150,9 +1152,9 @@ def trim_insertions(
 
 def expand_clip_indent(
     read: pysam.AlignedSegment,
-    truth_range: Union[Dict[str, Any], None] = None,
+    truth_range: Union[dict[str, Any], None] = None,
     ins_trim: int = 0,
-    counter: Optional[Counter[str]] = None,
+    counter: Optional[collections.Counter[str]] = None,
 ) -> Read:
   """Adds PAD tokens and clips reads.
 
@@ -1262,7 +1264,7 @@ def expand_clip_indent(
   )
 
 
-def space_out_subreads(subreads: List[Read]) -> List[Read]:
+def space_out_subreads(subreads: list[Read]) -> list[Read]:
   """Spaces out subreads to make room for insertions in any subset of them."""
   for r in subreads:
     r.setup_spacing()
@@ -1391,7 +1393,7 @@ def create_proc_feeder(
 
 
 def subreads_to_dc_example(
-    subreads: List[Read],
+    subreads: list[Read],
     ccs_seqname: str,
     dc_config: DcConfig,
     window_widths: np.ndarray,

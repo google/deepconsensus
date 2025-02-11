@@ -27,7 +27,7 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """Utilities for DeepConsensus."""
 
-from typing import List, Union
+from typing import Union
 import numpy as np
 import tensorflow as tf
 from deepconsensus.utils import dc_constants
@@ -62,7 +62,7 @@ def quality_scores_to_string(scores: np.ndarray) -> str:
   return ''.join([chr(score) for score in (scores + 33)])
 
 
-def quality_string_to_array(quality_string: str) -> List[int]:
+def quality_string_to_array(quality_string: str) -> list[int]:
   """Returns the int array representation for the given quality string."""
   return [ord(char) - 33 for char in quality_string]
 
@@ -84,7 +84,7 @@ def tf_avg_phred(base_qualities: tf.Tensor) -> float:
     return float(avg_q)
 
 
-def avg_phred(base_qualities: Union[np.ndarray, List[int]]) -> float:
+def avg_phred(base_qualities: Union[np.ndarray, list[int]]) -> float:
   """Get the average phred quality given base qualities of a read.
 
   Args:

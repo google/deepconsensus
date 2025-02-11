@@ -36,6 +36,7 @@ Usage:
 """
 
 import collections
+from collections.abc import Generator, Iterable, Sequence
 import concurrent.futures
 import dataclasses
 import enum
@@ -44,7 +45,7 @@ import json
 import multiprocessing
 import os
 import time
-from typing import Any, Dict, Generator, Iterable, List, Optional, Sequence, Tuple, Union
+from typing import Any, Optional, Union
 
 from absl import app
 from absl import flags
@@ -302,7 +303,7 @@ def timelog(
 # TODO Add unit test for this function. We need to create unit test
 # infrastructure that allows to easily create input data for unit tests.
 def batch_examples(
-    feature_dicts: List[Tuple[str, Union[np.ndarray, int, bytes, float]]],
+    feature_dicts: list[tuple[str, Union[np.ndarray, int, bytes, float]]],
     model_params: Union[config_dict.ConfigDict, config_dict.FrozenConfigDict],
     options: InferenceOptions,
 ):
@@ -339,11 +340,11 @@ def batch_examples(
 
 
 def run_model_on_examples(
-    feature_dicts: List[Tuple[str, Union[np.ndarray, int, bytes]]],
+    feature_dicts: list[tuple[str, Union[np.ndarray, int, bytes]]],
     model: tf.keras.Model,
     model_params: Union[config_dict.ConfigDict, config_dict.FrozenConfigDict],
     options: InferenceOptions,
-) -> List[stitch_utils.DCModelOutput]:
+) -> list[stitch_utils.DCModelOutput]:
   """Runs the model on one example to get one predicted output sequence.
 
   Args:
@@ -446,7 +447,7 @@ def stitch_predictions_for_one_zmw(
 
 def stream_bam(
     subreads_to_ccs: str, ccs_bam: str, options: InferenceOptions
-) -> Generator[Tuple[str, str, Sequence[Any], np.ndarray], None, None]:
+) -> Generator[tuple[str, str, Sequence[Any], np.ndarray], None, None]:
   """Streams inputs from FASTA and BAM concurrently.
 
   Args:
@@ -486,7 +487,7 @@ def initialize_model(
     checkpoint_path: str,
     params: config_dict.ConfigDict,
     options: InferenceOptions,
-) -> Tuple[Optional[tf.keras.Model], Optional[config_dict.ConfigDict]]:
+) -> tuple[Optional[tf.keras.Model], Optional[config_dict.ConfigDict]]:
   """Initializes the model and gathers parameters.
 
   Args:
@@ -533,8 +534,8 @@ def initialize_model(
 
 
 def preprocess(
-    one_zmw: Tuple[str, List[pre_lib.Read], pre_lib.DcConfig, np.ndarray]
-) -> Tuple[List[Dict[str, Any]], Optional[Any]]:
+    one_zmw: tuple[str, list[pre_lib.Read], pre_lib.DcConfig, np.ndarray],
+) -> tuple[list[dict[str, Any]], Optional[Any]]:
   """Preprocess input data for one ZMW into windows of features.
 
   This is often run from multiple processes in parallel, which creates some
@@ -565,7 +566,7 @@ def preprocess(
 
 
 def process_skipped_window(
-    feature_dict: Dict[str, Any], options: InferenceOptions
+    feature_dict: dict[str, Any], options: InferenceOptions
 ) -> stitch_utils.DCModelOutput:
   """Process a window by simply adopting the CCS sequence and base qualities."""
   rows = feature_dict['subreads']
@@ -596,7 +597,7 @@ def process_skipped_window(
 
 # TODO: Combine outcome_counter and stats_counter.
 def inference_on_n_zmws(
-    inputs: Sequence[Tuple[str, str, Sequence[Any], np.ndarray]],
+    inputs: Sequence[tuple[str, str, Sequence[Any], np.ndarray]],
     model: tf.keras.Model,
     model_params: Union[config_dict.ConfigDict, config_dict.FrozenConfigDict],
     output_writer: Union[gfile.GFile, pysam.AlignmentFile],
