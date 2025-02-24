@@ -4,6 +4,7 @@
 # incompatible when flexible versioning is used.
 # DeepConsensus should be used in a dedicated python virtualenv.
 pandas==1.5.1
+setuptools==61.0.0
 tf-models-official==2.9.1
 pyyaml==5.4.1  # because of tf-models-official
 ml_collections==0.1.1
