@@ -25,8 +25,6 @@
 # ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-"""Tests for deepconsensus.quality_calibration.calculate_baseq_calibration."""
-
 from absl.testing import absltest
 from absl.testing import flagsaver
 from absl.testing import parameterized
