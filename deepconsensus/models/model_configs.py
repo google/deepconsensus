@@ -61,7 +61,7 @@ def _set_base_fc_hparams(params):
   params.batch_size = 256
   params.num_epochs = 15
   params.num_epochs_for_decay = 15
-  params.buffer_size = 10_000
+  params.buffer_size = 1_000_000
 
   # Optimizer params (optimized for transformer).
   params.initial_learning_rate = 3.6246e-3
@@ -101,9 +101,9 @@ def _set_base_transformer_hparams(params):
   params.strand_hidden_size = 1
 
   # Dropout values (only used when training).
-  params.layer_postprocess_dropout = 0.1
-  params.attention_dropout = 0.1
-  params.relu_dropout = 0.1
+  params.layer_postprocess_dropout = 0.0
+  params.attention_dropout = 0.0
+  params.relu_dropout = 0.0
 
   # Training
   params.batch_size = 256
@@ -158,7 +158,7 @@ def _set_transformer_learned_embeddings_distill_hparams(params):
 
   # Dropout values (only used when training).
   params.layer_postprocess_dropout = 0.0
-  params.attention_dropout = 0.1
+  params.attention_dropout = 0.0
   params.relu_dropout = 0.0
 
   # Whether to initialize encoder layers using the teacher model.
@@ -367,8 +367,12 @@ def get_config(config_name: Optional[str] = None) -> ml_collections.ConfigDict:
 
   if dataset_config_name == 'poa':
     _set_human_aligned_to_poa_data_hparams(params)
+  elif dataset_config_name == 'kestrel13_long_32bp':
+    _set_human_aligned_to_kestrel_kudu_13_32bp_hparams(params)
   elif dataset_config_name == 'ccs':
     _set_human_aligned_to_ccs_data_hparams(params)
+  elif dataset_config_name == 'ccs_32bp':
+    _set_human_aligned_to_ccs_data_32bp_hparams(params)
   elif dataset_config_name == 'revio':
     _set_human_aligned_to_revio_data_hparams(params)
   elif dataset_config_name == 'kestrel13_long':

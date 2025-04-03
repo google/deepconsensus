@@ -293,7 +293,7 @@ def modify_params(
       # chips, and there are two cores per chip.
       assert tpu_topology is not None
       tpu_topology_parts = list(map(int, tpu_topology.split('x')))
-      assert len(tpu_topology_parts) == 2
+      assert len(tpu_topology_parts) in [2, 3]
       num_cores_used = tpu_topology_parts[0] * tpu_topology_parts[1] * 2
       params.batch_size *= num_cores_used
       logging.info('Global batch size is %d', params.batch_size)
