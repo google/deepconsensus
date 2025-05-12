@@ -27,8 +27,9 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """TF2 + tf.keras implementations of networks for DeepConsensus."""
 
+from collections.abc import Callable
 import logging
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Optional
 
 import ml_collections
 import tensorflow as tf
@@ -94,7 +95,7 @@ def FullyConnectedNet(params: ml_collections.ConfigDict) -> tf.keras.Model:
 
 def get_conv_sub_model(
     conv_model,
-) -> Tuple[
+) -> tuple[
     Callable[..., tf.Tensor], Callable[[tf.keras.Model], tf.keras.Model]
 ]:
   """Returns a predefined convolutional architecture."""
@@ -213,7 +214,7 @@ class EncoderOnlyTransformer(tf.keras.Model):
     )
     self.softmax = tf.keras.layers.Softmax(dtype=tf.float32)
 
-  def get_config(self) -> Dict[str, Any]:
+  def get_config(self) -> dict[str, Any]:
     return {
         'params': self.params,
     }
@@ -240,7 +241,7 @@ class EncoderOnlyTransformer(tf.keras.Model):
 
   def get_intermediate_outputs(
       self, inputs: tf.Tensor, training: bool
-  ) -> Dict[str, tf.Tensor]:
+  ) -> dict[str, tf.Tensor]:
     """Get intermediate outputs of the model.
 
     Args:
@@ -285,7 +286,7 @@ class EncoderOnlyTransformer(tf.keras.Model):
 
   def encode(
       self, inputs: tf.Tensor, attention_bias: tf.Tensor, training: bool
-  ) -> Dict[str, tf.Tensor]:
+  ) -> dict[str, tf.Tensor]:
     """Runs the input through Encoder stack and problem-specific layers."""
 
     with tf.name_scope('encode'):
@@ -436,7 +437,7 @@ class EncoderOnlyLearnedValuesTransformer(EncoderOnlyTransformer):
 
   def encode(
       self, inputs: tf.Tensor, attention_bias: tf.Tensor, training: bool
-  ) -> Dict[str, tf.Tensor]:
+  ) -> dict[str, tf.Tensor]:
     """Runs the input through Encoder stack and problem-specific layers."""
 
     # Input to embedding layer is [batch_size, length] and output will be

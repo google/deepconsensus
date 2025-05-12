@@ -27,7 +27,8 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """Implementation of fully connected network."""
 
-from typing import Any, Dict, Iterable, Union
+from collections.abc import Iterable
+from typing import Any, Union
 import tensorflow as tf
 
 
@@ -59,14 +60,14 @@ class FeedForwardNetwork(tf.keras.layers.Layer):
     )
     super(FeedForwardNetwork, self).build(input_shape)
 
-  def get_config(self) -> Dict[str, Any]:
+  def get_config(self) -> dict[str, Any]:
     return {
         "hidden_size": self.hidden_size,
         "filter_size": self.filter_size,
         "relu_dropout": self.relu_dropout,
     }
 
-  def call(self, x: tf.Tensor, training: bool) -> Dict[str, tf.Tensor]:
+  def call(self, x: tf.Tensor, training: bool) -> dict[str, tf.Tensor]:
     """Return outputs of the feedforward network.
 
     Args:

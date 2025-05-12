@@ -25,7 +25,7 @@
 # ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-from typing import List, Sequence, Tuple
+from collections.abc import Sequence
 
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -642,12 +642,12 @@ class AlignmentMetricTest(parameterized.TestCase):
   )
   def test_alignment_metric(
       self,
-      sequences: Tuple[Sequence[str], Sequence[str]],
+      sequences: tuple[Sequence[str], Sequence[str]],
       matching_score: float,
       mismatch_penalty: float,
       gap_open_penalty: float,
       gap_extend_penalty: float,
-      expected_pid: Tuple[float],
+      expected_pid: tuple[float],
   ):
     y_true, y_pred_scores = test_utils.convert_seqs(sequences)
     alignment_metric_obj = losses_and_metrics.AlignmentMetric(
@@ -773,11 +773,11 @@ class YieldOverCCSMetricTest(parameterized.TestCase):
   def test_yield_over_ccs_metric_multiple_updates(
       self,
       quality_threshold: float,
-      identities_dc: List[Sequence[str]],
-      identities_ccs: List[Sequence[str]],
-      exp_yields_dc: List[float],
-      exp_yields_ccs: List[float],
-      exp_yields_over_ccs: List[float],
+      identities_dc: list[Sequence[str]],
+      identities_ccs: list[Sequence[str]],
+      exp_yields_dc: list[float],
+      exp_yields_ccs: list[float],
+      exp_yields_over_ccs: list[float],
   ):
     """Checks that yield over ccs metrics and attributes match expected values.
 

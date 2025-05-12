@@ -27,10 +27,11 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """Functions for yielding input arrays for models."""
 
+from collections.abc import Callable, Iterable
 import datetime
 import itertools
 import logging
-from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union
+from typing import Optional, Union
 
 import ml_collections
 from ml_collections.config_dict import config_dict
@@ -80,7 +81,7 @@ def get_total_rows(max_passes: int, use_ccs_bq: bool) -> int:
   return (max_passes * 4) + fixed_length
 
 
-def get_indices(max_passes: int, use_ccs_bq: bool) -> Iterable[Tuple[int, int]]:
+def get_indices(max_passes: int, use_ccs_bq: bool) -> Iterable[tuple[int, int]]:
   """Returns row indices for bases/PW/IP/SN in tf.Example subreads array.
 
   This function returns tuples of the start/end rows for each feature in an
@@ -187,9 +188,9 @@ def format_rows(
 
 
 def process_feature_dict(
-    features: Dict[str, Union[np.ndarray, int, bytes]],
+    features: dict[str, Union[np.ndarray, int, bytes]],
     params: Union[config_dict.ConfigDict, config_dict.FrozenConfigDict],
-) -> Dict[str, Union[np.ndarray, int, bytes, str]]:
+) -> dict[str, Union[np.ndarray, int, bytes, str]]:
   """Parses a serialized tf.Example to return an input, label, and metadata.
 
   Args:
@@ -226,10 +227,10 @@ def process_feature_dict(
 
 
 def parse_example(
-    proto_string: Dict[str, tf.Tensor],
+    proto_string: dict[str, tf.Tensor],
     inference: bool = False,
     max_length: int = 100,
-) -> Dict[str, tf.Tensor]:
+) -> dict[str, tf.Tensor]:
   """Parses serialized Training or Inference TF.Examples."""
   if inference:
     proto_features = PROTO_FEATURES_INFERENCE
@@ -252,7 +253,7 @@ def process_input(
     proto_string: Union[tf.Tensor, bytes],
     params: ml_collections.FrozenConfigDict,
     inference: bool,
-) -> Dict[str, tf.Tensor]:
+) -> dict[str, tf.Tensor]:
   """Parses a serialized tf.Example to return an input, label, and metadata.
 
   Args:
@@ -302,8 +303,8 @@ def process_input(
 
 
 def tf_example_to_training_tuple(
-    tf_example: Dict[str, tf.Tensor],
-) -> Tuple[tf.Tensor, tf.Tensor]:
+    tf_example: dict[str, tf.Tensor],
+) -> tuple[tf.Tensor, tf.Tensor]:
   """Return only subreads and label."""
   return (tf_example['rows'], tf_example['label'])
 
@@ -341,7 +342,7 @@ def get_dataset(
     name: Name of the ZMW, e.g. "m64011_181218_235052/315/ccs".
   """
 
-  def _process_input_helper(proto_string: tf.Tensor) -> Dict[str, tf.Tensor]:
+  def _process_input_helper(proto_string: tf.Tensor) -> dict[str, tf.Tensor]:
     return process_input(
         proto_string=proto_string, params=params, inference=inference
     )
@@ -368,7 +369,7 @@ def get_dataset(
   return ds
 
 
-def create_glob_list(paths: Union[str, List[str]]) -> List[str]:
+def create_glob_list(paths: Union[str, list[str]]) -> list[str]:
   """Creates a globbed file list."""
   file_patterns = []
   if isinstance(paths, str):
@@ -388,7 +389,7 @@ def create_input_fn(
 
   def _process_input_helper(
       proto_string: tf.Tensor,
-  ) -> Tuple[tf.Tensor, tf.Tensor]:
+  ) -> tuple[tf.Tensor, tf.Tensor]:
     # Set inference to False here because we only use this function with
     # tf.Examples that have labels present.
     tf_example = process_input(

@@ -26,7 +26,7 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 import json
-from typing import Any, Dict, Tuple
+from typing import Any
 
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -40,7 +40,7 @@ from deepconsensus.utils import dc_constants
 from deepconsensus.utils import test_utils
 
 
-def get_test_dataset(inference: bool) -> Tuple[str, Dict[str, Any]]:
+def get_test_dataset(inference: bool) -> tuple[str, dict[str, Any]]:
   """Loads inference or training dataset and json summary."""
   if inference:
     dataset_path = 'human_1m/tf_examples/inference/*.tfrecord.gz'

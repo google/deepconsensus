@@ -55,7 +55,7 @@ import datetime
 import logging
 import os
 import random
-from typing import Optional, Dict
+from typing import Optional
 
 from absl import app
 from absl import flags
@@ -247,7 +247,7 @@ def train_model(
         student_preds: tf.Tensor,
         student_logits: tf.Tensor,
         teacher_logits: tf.Tensor,
-    ) -> Dict[str, tf.Tensor]:
+    ) -> dict[str, tf.Tensor]:
       per_example_student_loss = student_loss_object(labels, student_preds)
       per_example_distill_loss = distillation_loss_object(
           teacher_logits, student_logits
