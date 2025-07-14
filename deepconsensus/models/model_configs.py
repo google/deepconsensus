@@ -190,6 +190,30 @@ def _set_transformer_learned_embeddings_distill_hparams(params):
   params.logit_loss_identifier = 'mean_squared_error'
 
 
+def _set_transformer_learned_embeddings_distill_v2_hparams(params):
+  """Updates given config with values for the learned embeddings transformer."""
+  _set_transformer_learned_embeddings_hparams(params)
+
+  # Student architecture
+  params.num_hidden_layers = 4
+  params.filter_size = 2048
+
+  params.init_encoder_stack = True
+  # The order of the two lists below determines the layer mapping.
+  params.teacher_encoder_layers = [0, 1, 3, 5]
+  params.student_encoder_layers = [0, 1, 2, 3]
+  assert len(params.teacher_encoder_layers) == len(
+      params.student_encoder_layers
+  )
+  params.init_nonencoder_layers = True
+
+  # Distillation loss parameters.
+  params.distill_alpha = 1000
+  params.student_alpha = 1
+  # Not implemented yet.
+  params.temperature = 1
+
+
 
 
 ############### Base params for different datasets ###############
@@ -360,6 +384,8 @@ def get_config(config_name: Optional[str] = None) -> ml_collections.ConfigDict:
     _set_transformer_learned_embeddings_hparams(params)
   elif model_config_name == 'transformer_learn_values_distill':
     _set_transformer_learned_embeddings_distill_hparams(params)
+  elif model_config_name == 'transformer_learn_values_distill_v2':
+    _set_transformer_learned_embeddings_distill_v2_hparams(params)
   else:
     raise ValueError('Unknown model_config_name: %s' % model_config_name)
 
