@@ -395,6 +395,8 @@ def get_config(config_name: Optional[str] = None) -> ml_collections.ConfigDict:
     _set_human_aligned_to_poa_data_hparams(params)
   elif dataset_config_name == 'kestrel_kudu_13_32bp':
     _set_human_aligned_to_kestrel_kudu_13_32bp_hparams(params)
+  elif dataset_config_name == 'kestrel_kudu_13_32bp_10shards':
+    _kestrel_kudu_13_32bp_10shards_hparams(params)
   elif dataset_config_name == 'ccs':
     _set_human_aligned_to_ccs_data_hparams(params)
   elif dataset_config_name == 'ccs_32bp':
