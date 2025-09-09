@@ -209,9 +209,9 @@ def _set_transformer_learned_embeddings_distill_v2_hparams(params):
 
   # Distillation loss parameters.
   params.distill_alpha = 1000
+  params.logit_loss_identifier = 'kl_divergence'
+  params.temperature = 3
   params.student_alpha = 1
-  # Not implemented yet.
-  params.temperature = 1
 
 
 
