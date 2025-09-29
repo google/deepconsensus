@@ -31,7 +31,6 @@
 import os
 from typing import Optional
 import ml_collections
-from ml_collections import config_dict
 
 # Do not add any additional imports to the config.
 # It can lead to circular dependencies easily and should not be necessary
@@ -304,6 +303,9 @@ def get_config(config_name: Optional[str] = None) -> ml_collections.ConfigDict:
   # Used for generating replicates.
   params.trial = 1
 
+  # For reducing training and eval size.
+  params.reduce_train_eval_size_by = 1
+
   # Defaults for backward compatibilitiy
   # Older models initiate with the default config, so initialize those values
   # here to set for older models.
@@ -336,8 +338,6 @@ def get_config(config_name: Optional[str] = None) -> ml_collections.ConfigDict:
   params.sn_hidden_size = 1
   params.strand_hidden_size = 1
   params.ccs_bq_hidden_size = 1
-
-  params.total_rows = config_dict.placeholder(int)
 
   # Specify common configs here.
   params.vocab_size = 5
@@ -422,4 +422,14 @@ def get_config(config_name: Optional[str] = None) -> ml_collections.ConfigDict:
         'dataset_config_name is %s. Must be one of the following: '
         'ccs, poa, ecoli, test' % dataset_config_name
     )
+  # If reduce_train_eval_size_by is > 1, scale down number of examples and
+  # warmup steps.
+  # This is done with FieldReference so that it is evaluated after command line
+  # flag overrides have been applied.
+  for field in ['n_examples_train', 'n_examples_eval', 'warmup_steps']:
+    if params.get(field) is not None:
+      original_value = params[field]
+      params[field] = ml_collections.FieldReference(
+          original_value
+      ) // params.get_ref('reduce_train_eval_size_by')
   return params
