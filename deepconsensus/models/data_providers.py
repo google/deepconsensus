@@ -406,7 +406,7 @@ def create_input_fn(
     dataset_start_time = datetime.datetime.now()
     ds = tf.data.Dataset.from_tensor_slices(file_patterns)
     if mode in ['train', 'eval']:
-      ds = ds.shuffle(ds.cardinality(), reshuffle_each_iteration=True)
+      ds = ds.shuffle(len(file_patterns), reshuffle_each_iteration=True)
     dataset_end_time = datetime.datetime.now() - dataset_start_time
     logging.info('Initial tf.data took: %s', dataset_end_time.total_seconds())
     ds = ds.interleave(
