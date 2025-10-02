@@ -375,7 +375,11 @@ def create_glob_list(paths: Union[str, list[str]]) -> list[str]:
   if isinstance(paths, str):
     paths = [paths]
   for path in paths:
-    file_patterns.append(tf.io.gfile.glob(path))
+    globbed_files = tf.io.gfile.glob(path)
+    if not globbed_files:
+      logging.error('No files found for pattern: %s', path)
+      raise ValueError(f'No files found for pattern: {path}')
+    file_patterns.append(globbed_files)
   return list(itertools.chain(*file_patterns))
 
 
