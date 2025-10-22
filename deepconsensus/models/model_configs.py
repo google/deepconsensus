@@ -393,20 +393,8 @@ def get_config(config_name: Optional[str] = None) -> ml_collections.ConfigDict:
 
   if dataset_config_name == 'poa':
     _set_human_aligned_to_poa_data_hparams(params)
-  elif dataset_config_name == 'kestrel_kudu_13_32bp':
-    _set_human_aligned_to_kestrel_kudu_13_32bp_hparams(params)
-  elif dataset_config_name == 'kestrel_kudu_13_32bp_2percent':
-    _kestrel_kudu_13_32bp_2percent_hparams(params)
   elif dataset_config_name == 'ccs':
     _set_human_aligned_to_ccs_data_hparams(params)
-  elif dataset_config_name == 'ccs_32bp':
-    _set_human_aligned_to_ccs_data_32bp_hparams(params)
-  elif dataset_config_name == 'revio':
-    _set_human_aligned_to_revio_data_hparams(params)
-  elif dataset_config_name == 'kestrel13_long':
-    _set_human_aligned_to_kestrel13_long_data_hparams(params)
-  elif dataset_config_name == 'kestrel_kudu_13':
-    _set_human_aligned_to_kestrel_kudu_13_data_hparams(params)
   elif dataset_config_name == 'ccs_test':
     _set_human_test_set_ccs_hparams(params)
   elif dataset_config_name == 'ecoli':
@@ -419,8 +407,7 @@ def get_config(config_name: Optional[str] = None) -> ml_collections.ConfigDict:
     _set_custom_data_hparams(params)
   else:
     raise ValueError(
-        'dataset_config_name is %s. Must be one of the following: '
-        'ccs, poa, ecoli, test' % dataset_config_name
+        'Unrecognized dataset_config_name: is %s.' % dataset_config_name
     )
   # If reduce_train_eval_size_by is > 1, scale down number of examples and
   # warmup steps.
