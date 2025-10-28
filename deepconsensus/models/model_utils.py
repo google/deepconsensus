@@ -630,40 +630,75 @@ def create_optimizer(
   Returns:
     Optimizer instance.
   """
-  # Create optimizer.
-  optimization_config = optimization.OptimizationConfig(
-      optimizer=optimization.OptimizerConfig(
-          type='lamb',
-          lamb=optimization.LAMBConfig(
-              weight_decay_rate=params.weight_decay_rate,
-              beta_1=params.beta_1,
-              beta_2=params.beta_2,
-              epsilon=params.epsilon,
-              exclude_from_weight_decay=[
-                  'LayerNorm',
-                  'bias',
-                  'norm',
-                  'BatchNorm',
-                  'batch_normalization',
-              ],
-          ),
-      ),
-      learning_rate=optimization.LrConfig(
-          type='polynomial',
-          polynomial=optimization.PolynomialLrConfig(
-              initial_learning_rate=params.initial_learning_rate,
-              decay_steps=decay_steps,
-              end_learning_rate=params.end_learning_rate,
-          ),
-      ),
-      warmup=optimization.WarmupConfig(
-          type='linear',
-          linear=optimization.LinearWarmupConfig(
-              warmup_steps=params.warmup_steps
-          ),
+  if params.end_learning_rate > params.initial_learning_rate:
+    raise ValueError(
+        'end_learning_rate must be <= initial_learning_rate. '
+        f'Got end_learning_rate={params.end_learning_rate} and '
+        f'initial_learning_rate={params.initial_learning_rate}'
+    )
+  lr_schedule_type = params.get('lr_schedule', 'polynomial')
+  optimizer_config_lamb = optimization.OptimizerConfig(
+      type='lamb',
+      lamb=optimization.LAMBConfig(
+          weight_decay_rate=params.weight_decay_rate,
+          beta_1=params.beta_1,
+          beta_2=params.beta_2,
+          epsilon=params.epsilon,
+          exclude_from_weight_decay=[
+              'LayerNorm',
+              'bias',
+              'norm',
+              'BatchNorm',
+              'batch_normalization',
+          ],
       ),
   )
+  warmup_config = optimization.WarmupConfig(
+      type='linear',
+      linear=optimization.LinearWarmupConfig(warmup_steps=params.warmup_steps),
+  )
+  if lr_schedule_type == 'polynomial':
+    # Original behavior with PolynomialDecay
+    optimization_config = optimization.OptimizationConfig(
+        optimizer=optimizer_config_lamb,
+        learning_rate=optimization.LrConfig(
+            type='polynomial',
+            polynomial=optimization.PolynomialLrConfig(
+                initial_learning_rate=params.initial_learning_rate,
+                decay_steps=decay_steps,
+                end_learning_rate=params.end_learning_rate,
+            ),
+        ),
+        warmup=warmup_config,
+    )
+    opt_factory = optimization.OptimizerFactory(optimization_config)
+    return opt_factory.build_optimizer(opt_factory.build_learning_rate())
+  elif lr_schedule_type == 'cosine_decay_restarts':
+    # New behavior with CosineDecayRestarts
+    # 1. Create the base learning rate schedule.
+    base_lr_schedule = tf.keras.optimizers.schedules.CosineDecayRestarts(
+        initial_learning_rate=params.initial_learning_rate,
+        first_decay_steps=params.first_decay_steps,
+        t_mul=params.t_mul,
+        m_mul=params.m_mul,
+        alpha=params.end_learning_rate / params.initial_learning_rate,
+    )
 
-  opt_factory = optimization.OptimizerFactory(optimization_config)
-  optimizer = opt_factory.build_optimizer(opt_factory.build_learning_rate())
-  return optimizer
+    # 2. Create the warmup schedule wrapper.
+    final_lr_schedule = optimization.LinearWarmup(
+        after_warmup_lr_sched=base_lr_schedule,
+        warmup_steps=warmup_config.linear.warmup_steps,
+        warmup_learning_rate=warmup_config.linear.warmup_learning_rate,
+    )
+
+    # 3. Create the optimizer configuration (without LR schedule).
+    optimizer_config_only = optimization.OptimizationConfig(
+        optimizer=optimizer_config_lamb,
+        learning_rate=optimization.LrConfig(type='constant'),
+    )
+    # 4. Create the optimizer factory and build the optimizer with the custom
+    # learning rate schedule.
+    opt_factory = optimization.OptimizerFactory(optimizer_config_only)
+    return opt_factory.build_optimizer(lr=final_lr_schedule)
+  else:
+    raise ValueError(f'Unsupported lr_schedule: {lr_schedule_type}')
