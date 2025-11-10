@@ -234,7 +234,7 @@ def train_model(
 
   n_steps_iter = 100
   log_train_steps = 1000
-  log_eval_steps = 1000
+  log_eval_steps = 3000
   if _EVAL_AND_LOG_EVERY_STEP.value:
     log_train_steps = 1
 

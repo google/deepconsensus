@@ -62,15 +62,6 @@ def _set_base_fc_hparams(params):
   params.num_epochs_for_decay = 15
   params.buffer_size = 1_000_000
 
-  # Learning rate schedule
-  params.lr_schedule = 'polynomial'  # or 'cosine_decay_restarts'
-
-  # Cosine decay restarts params.
-  # Only used when lr_schedule is 'cosine_decay_restarts'.
-  params.first_decay_steps = 25_000
-  params.t_mul = 1.5
-  params.m_mul = 0.95
-
   # Optimizer params (optimized for transformer).
   params.initial_learning_rate = 3.6246e-3
   params.end_learning_rate = 2.86594e-5
@@ -121,15 +112,6 @@ def _set_base_transformer_hparams(params):
   # keeps the learning rate schedule the same when num_epochs is changed.
   params.num_epochs_for_decay = 9
   params.buffer_size = 1_000_000
-
-  # Learning rate schedule
-  params.lr_schedule = 'polynomial'  # or 'cosine_decay_restarts'
-
-  # Cosine decay restarts params
-  # Only used when lr_schedule is 'cosine_decay_restarts'.
-  params.first_decay_steps = 25_000
-  params.t_mul = 1.5
-  params.m_mul = 0.95
 
   # Optimizer params (values obtained in b/246369335#comment3).
   params.initial_learning_rate = 3.6246e-3

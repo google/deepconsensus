@@ -30,14 +30,13 @@ import uuid
 
 from absl.testing import absltest
 from absl.testing import parameterized
+
 import tensorflow as tf
-from tensorflow.keras.optimizers import schedules
 
 from deepconsensus.models import losses_and_metrics
 from deepconsensus.models import model_configs
 from deepconsensus.models import model_utils
 from deepconsensus.utils import test_utils
-from official.modeling import optimization
 
 
 class GetModelTest(absltest.TestCase):
@@ -58,50 +57,6 @@ class GetModelTest(absltest.TestCase):
       model_utils.modify_params(params)
       params.model_name = 'incorrect_name'
       model_utils.get_model(params)
-
-
-class CreateOptimizerTest(absltest.TestCase):
-
-  def test_valid_lr_schedule(self):
-    """Tests that a correct lr_schedule works."""
-    params = model_configs.get_config('fc+test')
-    model_utils.modify_params(params)
-    decay_steps = 100
-    lr_schedule = 'polynomial'
-    with params.unlocked():
-      params.lr_schedule = lr_schedule
-    optimizer = model_utils.create_optimizer(params, decay_steps)
-    self.assertIsInstance(
-        optimizer,
-        (tf.keras.optimizers.Optimizer, tf.keras.optimizers.legacy.Optimizer),
-    )
-    self.assertIsInstance(optimizer.lr, optimization.LinearWarmup)
-    self.assertIsInstance(
-        optimizer.lr._after_warmup_lr_sched, schedules.PolynomialDecay
-    )
-
-    lr_schedule = 'cosine_decay_restarts'
-    with params.unlocked():
-      params.lr_schedule = lr_schedule
-    optimizer = model_utils.create_optimizer(params, decay_steps)
-    self.assertIsInstance(
-        optimizer,
-        (tf.keras.optimizers.Optimizer, tf.keras.optimizers.legacy.Optimizer),
-    )
-    self.assertIsInstance(optimizer.lr, optimization.LinearWarmup)
-    self.assertIsInstance(
-        optimizer.lr._after_warmup_lr_sched, schedules.CosineDecayRestarts
-    )
-
-  def test_invalid_lr_schedule_throws_error(self):
-    """Tests that an incorrect lr_schedule throws an error."""
-    params = model_configs.get_config('fc+test')
-    model_utils.modify_params(params)
-    decay_steps = 100
-    with params.unlocked():
-      params.lr_schedule = 'incorrect_schedule'
-    with self.assertRaises(ValueError):
-      model_utils.create_optimizer(params, decay_steps)
 
 
 class ModifyParamsTest(parameterized.TestCase):
