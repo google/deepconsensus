@@ -43,6 +43,7 @@ time blaze run -c opt \
 """
 
 import datetime
+import json
 import logging
 import os
 import random
@@ -240,6 +241,21 @@ def train_model(
 
   # Decide the best checkpoiht using main eval metric.
   max_main_eval_metric = 0.0
+  best_checkpoint_json_file = os.path.join(out_dir, 'best_checkpoint.json')
+  try:
+    with tf.io.gfile.GFile(best_checkpoint_json_file, 'r') as f:
+      best_checkpoint_info = json.load(f)
+      max_main_eval_metric = float(best_checkpoint_info['metric'])
+      logging.info(
+          'max_main_eval_metric: %s (from file %s)',
+          max_main_eval_metric,
+          best_checkpoint_json_file,
+      )
+  except (tf.errors.NotFoundError, json.JSONDecodeError, ValueError, KeyError):
+    logging.warning(
+        'Could not load best checkpoint info from %s, starting from scratch.',
+        best_checkpoint_json_file,
+    )
   # From a list of eval metrics get the main eval metric.
   main_eval_metric = next(
       (
@@ -311,10 +327,16 @@ def train_model(
         main_eval_metric_val = float(main_eval_metric.result())
         if main_eval_metric_val >= max_main_eval_metric:
           max_main_eval_metric = main_eval_metric_val
-          with tf.io.gfile.GFile(
-              os.path.join(out_dir, 'best_checkpoint.txt'), 'w'
-          ) as f:
-            f.write(os.path.basename(checkpoint_name))
+          best_checkpoint_info = {
+              'checkpoint_name': os.path.basename(checkpoint_name),
+              'metric': max_main_eval_metric,
+          }
+          tmp_json_file = best_checkpoint_json_file + '.tmp'
+          with tf.io.gfile.GFile(tmp_json_file, 'w') as f:
+            json.dump(best_checkpoint_info, f, indent=2)
+          tf.io.gfile.rename(
+              tmp_json_file, best_checkpoint_json_file, overwrite=True
+          )
         # Log metrics on the eval set, this must be done at the end since
         # log_and_save_metrics will reset the eval metrics values.
         with eval_writer.as_default():
