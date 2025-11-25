@@ -72,6 +72,9 @@ def get_deepconsensus_metrics(name_prefix='') -> list[tf.keras.metrics.Metric]:
       losses_and_metrics.PerExampleAccuracy(
           name=f'{name_prefix}per_example_accuracy'
       ),
+      losses_and_metrics.CalibrationScore(
+          name=f'{name_prefix}calibration_score'
+      ),
       tf.keras.metrics.Mean(name=f'{name_prefix}{_BATCH_IDENTITY_METRIC_NAME}'),
       losses_and_metrics.YieldOverCCSMetric(
           name=f'{name_prefix}{_YIELD_OVER_CSS_METRIC_NAME}'

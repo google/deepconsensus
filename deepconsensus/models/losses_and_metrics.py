@@ -1167,7 +1167,7 @@ class YieldOverCCSMetric(tf.keras.metrics.Metric):
     # Avoid division by 0.
     return tf.math.divide_no_nan(self.yield_dc, self.yield_ccs)
 
-  def reset_state(self) -> None:
+  def reset_states(self) -> None:
     """Resets DeepConsensus and CCS yield back to 0."""
     self.yield_dc.assign(0.0)
     self.yield_ccs.assign(0.0)
@@ -1217,3 +1217,124 @@ class DistillationLoss(tf.keras.losses.Loss):
     loss = self.logit_loss(teacher_probs, student_probs)
     # Take the mean across the positions in the sequence.
     return tf.math.reduce_mean(loss, axis=-1)
+
+
+class CalibrationScore(tf.keras.metrics.Metric):
+  """Computes Expected Calibration Error (ECE).
+
+  Expected Calibration Error partitions classifications into M bins of equal
+  width and calculates the weighted average of the difference between
+  accuracy and confidence.
+  """
+
+  def __init__(
+      self,
+      num_bins: int = 10,
+      name: str = 'calibration_score',
+      **kwargs,
+  ):
+    super().__init__(name=name, **kwargs)
+    self.num_bins = num_bins
+    # Accumulate the number of correct predictions per bin.
+    self.correct_sums = self.add_weight(
+        name='correct_sums', shape=(num_bins,), initializer='zeros'
+    )
+    # Accumulate the sum of predicted probabilities (confidence) per bin.
+    self.prob_sums = self.add_weight(
+        name='prob_sums', shape=(num_bins,), initializer='zeros'
+    )
+    # Keep track of total number of valid tokens seen.
+    self.total_count = self.add_weight(
+        name='total_count', shape=(), initializer='zeros'
+    )
+
+  def update_state(
+      self,
+      y_true: tf.Tensor,
+      y_pred: tf.Tensor,
+      sample_weight: Optional[tf.Tensor] = None,
+  ) -> None:
+    """Accumulates calibration statistics."""
+    del sample_weight
+    # y_true is likely shape [batch, seq_len] (indices).
+    # y_pred is likely shape [batch, seq_len, vocab_size] (logits or scores).
+    tf.debugging.assert_rank(y_true, 2)
+    tf.debugging.assert_rank(y_pred, 3)
+    y_true = tf.cast(y_true, tf.int32)
+    y_prob = tf.cast(y_pred, tf.float32)
+
+    # Check that y_pred are probabilities that sum to 1.
+    tf.debugging.assert_near(
+        tf.reduce_sum(y_prob, axis=-1),
+        1.0,
+        atol=1e-3,
+        message=(
+            'y_pred should be probabilities that sum to 1 along the last axis.'
+        ),
+    )
+
+    # Check that y_pred is not one-hot encoded (which might indicate an argmax).
+    # If all values are close to 0 or 1, it's likely one-hot encoded.
+    is_one_hot = tf.reduce_all(tf.logical_or(y_prob < 1e-6, y_prob > 1 - 1e-6))
+    tf.debugging.assert_equal(
+        is_one_hot,
+        False,
+        message=(
+            'y_pred appears to be one-hot encoded, not a probability'
+            ' distribution.'
+        ),
+    )
+
+    # Calculate Confidence (max probability) and Prediction (argmax).
+    confidences = tf.reduce_max(y_prob, axis=-1)
+    predictions = tf.cast(tf.argmax(y_prob, axis=-1), dtype=y_true.dtype)
+
+    # Identify correct predictions.
+    is_correct = tf.cast(tf.equal(y_true, predictions), tf.float32)
+
+    mask = tf.cast(tf.not_equal(y_true, dc_constants.GAP_INT), tf.float32)
+
+    # Flatten tensors for binning.
+    confidences_flat = tf.reshape(confidences, [-1])
+    is_correct_flat = tf.reshape(is_correct, [-1])
+    mask_flat = tf.reshape(mask, [-1])
+
+    # Filter out masked items.
+    valid_indices = tf.where(mask_flat > 0)[:, 0]
+    confidences_masked = tf.gather(confidences_flat, valid_indices)
+    is_correct_masked = tf.gather(is_correct_flat, valid_indices)
+
+    # Determine Bin Indices (0 to num_bins-1).
+    # We clamp to num_bins - 1 to handle the edge case where confidence == 1.0.
+    bin_indices = tf.cast(confidences_masked * self.num_bins, tf.int32)
+    bin_indices = tf.minimum(bin_indices, self.num_bins - 1)
+
+    # Update accumulators using unsorted_segment_sum.
+    batch_correct_sums = tf.math.unsorted_segment_sum(
+        data=is_correct_masked,
+        segment_ids=bin_indices,
+        num_segments=self.num_bins,
+    )
+    batch_prob_sums = tf.math.unsorted_segment_sum(
+        data=confidences_masked,
+        segment_ids=bin_indices,
+        num_segments=self.num_bins,
+    )
+
+    self.correct_sums.assign_add(batch_correct_sums)
+    self.prob_sums.assign_add(batch_prob_sums)
+    self.total_count.assign_add(tf.cast(tf.shape(valid_indices)[0], tf.float32))
+
+  def result(self) -> tf.Tensor:
+    """Computes the ECE."""
+    # ECE = (1/N) * sum(|bin_acc - bin_conf| * bin_count)
+    #     = (1/N) * sum(|bin_correct_sum - bin_prob_sum|)
+
+    diffs = tf.abs(self.correct_sums - self.prob_sums)
+    ece = tf.reduce_sum(diffs) / tf.maximum(self.total_count, 1.0)
+    return ece
+
+  def reset_states(self) -> None:
+    self.correct_sums.assign(tf.zeros(self.num_bins))
+    self.prob_sums.assign(tf.zeros(self.num_bins))
+    self.total_count.assign(0.0)

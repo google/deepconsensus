@@ -928,5 +928,131 @@ class DistillationLossTest(parameterized.TestCase):
       self.assertAlmostEqual(distill_loss, expected_loss[example_ind], places=6)
 
 
+class CalibrationScoreTest(parameterized.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    # Using 5 bins for easier manual calculation in tests.
+    # Bins: [0, 0.2), [0.2, 0.4), [0.4, 0.6), [0.6, 0.8), [0.8, 1.0]
+    self.metric = losses_and_metrics.CalibrationScore(
+        num_bins=5, name='calibration_score'
+    )
+    # Use 1 and 2 for labels in tests to avoid implicit masking of 0
+    # (GAP_INT).
+    self.label_a = 1
+    self.label_b = 2
+
+  def tearDown(self):
+    super().tearDown()
+    self.metric.reset_states()
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='perfect_calibration_high_conf',
+          # 2 examples: Both Correct, Both 100% confident.
+          # Use label 1 and 2 to ensure they are not masked as GAP(0).
+          y_true=np.array([[1], [2]]),
+          # Preds: Class 1 (100%), Class 2 (100%)
+          # Vocab size needs to be at least 3 to handle index 2.
+          probs=np.array([[0.001, 0.999, 0.0], [0.0, 0.001, 0.999]]),
+          expected_ece=0.001,
+      ),
+      dict(
+          testcase_name='underconfident_correct_predictions',
+          # 2 examples: Both Correct, Both 50% confident.
+          y_true=np.array([[1], [1]]),
+          # Preds: 1 (Correct), 2 (Wrong).
+          # Note: Argmax([0, 0.5, 0.5]) picks the first one (index 1).
+          probs=np.array([[0.0, 0.5, 0.5], [0.0, 0.5, 0.5]]),
+          expected_ece=0.5,
+      ),
+      dict(
+          testcase_name='total_overconfidence',
+          # 2 examples: Both Wrong, Both 100% confident.
+          y_true=np.array([[2], [1]]),
+          # Preds: 1 (Wrong), 2 (Wrong)
+          probs=np.array([[0.001, 0.999, 0.0], [0.0, 0.001, 0.999]]),
+          expected_ece=0.999,
+      ),
+      dict(
+          testcase_name='manual_mixed_bins',
+          # Bin size is 0.2.
+          # Ex 1: Label 1. Pred 1 (0.9). Correct. Bin 4.
+          # Ex 2: Label 2. Pred 1 (0.9). Wrong.   Bin 4.
+          # Ex 3: Label 1. Pred 2 (0.7). Wrong.   Bin 3.
+          y_true=np.array([[1], [2], [1]]),
+          probs=np.array([
+              [0.0, 0.9, 0.1],  # Bin 4 (0.8-1.0)
+              [0.0, 0.9, 0.1],  # Bin 4 (0.8-1.0)
+              [0.0, 0.3, 0.7],  # Bin 3 (0.6-0.8)
+          ]),
+          # Calculation:
+          # Bin 4 (indices 0, 1):
+          #   Correct=1, Count=2, Acc=0.5.
+          #   Conf Sum = 0.9+0.9=1.8. Avg Conf=0.9.
+          #   Diff = |0.5 - 0.9| = 0.4. Weighted = 0.4 * (2/3) = 0.2666
+          # Bin 3 (index 2):
+          #   Correct=0, Count=1, Acc=0.0.
+          #   Conf Sum = 0.7. Avg Conf=0.7.
+          #   Diff = |0.0 - 0.7| = 0.7. Weighted = 0.7 * (1/3) = 0.2333
+          # Total ECE = 0.2666 + 0.2333 = 0.5
+          expected_ece=0.5,
+      ),
+  )
+  def test_calibration_score_calculation(self, y_true, probs, expected_ece):
+    y_pred = probs
+    if y_pred.ndim == 2:
+      y_pred = y_pred[:, np.newaxis, :]
+
+    self.metric.update_state(y_true, y_pred)
+    self.assertAlmostEqual(self.metric.result().numpy(), expected_ece, places=5)
+
+  def test_implicit_gap_masking(self):
+    """Test that GAP_INT tokens are automatically ignored without sample_weight."""
+    gap = dc_constants.GAP_INT  # Usually 0
+    valid = gap + 1
+
+    # 1. GAP token: We predict 'valid' with 100% conf.
+    #    If counted, this is Wrong + High Conf = High Error.
+    # 2. Valid token: We predict 'valid' with 100% conf.
+    #    If counted, this is Correct + High Conf = 0 Error.
+    y_true = np.array([[gap], [valid]])
+
+    # Preds: Always predict 'valid' (index 1) with ~100% confidence
+    probs = np.array([[0.001, 0.999], [0.001, 0.999]])
+
+    y_pred = probs
+    if y_pred.ndim == 2:
+      y_pred = y_pred[:, np.newaxis, :]
+
+    # No sample_weight passed -> Should trigger implicit GAP masking
+    self.metric.update_state(y_true, y_pred)
+
+    # If GAP was counted:
+    #   Item 0: Wrong, Conf 1.0. Item 1: Correct, Conf 1.0.
+    #   Acc 0.5, Conf 1.0 -> Diff 0.5 -> ECE 0.5.
+    # If GAP masked (Correct behavior):
+    #   Item 1 only: Correct, Conf 1.0.
+    #   Acc 1.0, Conf 1.0 -> Diff 0.0 -> ECE 0.0.
+    self.assertAlmostEqual(self.metric.result().numpy(), 0.001, places=5)
+
+  def test_multiple_batches(self):
+    """Test that metric accumulates correctly over batches."""
+    # Batch 1: Perfect (ECE 0.0)
+    y_true_1 = np.array([[1]])
+    # Conf ~1.0, Correct. Ensure shapes match (vocab size 3)
+    probs_1_resized = np.array([[[0.001, 0.999, 0.0]]])
+
+    # Batch 2: Terrible (ECE 1.0)
+    y_true_2 = np.array([[2]])  # Label 2
+    probs_2 = np.array([[[0.001, 0.999, 0.0]]])  # Pred 1 (Wrong), Conf ~1.0
+
+    self.metric.update_state(y_true_1, probs_1_resized)
+    self.metric.update_state(y_true_2, probs_2)
+
+    # Combined: 1 Correct, 1 Wrong. High Conf. ECE 0.499.
+    self.assertAlmostEqual(self.metric.result().numpy(), 0.499, places=5)
+
+
 if __name__ == '__main__':
   absltest.main()
