@@ -131,7 +131,8 @@ class PerClassAccuracyTest(parameterized.TestCase):
 
   def tearDown(self):
     super().tearDown()
-    self.accuracy_obj.reset_states()
+    if self.accuracy_obj:
+      self.accuracy_obj.reset_states()
 
   @parameterized.named_parameters(
       dict(
@@ -189,7 +190,6 @@ class PerClassAccuracyTest(parameterized.TestCase):
     self.accuracy_obj = losses_and_metrics.PerClassAccuracy(
         class_value, 'pre_class_accuracy', dtype=tf.float32
     )
-    self.accuracy_obj.reset_states()
     self.accuracy_obj.update_state(y_true, y_pred_scores)
     self.assertAlmostEqual(self.accuracy_obj.result().numpy(), exp_accuracy)
 
@@ -932,6 +932,8 @@ class CalibrationScoreTest(parameterized.TestCase):
 
   def setUp(self):
     super().setUp()
+    # Ensure float32 policy for CalibrationScoreTest.
+    tf.keras.mixed_precision.set_global_policy('float32')
     # Using 5 bins for easier manual calculation in tests.
     # Bins: [0, 0.2), [0.2, 0.4), [0.4, 0.6), [0.6, 0.8), [0.8, 1.0]
     self.metric = losses_and_metrics.CalibrationScore(
