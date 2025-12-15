@@ -103,6 +103,11 @@ flags.DEFINE_integer(
 flags.DEFINE_string(
     'dc_calibration', 'skip', 'Apply a calibration before outputting.'
 )
+flags.DEFINE_string(
+    'exclude_bed',
+    default=None,
+    help='Path to a BED file containing regions to exclude from calibration.',
+)
 
 
 def register_required_flags():
@@ -163,6 +168,71 @@ def process_region_string(region_string: str, fasta_file: str) -> RegionRecord:
   return region_record
 
 
+def read_bed_file(bed_file: str) -> list[RegionRecord]:
+  """Reads regions from a BED file."""
+  regions = []
+  with tf.io.gfile.GFile(bed_file, 'r') as f:
+    for line in f:
+      if line.startswith('#'):
+        continue
+      fields = line.strip().split('\t')
+      if len(fields) < 3:
+        continue
+      contig, start, end = fields[0], int(fields[1]), int(fields[2])
+      regions.append(RegionRecord(contig, start, end))
+  return regions
+
+
+def subtract_intervals(
+    regions: list[RegionRecord], exclude_regions: list[RegionRecord]
+) -> list[RegionRecord]:
+  """Subtracts exclude_regions from regions."""
+  exclude_by_contig = collections.defaultdict(list)
+  for r in exclude_regions:
+    exclude_by_contig[r.contig].append(r)
+
+  merged_exclude_by_contig = {}
+  for contig, to_exclude in exclude_by_contig.items():
+    to_exclude.sort(key=lambda r: r.start)
+    if not to_exclude:
+      continue
+    merged = []
+    current_start, current_stop = to_exclude[0].start, to_exclude[0].stop
+    for i in range(1, len(to_exclude)):
+      if to_exclude[i].start < current_stop:
+        current_stop = max(current_stop, to_exclude[i].stop)
+      else:
+        merged.append(RegionRecord(contig, current_start, current_stop))
+        current_start, current_stop = to_exclude[i].start, to_exclude[i].stop
+    merged.append(RegionRecord(contig, current_start, current_stop))
+    merged_exclude_by_contig[contig] = merged
+
+  result_regions = []
+  for region in regions:
+    if region.contig not in merged_exclude_by_contig:
+      result_regions.append(region)
+      continue
+
+    region_results_for_one_region = []
+    current_start = region.start
+    for r in merged_exclude_by_contig[region.contig]:
+      if current_start < r.start:
+        stop = min(region.stop, r.start)
+        if current_start < stop:
+          region_results_for_one_region.append(
+              RegionRecord(region.contig, current_start, stop)
+          )
+      current_start = max(current_start, r.stop)
+      if current_start >= region.stop:
+        break
+    if current_start < region.stop:
+      region_results_for_one_region.append(
+          RegionRecord(region.contig, current_start, region.stop)
+      )
+    result_regions.extend(region_results_for_one_region)
+  return result_regions
+
+
 def split_regions_in_intervals(
     regions: list[RegionRecord], region_length: int
 ) -> list[RegionRecord]:
@@ -188,7 +258,11 @@ def split_regions_in_intervals(
 
 
 def get_contig_regions(
-    bam_file: str, fasta_file: str, region: str, interval_length: int
+    bam_file: str,
+    fasta_file: str,
+    region: str,
+    exclude_bed_file: str,
+    interval_length: int,
 ) -> list[RegionRecord]:
   """Creates a list of regions for processing.
 
@@ -199,6 +273,7 @@ def get_contig_regions(
     bam_file: Path to an alignment bam file.
     fasta_file: Path to a fasta file.
     region: A region string in the format contig:start-end.
+    exclude_bed_file: Path to a BED file containing regions to exclude.
     interval_length: The length of intervals.
 
   Returns:
@@ -236,6 +311,10 @@ def get_contig_regions(
           contig, 0, fasta_reader.get_reference_length(contig)
       )
       regions_to_process.append(region_record)
+
+  if exclude_bed_file:
+    exclude_regions = read_bed_file(exclude_bed_file)
+    regions_to_process = subtract_intervals(regions_to_process, exclude_regions)
 
   region_intervals = split_regions_in_intervals(
       regions_to_process, interval_length
@@ -344,7 +423,7 @@ def get_quality_calibration_stats(
       if cigar_op in [pysam.CMATCH, pysam.CDIFF, pysam.CEQUAL]:
         for _ in range(0, cigar_len):
           # the base is within the window
-          if region_interval.start <= current_ref_pos <= region_interval.stop:
+          if region_interval.start <= current_ref_pos < region_interval.stop:
             region_index = current_ref_pos - region_interval.start
             ref_base = ref_sequence[region_index].upper()
             read_base = read.query_sequence[current_read_index].upper()
@@ -361,7 +440,7 @@ def get_quality_calibration_stats(
       elif cigar_op in [pysam.CSOFT_CLIP, pysam.CINS]:
         for _ in range(0, cigar_len):
           # the base is within the window
-          if region_interval.start <= current_ref_pos <= region_interval.stop:
+          if region_interval.start <= current_ref_pos < region_interval.stop:
             read_base = read.query_sequence[current_read_index].upper()
             read_base_quality = fit_read_query_qualities[current_read_index]
             match_mismatch_count[read_base_quality]['X'] += 1
@@ -431,7 +510,11 @@ def main(unused_argv) -> None:
     raise ValueError('Must set cpus to >=1 for processing.')
   # get all intervals
   all_intervals = get_contig_regions(
-      FLAGS.bam, FLAGS.ref, FLAGS.region, FLAGS.interval_length
+      FLAGS.bam,
+      FLAGS.ref,
+      FLAGS.region,
+      FLAGS.exclude_bed,
+      FLAGS.interval_length,
   )
 
   manager = multiprocessing.Manager()

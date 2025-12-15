@@ -191,7 +191,7 @@ class Test(parameterized.TestCase):
     bam_file = test_utils.deepconsensus_testdata(bam)
     interval_length = 1000
     returned_list = calculate_baseq_calibration.get_contig_regions(
-        bam_file, fasta_file, region, interval_length
+        bam_file, fasta_file, region, None, interval_length
     )
 
     self.assertEqual(len(expected_list), len(returned_list))
