@@ -460,7 +460,29 @@ class AlignmentLossTest(parameterized.TestCase):
           del_cost=1.0,
           loss_reg=None,
           expected_loss=0.0,
+          width=4,
+      ),
+      dict(
+          testcase_name='with band, spaced prediction to fit steep slope',
+          sequences=(
+              ['TTAGGC     ', 'AGCTGG     '],
+              ['T T A G G C', 'A G C T G G'],
+          ),
+          del_cost=1.0,
+          loss_reg=None,
+          expected_loss=0.0,
           width=1,
+      ),
+      dict(
+          testcase_name='clustered gaps, still need wider band',
+          sequences=(
+              ['TTAGGC     ', 'AGCTGG     '],
+              ['TTA     GGC', 'A G C T G G'],
+          ),
+          del_cost=1.0,
+          loss_reg=None,
+          expected_loss=0.0,
+          width=3,
       ),
       dict(
           testcase_name='with band, correct insertions only, no pad',

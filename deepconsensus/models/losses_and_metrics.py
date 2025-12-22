@@ -400,74 +400,17 @@ class AlignmentLoss(tf.keras.losses.Loss):
       )
       v_p1 = tf.where(inv_mask, v_p1, inf)
       v_opt = tf.where(k_end == k, tf.gather_nd(v_p1, nd_indices), v_opt)
-
     return v_opt
 
-  def weave_band(self, input_v: tf.Tensor, inf: tf.Variable):
-    """Transforms a band around the diagonal of the matrix in a tall matrix.
-
-    Args:
-      input_v: A tf.Tensor<float>[batch, len, len] batch of square input
-        matrices.
-      inf: a very large float.
-
-    Returns:
-      A tf.Tensor<float>[batch, 2 * len - 1, 2 * width + 1] such that
-      input_v[i, j] is returned in out[i + j, i - j + width]. With input matrix
-       A B C D
-       E F G H
-       I J K L
-       M N O P
-      the function returns, for width=1
-       0 A 0
-       E 0 B
-       0 F 0
-       J 0 G
-       0 K 0
-       O 0 L
-       0 P 0
-    """
-    batch = tf.shape(input_v)[0]
-    len_v = tf.shape(input_v)[1]
-    width = tf.cast(self.width, dtype=tf.int32)
-    n_diag = 2 * width + 1
-    diags = tf.linalg.diag_part(
-        input_v, k=(-width, width), padding_value=inf, align='LEFT_LEFT'
-    )
-    weave = tf.reshape(
-        tf.stack([diags, tf.fill(tf.shape(diags), inf)], -1),
-        [batch, n_diag, -1],
-    )
-    woven_band_tr = inf * tf.ones((n_diag, batch, 2 * len_v), dtype=inf.dtype)
-    for diff in tf.range(-width, width + 1):
-      i = diff + width
-      abs_diff = tf.abs(diff)
-      padded_weave = tf.roll(weave[:, n_diag - 1 - i], abs_diff, -1)
-      woven_band_tr = tf.tensor_scatter_nd_update(
-          woven_band_tr, [[i]], padded_weave[tf.newaxis, ...]
-      )
-    return tf.transpose(woven_band_tr, (1, 2, 0))[:, :-1, :]
-
-  def index_ending_band(self, len_1, seq_lens):
-    """Computes the indices at which to fetch the solution of the program."""
-    batch = tf.shape(seq_lens)[0]
-    i = seq_lens
-    j = len_1 - tf.nn.relu(len_1 - seq_lens - self.width)
-    sum_index = i + j
-    diff_index = j - i + self.width
-    range_batch = tf.range(batch)
-    return tf.concat(
-        [
-            range_batch[..., tf.newaxis],
-            sum_index[..., tf.newaxis],
-            diff_index[..., tf.newaxis],
-        ],
-        axis=-1,
-    )
-
   def banded_alignment(
-      self, subs_costs, ins_costs, del_cost, seq_lens, inf, dtype
-  ):
+      self,
+      subs_costs: tf.Tensor,
+      ins_costs: tf.Tensor,
+      del_cost: float,
+      seq_lens: tf.Tensor,
+      inf: float,
+      dtype: tf.DType,
+  ) -> tf.Tensor:
     """Computes the alignment score values, with a band-restriction on the path.
 
     Args:
@@ -478,70 +421,70 @@ class AlignmentLoss(tf.keras.losses.Loss):
       del_cost: A float, the cost of deletion.
       seq_lens: A tf.Tensor<int>[batch] input matrix of true sequence lengths.
       inf: A float with very high value.
-      dtype: The data type of y_pred.
+      dtype: the data type of y_pred
 
     Returns:
       A tf.Tensor<float>[batch] of values of the alignment scores.
     """
-    batch = tf.shape(subs_costs)[0]
-    len_1 = tf.shape(subs_costs)[1]
-    len_2 = tf.shape(subs_costs)[2]
-    val_trans = tf.zeros((len_1 + 1, len_2 + 1, batch))
-    updates = [
-        tf.cast(del_cost, tf.float32)
-        * tf.tile(
-            tf.range(len_1 + 1, dtype=tf.float32)[..., tf.newaxis],
-            multiples=[1, batch],
-        )
-    ]
-    # Use float32 initially, then cast if necessary later.
-    ins_costs = tf.cast(ins_costs, tf.float32)
-    val_trans = tf.tensor_scatter_nd_update(val_trans, [[0]], updates)
-    for i in tf.range(1, len_1 + 1):
-      previous_row = val_trans[i - 1, 0]
-      val_trans = tf.tensor_scatter_nd_update(
-          val_trans, [[i, 0]], [previous_row + ins_costs[:, i - 1]]
-      )
-      values = tf.transpose(val_trans, [2, 1, 0])
-    values = tf.cast(values, dtype)
-    input_band = self.weave_band(values, inf)
-    subs_band = self.weave_band(subs_costs, inf)
-    ins_costs_pad = tf.pad(ins_costs, [[0, 0], [1, 0]], constant_values=0.0)
-    # TODO: uphere
-    insert_expand = tf.tile(
-        ins_costs_pad[:, tf.newaxis, :], multiples=[1, len_1 + 1, 1]
+    # This is a modified version of the full alignment wavefront algorithm that
+    # incorporates a band constraint for efficiency.
+    b, m, n = (
+        tf.shape(subs_costs)[0],
+        tf.shape(subs_costs)[1],
+        tf.shape(subs_costs)[2],
     )
-    insert_expand = tf.cast(insert_expand, inf.dtype)
-    insert_band = self.weave_band(insert_expand, inf)
-    length = tf.shape(input_band)[1]
-    # Sets up reduction operators.
+    subs_costs = wavefrontify(subs_costs)
+    ins_costs = wavefrontify_vec(ins_costs, m + 1)
+
     if self.loss_reg is None:
-      minop = lambda t: tf.reduce_min(t, axis=-1)
+      minop = lambda t: tf.reduce_min(t, 0)
     else:
       loss_reg = tf.convert_to_tensor(self.loss_reg, dtype)
-      minop = lambda t: -loss_reg * tf.reduce_logsumexp(-t / loss_reg, axis=-1)
-    for k in tf.range(2, length):
-      input_minus_one = tf.pad(
-          input_band[..., :-1], [[0, 0], [0, 0], [1, 0]], constant_values=inf
+      minop = lambda t: -loss_reg * tf.reduce_logsumexp(-t / loss_reg, 0)
+
+    v_opt = tf.fill([b], inf)
+    v_p2 = tf.pad(tf.fill([m - 1, b], inf), [[1, 0], [0, 0]])
+    v_p1 = tf.concat(
+        [
+            tf.slice(ins_costs[0], [0, 0], [1, b]),
+            tf.fill([1, b], del_cost),
+            tf.fill([m - 1, b], inf),
+        ],
+        0,
+    )
+    i_range = tf.range(m + 1, dtype=tf.int32)
+    k_end = seq_lens + n
+    nd_indices = tf.stack([seq_lens, tf.range(b, dtype=seq_lens.dtype)], -1)
+
+    for k in tf.range(2, m + n + 1):
+      j_range = k - i_range
+      # Base mask for valid indices.
+      base_mask = tf.logical_and(j_range >= 0, j_range <= n)
+      # Add band constraint to the mask.
+      # The band is centered around j = i * (n / seq_len) to account for
+      # different sequence lengths.
+      i_r = tf.cast(i_range, dtype=dtype)
+      j_r = tf.cast(j_range, dtype=dtype)
+      safe_seq_lens = tf.maximum(tf.cast(seq_lens, dtype=dtype), 1.0)
+      ratio = tf.cast(n, dtype=dtype) / safe_seq_lens
+      # i_r has shape [m+1], ratio has shape [b]. We need to broadcast.
+      band_center = i_r[:, tf.newaxis] * ratio[tf.newaxis, :]
+      band_mask = tf.abs(j_r[:, tf.newaxis] - band_center) <= self.width
+      inv_mask = tf.logical_and(base_mask[:, tf.newaxis], band_mask)
+
+      o_m = v_p2 + subs_costs[k - 2]  # [m, b]
+      o_i = v_p1 + ins_costs[k - 1]  # [m + 1, b]
+      v_p2 = v_p1[:-1]
+      o_d = v_p2 + del_cost  # [m, b]
+
+      v_p1 = tf.concat(
+          [tf.slice(o_i, [0, 0], [1, b]), minop(tf.stack([o_m, o_i[1:], o_d]))],
+          0,
       )
-      input_plus_one = tf.pad(
-          input_band[..., 1:], [[0, 0], [0, 0], [0, 1]], constant_values=inf
-      )
-      min_tens = tf.stack(
-          [
-              input_band[:, k - 2, :] + subs_band[:, k - 2, :],
-              input_plus_one[:, k - 1, :] + del_cost,
-              input_minus_one[:, k - 1, :] + insert_band[:, k, :],
-          ],
-          axis=-1,
-      )
-      insert_mins = minop(min_tens)
-      input_trans = tf.tensor_scatter_nd_update(
-          tf.transpose(input_band, [1, 0, 2]), [[k]], [insert_mins]
-      )
-      input_band = tf.transpose(input_trans, [1, 0, 2])
-    fetch_indices = self.index_ending_band(len_1, seq_lens)
-    return tf.gather_nd(input_band, fetch_indices)
+      v_p1 = tf.where(inv_mask, v_p1, inf)
+      v_opt = tf.where(k_end == k, tf.gather_nd(v_p1, nd_indices), v_opt)
+
+    return v_opt
 
   def eval(
       self,
