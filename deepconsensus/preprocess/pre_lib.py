@@ -633,6 +633,8 @@ class DcExample:
   def ccs_matches_label(self) -> bool:
     """Does the CCS match the label."""
     ccs = utils.left_shift_seq(self.ccs.bases_encoded)
+    if self.label is None:
+      return False
     label = utils.left_shift_seq(self.label.bases_encoded)
     seq_len = max([len(ccs), len(label)])
     ccs = right_pad(ccs, seq_len, 0)
@@ -694,7 +696,11 @@ class DcExample:
       # remove gaps and right pad.
       # Gaps are helpful for visualizing alignments, but are
       # used during training.
-      if self.is_training and len(window.label.bases) > max_length:
+      if (
+          self.is_training
+          and window.label is not None
+          and len(window.label.bases) > max_length
+      ):
         adjusted_label = window.label.remove_gaps(max_length)
         # Even with this adjustment it is still possible for the label to
         # be longer than the padded length. This is rare. Discard when training.
@@ -805,7 +811,7 @@ class DcExample:
         self.ccs.base_quality_scores
     )
 
-    if self.is_training:
+    if self.is_training and self.label is not None:
       label = self.label.bases_encoded
       features.feature['label/encoded'].bytes_list.value.append(label.tobytes())
       features.feature['label/shape'].int64_list.value.extend(label.shape)
