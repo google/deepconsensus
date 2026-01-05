@@ -389,8 +389,6 @@ def get_config(config_name: Optional[str] = None) -> ml_collections.ConfigDict:
   else:
     raise ValueError('Unknown model_config_name: %s' % model_config_name)
 
-  params.attention_mechanism = 'keras_attention'
-
   if dataset_config_name == 'poa':
     _set_human_aligned_to_poa_data_hparams(params)
   elif dataset_config_name == 'ccs':
