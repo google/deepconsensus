@@ -42,6 +42,7 @@ import dataclasses
 import enum
 import itertools
 import json
+import math
 import multiprocessing
 import os
 import time
@@ -196,6 +197,11 @@ flags.DEFINE_integer(
     'max_base_quality',
     93,
     'Base qualities will be capped at this quality value.',
+)
+flags.DEFINE_float(
+    'temperature',
+    1.0,
+    'Temperature scaling factor. 1.0 means no scaling.',
 )
 flags.DEFINE_string(
     'dc_calibration',
@@ -369,6 +375,15 @@ def run_model_on_examples(
       softmax_output = model.predict(rows)
 
     softmax_output = softmax_output.numpy()
+
+    # Apply temperature scaling as defined by the --temperature flag.
+    if not math.isclose(FLAGS.temperature, 1.0):
+      if FLAGS.temperature <= 0:
+        raise ValueError('Temperature must be a positive value.')
+      softmax_output = np.power(softmax_output, 1.0 / FLAGS.temperature)
+      # Renormalize so they sum to 1.0
+      row_sums = np.sum(softmax_output, axis=-1, keepdims=True)
+      softmax_output = softmax_output / np.maximum(row_sums, 1e-9)
 
     ec_arr = data['ec']
     np_num_passes_arr = data['np_num_passes']
