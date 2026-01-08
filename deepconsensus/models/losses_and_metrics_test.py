@@ -434,6 +434,17 @@ class AlignmentLossTest(parameterized.TestCase):
           expected_loss=64.472,  # 4*log(eps), with eps = 1e-7
           width=None,
       ),
+      dict(
+          testcase_name='internal gaps on prediction',
+          sequences=(
+              ['CGGCCTAAAAGAAA', 'CGGCCTAAAAGAAA'],
+              ['CGG  CCTAAAAGAAA', 'CGGCCTAAAA G AAA'],
+          ),
+          del_cost=1.0,
+          loss_reg=None,
+          expected_loss=0.0,
+          width=None,
+      ),
       # TODO: included test cases for soft alignment.
       dict(
           testcase_name='with band, identical sequences',
