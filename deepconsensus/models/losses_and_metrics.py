@@ -458,19 +458,35 @@ class AlignmentLoss(tf.keras.losses.Loss):
 
     for k in tf.range(2, m + n + 1):
       j_range = k - i_range
-      # Base mask for valid indices.
+      # Base mask for valid indices (hard boundaries of the matrix).
       base_mask = tf.logical_and(j_range >= 0, j_range <= n)
-      # Add band constraint to the mask.
-      # The band is centered around j = i * (n / seq_len) to account for
-      # different sequence lengths.
+
+      # Prepare variables for masking
       i_r = tf.cast(i_range, dtype=dtype)
       j_r = tf.cast(j_range, dtype=dtype)
+      width_t = tf.cast(self.width, dtype)
       safe_seq_lens = tf.maximum(tf.cast(seq_lens, dtype=dtype), 1.0)
-      ratio = tf.cast(n, dtype=dtype) / safe_seq_lens
-      # i_r has shape [m+1], ratio has shape [b]. We need to broadcast.
-      band_center = i_r[:, tf.newaxis] * ratio[tf.newaxis, :]
-      band_mask = tf.abs(j_r[:, tf.newaxis] - band_center) <= self.width
-      inv_mask = tf.logical_and(base_mask[:, tf.newaxis], band_mask)
+
+      # --- CONVEX HULL CALCULATION ---
+      # 1. Sequence Diagonal Anchor (Slope = 1.0)
+      # Since y_true has gaps removed, the valid biological alignment follows
+      # the 1.0 diagonal (j=i) until the padding region begins.
+      ratio_matrix = tf.cast(1.0, dtype=dtype)
+      center_diag = i_r[:, tf.newaxis] * ratio_matrix  # Shape [m+1, 1]
+
+      # 2. Endpoint Anchor
+      ratio_end = tf.cast(n, dtype=dtype) / safe_seq_lens
+      center_end = i_r[:, tf.newaxis] * ratio_end[tf.newaxis, :]
+
+      # 3. Calculate Bounds & Bridge (Fan)
+      valid_min = tf.minimum(center_diag - width_t, center_end - width_t)
+      valid_max = tf.maximum(center_diag + width_t, center_end + width_t)
+
+      # 4. Create Mask
+      combined_band = tf.logical_and(
+          j_r[:, tf.newaxis] >= valid_min, j_r[:, tf.newaxis] <= valid_max
+      )
+      inv_mask = tf.logical_and(base_mask[:, tf.newaxis], combined_band)
 
       o_m = v_p2 + subs_costs[k - 2]  # [m, b]
       o_i = v_p1 + ins_costs[k - 1]  # [m + 1, b]
