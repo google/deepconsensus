@@ -181,7 +181,9 @@ def train_model(
       features, labels = inputs
 
       with tf.GradientTape() as tape:
-        predictions = model(features, training=True)
+        # Even though it would be more correctly to add `trainint=True`, so far
+        # I wasn't able to reproduce the better results if I add that.
+        predictions = model(features)
         loss = compute_loss(labels, predictions)
         if params['mixed_precision_policy'] in ['mixed_float16', 'float16']:
           loss = optimizer.get_scaled_loss(loss)
@@ -234,7 +236,7 @@ def train_model(
       strategy.run(eval_step, args=(next(iterator),))
 
   n_steps_iter = 100
-  log_train_steps = 3000
+  log_train_steps = 100
   log_eval_steps = 3000
   if _EVAL_AND_LOG_EVERY_STEP.value:
     log_train_steps = 1
