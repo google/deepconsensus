@@ -218,10 +218,6 @@ def train_model(
     train_metrics = model_utils.get_deepconsensus_metrics(name_prefix='train/')
     eval_loss = tf.keras.metrics.Mean(name='eval/loss')
     eval_metrics = model_utils.get_deepconsensus_metrics(name_prefix='eval/')
-    # Create an alignment metric object that will be used in yield calculation.
-    alignment_metric_yield_obj = losses_and_metrics.AlignmentMetric(
-        name='alignment_metric_yield'
-    )
     # Create loss objects.
     student_loss_object = model_utils.get_deepconsensus_loss(
         params, reduction=tf.keras.losses.Reduction.NONE
@@ -306,18 +302,8 @@ def train_model(
     optimizer.apply_gradients(zip(grads, model.trainable_variables))
 
     train_loss.update_state(loss)
-
-    # Calculate identity for CCS and the DC prediction.
-    ccs = model_utils.get_ccs_from_example(features, params)
-    (identity_ccs, identity_pred) = (
-        losses_and_metrics.get_batch_identity_ccs_pred(
-            ccs, student_preds, labels, alignment_metric_yield_obj
-        )
-    )
     # Update metrics.
-    model_utils.update_metrics(
-        train_metrics, labels, student_preds, identity_pred, identity_ccs
-    )
+    model_utils.update_metrics(train_metrics, labels, student_preds)
     return train_losses_dict
 
   def eval_step(inputs):
@@ -339,17 +325,8 @@ def train_model(
     )
 
     eval_loss.update_state(eval_losses_dict['total_loss'])
-    # Calculate identity for CCS and the DC prediction.
-    ccs = model_utils.get_ccs_from_example(features, params)
-    (identity_ccs, identity_pred) = (
-        losses_and_metrics.get_batch_identity_ccs_pred(
-            ccs, student_preds, labels, alignment_metric_yield_obj
-        )
-    )
     # Update metrics.
-    model_utils.update_metrics(
-        eval_metrics, labels, student_preds, identity_pred, identity_ccs
-    )
+    model_utils.update_metrics(eval_metrics, labels, student_preds)
     return eval_losses_dict
 
   @tf.function

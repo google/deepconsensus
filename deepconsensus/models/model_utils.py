@@ -45,9 +45,6 @@ from deepconsensus.models import transformer_basic_params
 from official.modeling import optimization
 
 
-_YIELD_OVER_CSS_METRIC_NAME = 'yield_over_ccs'
-_BATCH_IDENTITY_METRIC_NAME = 'per_batch_alignment_identity'
-
 
 def get_deepconsensus_loss(
     params: ml_collections.ConfigDict,
@@ -75,10 +72,6 @@ def get_deepconsensus_metrics(name_prefix='') -> list[tf.keras.metrics.Metric]:
       losses_and_metrics.CalibrationScore(
           name=f'{name_prefix}calibration_score'
       ),
-      tf.keras.metrics.Mean(name=f'{name_prefix}{_BATCH_IDENTITY_METRIC_NAME}'),
-      losses_and_metrics.YieldOverCCSMetric(
-          name=f'{name_prefix}{_YIELD_OVER_CSS_METRIC_NAME}'
-      ),
   ]
 
 
@@ -86,17 +79,10 @@ def update_metrics(
     metrics: list[tf.keras.metrics.Metric],
     labels: tf.Tensor,
     predictions: tf.Tensor,
-    identity_pred: tf.Tensor,
-    identity_ccs: tf.Tensor,
 ) -> None:
   """Updates metrics."""
   for metric in metrics:
-    if _YIELD_OVER_CSS_METRIC_NAME in metric.name:
-      metric.update_state(identity_ccs, identity_pred)
-    elif _BATCH_IDENTITY_METRIC_NAME in metric.name:
-      metric.update_state(identity_pred)
-    else:
-      metric.update_state(labels, predictions)
+    metric.update_state(labels, predictions)
 
 
 def get_record_shape(dataset_path: str) -> list[int]:
@@ -126,20 +112,6 @@ def get_record_shape(dataset_path: str) -> list[int]:
 def extract_example_height(dataset_sharded_path: str) -> int:
   """Gets example height based on a single entry within a dataset."""
   return get_record_shape(dataset_sharded_path)[0]
-
-
-def get_ccs_from_example(
-    features: tf.Tensor, params: ml_collections.ConfigDict
-) -> tf.Tensor:
-  """Gets CCS sequence from model input features."""
-  _, _, _, _, ccs_index, _, _ = data_providers.get_indices(
-      params.max_passes,
-      params.use_ccs_bq,
-  )
-  # CCS tensor with shape [batch_size, 1, max_length, 1].
-  ccs = tf.gather(features, tf.range(*ccs_index), axis=1)
-  # Return CCS tensor with shape [batch_size, max_length].
-  return tf.squeeze(ccs, axis=[1, -1])
 
 
 def get_model(params: ml_collections.ConfigDict) -> tf.keras.Model:
