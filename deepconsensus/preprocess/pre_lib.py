@@ -867,7 +867,7 @@ def from_features_dict(features_dict: dict[str, Any]) -> DcExample:
   n_subreads = features_dict['subreads/num_passes']
   # Note: The ccs start position is correct, but indices
   # may not be accurate beyond the first position.
-  ccs_start_pos = features_dict['window_pos']
+  ccs_start_pos = features_dict['window_pos'][0]
 
   # Get feature indices.
   bases_idx = dc_config.indices('bases', n_subreads)
@@ -963,7 +963,7 @@ def tf_example_to_features_dict(
       features['name'] = str(features['name'][0], 'UTF-8')
     else:
       features['name'] = features['name'][0]
-  features['subreads/num_passes'] = int(features['subreads/num_passes'])
+  features['subreads/num_passes'] = int(features['subreads/num_passes'][0])
 
   features['subreads'] = set_feature(
       features['subreads/encoded'], features['subreads/shape']

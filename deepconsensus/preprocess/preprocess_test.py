@@ -82,9 +82,8 @@ class PreprocessE2E(parameterized.TestCase):
       features = pre_lib.tf_example_to_features_dict(example, inference=True)
       zmw = int(features['name'].split('/')[1])
       if zmw != last_zmw:
-        last_zmw = zmw
         last_pos = -1
-      window_pos = int(features['window_pos'])
+      window_pos = int(features['window_pos'][0])
       self.assertGreater(window_pos, last_pos)
       last_zmw = zmw
       last_pos = window_pos
@@ -123,7 +122,7 @@ class PreprocessE2E(parameterized.TestCase):
       if zmw != last_zmw:
         last_zmw = zmw
         last_pos = -1
-      window_pos = int(features['window_pos'])
+      window_pos = int(features['window_pos'][0])
       self.assertGreater(window_pos, last_pos)
       last_zmw = zmw
       last_pos = window_pos
