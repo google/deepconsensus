@@ -81,7 +81,7 @@ def tf_avg_phred(base_qualities: tf.Tensor) -> float:
     probs_len = tf.cast(tf.shape(probs), dtype=base_qualities.dtype)
     avg_prob = tf.reduce_sum(probs) / probs_len
     avg_q = -10.0 * (tf.math.log(avg_prob) / tf.math.log(10.0))
-    return float(avg_q)
+    return float(avg_q[0])
 
 
 def avg_phred(base_qualities: Union[np.ndarray, list[int]]) -> float:
