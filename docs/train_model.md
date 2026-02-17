@@ -43,7 +43,7 @@ mkdir "${DC_TRAIN_DIR}"
 mkdir "${TF_EXAMPLES}"
 mkdir "${DC_TRAIN_OUTPUT}"
 
-gsutil -m cp -R gs://brain-genomics-public/research/deepconsensus/training-tutorial/v1.2/* "${TF_EXAMPLES}/"
+gcloud storage cp --recursive gs://brain-genomics-public/research/deepconsensus/training-tutorial/v1.2/* "${TF_EXAMPLES}/"
 ```
 
 The path to training examples has to be set in
