@@ -260,7 +260,7 @@ Copy DeepConsensus checkpoint locally:
 
 ```bash
 mkdir /mnt/disks/persist/model_checkpoint
-gsutil cp gs://brain-genomics-public/research/deepconsensus/models/v1.2/model_checkpoint/* /mnt/disks/persist/model_checkpoint/
+gcloud storage cp gs://brain-genomics-public/research/deepconsensus/models/v1.2/model_checkpoint/* /mnt/disks/persist/model_checkpoint/
 ```
 
 Add optional `--checkpoint` flag to
