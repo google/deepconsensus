@@ -333,7 +333,7 @@ def create_processes(
     total_threads: int,
     min_mapq: int,
     dc_calibration: calibration_lib.QualityCalibrationValues,
-) -> ...:
+):
   """Argument generator for launching processes in parallel."""
 
   def process_feeder():
@@ -346,7 +346,7 @@ def create_processes(
   return process_feeder
 
 
-def trace_exception(f) -> ...:
+def trace_exception(f):
   """Decorator to catch errors run in multiprocessing processes."""
 
   @functools.wraps(f)
